@@ -105,7 +105,7 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
-      return await handleAITicketCreator(validation.data, supabase, user.id);
+      return await handleAITicketCreator(validation.data, supabase, user.id, token);
     } else {
       const validation = BetOptimizerSchema.safeParse(bodyRaw);
       if (!validation.success) {
@@ -115,7 +115,7 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
-      return await handleBetOptimizer(validation.data, supabase, user.id);
+      return await handleBetOptimizer(validation.data, supabase, user.id, token);
     }
   } catch (error) {
     console.error("[generate-ticket] Internal error:", {
@@ -131,7 +131,7 @@ serve(async (req) => {
 });
 
 // NEW: AI Ticket Creator with custom parameters
-async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supabase: any, userId: string) {
+async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supabase: any, userId: string, token: string) {
   // 1. VALIDATE INPUT
   const {
     fixtureIds,
@@ -182,6 +182,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
     // Fetch analysis (combined stats)
     const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       body: {
         fixtureId,
         homeTeamId: fixture.teams_home?.id,
@@ -198,6 +201,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
     // Fetch odds (live with fallback)
     let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       body: { 
         fixtureId,
         live: useLiveOdds,
@@ -208,6 +214,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (useLiveOdds) {
         logs.push(`[fixture:${fixtureId}] Live odds unavailable, trying pre-match...`);
         const { data: prematchData } = await supabase.functions.invoke("fetch-odds", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
           body: { fixtureId, live: false },
         });
         if (prematchData && prematchData.selections && prematchData.selections.length > 0) {
@@ -384,7 +393,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 }
 
 // OLD: Bet Optimizer (mode-based)
-async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supabase: any, userId: string) {
+async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supabase: any, userId: string, token: string) {
   const { 
     mode,
     date,
