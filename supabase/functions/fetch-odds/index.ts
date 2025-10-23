@@ -19,6 +19,9 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
+    // Detect if this is a RapidAPI key
+    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -45,13 +48,20 @@ serve(async (req) => {
     console.log(`[fetch-odds] Cache miss for fixture ${fixtureId}, fetching from API`);
 
     // Fetch from API-Football
-    let url = `https://v3.football.api-sports.io/odds?fixture=${fixtureId}`;
+    const url = isRapidAPI
+      ? `https://api-football-v1.p.rapidapi.com/v3/odds?fixture=${fixtureId}`
+      : `https://v3.football.api-sports.io/odds?fixture=${fixtureId}`;
     
-    const response = await fetch(url, {
-      headers: {
-        "x-apisports-key": API_KEY,
-      },
-    });
+    const headers: Record<string, string> = isRapidAPI
+      ? {
+          "x-rapidapi-key": API_KEY,
+          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+        }
+      : {
+          "x-apisports-key": API_KEY
+        };
+    
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`API-Football error: ${response.status}`);

@@ -19,6 +19,9 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
+    // Detect if this is a RapidAPI key (contains "jsn" or longer format)
+    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
+
     // Initialize Supabase client for caching
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -42,14 +45,25 @@ serve(async (req) => {
 
     // Fetch from API-Football
     console.log(`Fetching leagues for ${country}, season ${season}`);
-    const url = `https://v3.football.api-sports.io/leagues?country=${encodeURIComponent(country)}&season=${season}`;
-    console.log(`[fetch-leagues] URL: ${url}`);
     
-    const response = await fetch(url, {
-      headers: {
-        "x-apisports-key": API_KEY,
-      },
-    });
+    // Use different endpoint and headers for RapidAPI vs direct API
+    const url = isRapidAPI 
+      ? `https://api-football-v1.p.rapidapi.com/v3/leagues?country=${encodeURIComponent(country)}&season=${season}`
+      : `https://v3.football.api-sports.io/leagues?country=${encodeURIComponent(country)}&season=${season}`;
+    
+    const headers: Record<string, string> = isRapidAPI
+      ? {
+          "x-rapidapi-key": API_KEY,
+          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+        }
+      : {
+          "x-apisports-key": API_KEY
+        };
+    
+    console.log(`[fetch-leagues] URL: ${url}`);
+    console.log(`[fetch-leagues] Using ${isRapidAPI ? 'RapidAPI' : 'Direct API'} endpoint`);
+    
+    const response = await fetch(url, { headers });
 
     console.log(`[fetch-leagues] API status: ${response.status}`);
     

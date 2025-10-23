@@ -19,6 +19,9 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
+    // Detect if this is a RapidAPI key
+    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
+
     // Initialize Supabase client for caching
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -43,14 +46,21 @@ serve(async (req) => {
 
     // Fetch from API-Football
     console.log(`Fetching fixtures for league ${league}, date ${date}`);
-    const response = await fetch(
-      `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}&date=${date}`,
-      {
-        headers: {
-          "x-apisports-key": API_KEY,
-        },
-      }
-    );
+    
+    const url = isRapidAPI
+      ? `https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${league}&season=${season}&date=${date}`
+      : `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}&date=${date}`;
+    
+    const headers: Record<string, string> = isRapidAPI
+      ? {
+          "x-rapidapi-key": API_KEY,
+          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+        }
+      : {
+          "x-apisports-key": API_KEY
+        };
+    
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`API-Football error: ${response.status}`);

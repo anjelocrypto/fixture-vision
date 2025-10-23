@@ -19,6 +19,9 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
+    // Detect if this is a RapidAPI key
+    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -82,7 +85,7 @@ serve(async (req) => {
         }
 
         // Fetch and compute stats
-        const stats = await computeTeamStats(teamId, API_KEY);
+        const stats = await computeTeamStats(teamId, API_KEY, isRapidAPI);
         apiCallsMade += stats.api_calls || 0;
 
         // Upsert to cache
@@ -137,19 +140,25 @@ serve(async (req) => {
   }
 });
 
-async function computeTeamStats(teamId: number, apiKey: string) {
+async function computeTeamStats(teamId: number, apiKey: string, isRapidAPI: boolean) {
   let apiCalls = 0;
   
   try {
     // Fetch last 5 completed fixtures
-    const response = await fetch(
-      `https://v3.football.api-sports.io/fixtures?team=${teamId}&last=5&status=FT`,
-      {
-        headers: {
-          "x-apisports-key": apiKey,
-        },
-      }
-    );
+    const url = isRapidAPI
+      ? `https://api-football-v1.p.rapidapi.com/v3/fixtures?team=${teamId}&last=5&status=FT`
+      : `https://v3.football.api-sports.io/fixtures?team=${teamId}&last=5&status=FT`;
+    
+    const headers: Record<string, string> = isRapidAPI
+      ? {
+          "x-rapidapi-key": apiKey,
+          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+        }
+      : {
+          "x-apisports-key": apiKey
+        };
+    
+    const response = await fetch(url, { headers });
     apiCalls++;
 
     if (!response.ok) {
@@ -172,14 +181,11 @@ async function computeTeamStats(teamId: number, apiKey: string) {
     for (const match of data.response) {
       const isHome = match.teams.home.id === teamId;
       
-      const statsResponse = await fetch(
-        `https://v3.football.api-sports.io/fixtures/statistics?fixture=${match.fixture.id}`,
-        {
-          headers: {
-            "x-apisports-key": apiKey,
-          },
-        }
-      );
+      const statsUrl = isRapidAPI
+        ? `https://api-football-v1.p.rapidapi.com/v3/fixtures/statistics?fixture=${match.fixture.id}`
+        : `https://v3.football.api-sports.io/fixtures/statistics?fixture=${match.fixture.id}`;
+      
+      const statsResponse = await fetch(statsUrl, { headers });
       apiCalls++;
 
       if (statsResponse.ok) {
