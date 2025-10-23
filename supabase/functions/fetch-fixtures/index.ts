@@ -12,13 +12,25 @@ serve(async (req) => {
   }
 
   try {
-    const { league, season, date } = await req.json();
+    const { league, season, date, tz } = await req.json();
     
-    console.log(`[fetch-fixtures] Request params - league: ${league}, season: ${season}, date: ${date}`);
+    console.log(`[fetch-fixtures] Request params - league: ${league}, season: ${season}, date: ${date}, tz: ${tz}`);
     
     if (!league) {
       throw new Error("League ID is required");
     }
+    
+    // Compute today's start and +7 days end in user's timezone (or UTC fallback)
+    const now = new Date();
+    const todayStart = new Date(now.toLocaleString('en-US', { timeZone: tz || 'UTC' }));
+    todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysEnd = new Date(todayStart);
+    sevenDaysEnd.setDate(sevenDaysEnd.getDate() + 8); // today + next 7 full days
+    
+    const fromTs = Math.floor(todayStart.getTime() / 1000);
+    const toTs = Math.floor(sevenDaysEnd.getTime() / 1000);
+    
+    console.log(`[fetch-fixtures] Timestamp range: ${fromTs} to ${toTs} (${new Date(fromTs * 1000).toISOString()} to ${new Date(toTs * 1000).toISOString()})`);
     
     const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
     if (!API_KEY) {
@@ -34,65 +46,75 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Check cache first (10 min cache)
+    // Check cache first (10 min cache) - filter by timestamp range for upcoming fixtures only
     const { data: cachedFixtures, error: cacheError } = await supabaseClient
       .from("fixtures")
       .select("*")
       .eq("league_id", league)
-      .eq("date", date)
-      .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString());
+      .gte("timestamp", fromTs)
+      .lt("timestamp", toTs)
+      .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+      .order("timestamp", { ascending: true });
 
     if (cachedFixtures && cachedFixtures.length > 0) {
-      console.log("Returning cached fixtures");
+      console.log(`Returning ${cachedFixtures.length} cached upcoming fixtures`);
       return new Response(
         JSON.stringify({ fixtures: cachedFixtures }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Fetch from API-Football
-    console.log(`Fetching fixtures for league ${league}, date ${date}`);
+    // Fetch from API-Football for the next 8 days
+    console.log(`Fetching upcoming fixtures for league ${league} (next 8 days)`);
     
-    const url = isRapidAPI
-      ? `https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${league}&season=${season}&date=${date}`
-      : `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}&date=${date}`;
+    const allFixtures: any[] = [];
     
-    const headers: Record<string, string> = isRapidAPI
-      ? {
-          "x-rapidapi-key": API_KEY,
-          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
-        }
-      : {
-          "x-apisports-key": API_KEY
-        };
-    
-    console.log(`[fetch-fixtures] URL: ${url}`);
-    console.log(`[fetch-fixtures] Using ${isRapidAPI ? 'RapidAPI' : 'Direct API'} endpoint`);
-    
-    const response = await fetch(url, { headers });
+    // Fetch for each day in the range
+    for (let dayOffset = 0; dayOffset < 8; dayOffset++) {
+      const targetDate = new Date(todayStart);
+      targetDate.setDate(targetDate.getDate() + dayOffset);
+      const dateStr = targetDate.toISOString().split('T')[0];
+      
+      const url = isRapidAPI
+        ? `https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${league}&season=${season}&date=${dateStr}`
+        : `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}&date=${dateStr}`;
+      
+      const headers: Record<string, string> = isRapidAPI
+        ? {
+            "x-rapidapi-key": API_KEY,
+            "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+          }
+        : {
+            "x-apisports-key": API_KEY
+          };
+      
+      console.log(`[fetch-fixtures] Fetching day ${dayOffset}: ${dateStr}`);
+      
+      const response = await fetch(url, { headers });
 
-    console.log(`[fetch-fixtures] API status: ${response.status}`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[fetch-fixtures] API error ${response.status}: ${errorText.slice(0, 500)}`);
-      throw new Error(`API-Football error: ${response.status} - ${errorText.slice(0, 200)}`);
+      if (!response.ok) {
+        console.error(`[fetch-fixtures] API error ${response.status} for ${dateStr}`);
+        continue; // Skip this day and continue
+      }
+
+      const responseText = await response.text();
+      const data = JSON.parse(responseText);
+      
+      if (data.response && data.response.length > 0) {
+        // Filter only upcoming fixtures (exclude finished matches)
+        const upcomingFixtures = data.response.filter((item: any) => {
+          const fixtureTs = item.fixture.timestamp;
+          return fixtureTs >= fromTs && fixtureTs < toTs && !['FT', 'AET', 'PEN', 'PST'].includes(item.fixture.status.short);
+        });
+        allFixtures.push(...upcomingFixtures);
+        console.log(`[fetch-fixtures] Found ${upcomingFixtures.length} upcoming fixtures for ${dateStr}`);
+      }
     }
-
-    const responseText = await response.text();
-    console.log(`[fetch-fixtures] Response body snippet: ${responseText.slice(0, 500)}`);
     
-    const data = JSON.parse(responseText);
+    console.log(`[fetch-fixtures] Total upcoming fixtures found: ${allFixtures.length}`);
     
-    console.log(`[fetch-fixtures] Response structure:`, {
-      hasResponse: !!data.response,
-      responseLength: data.response?.length || 0,
-      hasErrors: !!data.errors,
-      errors: data.errors
-    });
-    
-    if (!data.response || data.response.length === 0) {
-      console.log(`[fetch-fixtures] Empty response from API for league ${league}, date ${date}`);
+    if (allFixtures.length === 0) {
+      console.log(`[fetch-fixtures] No upcoming fixtures found for league ${league}`);
       return new Response(
         JSON.stringify({ fixtures: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -100,10 +122,10 @@ serve(async (req) => {
     }
 
     // Transform and cache fixtures
-    const fixtures = data.response.map((item: any) => ({
+    const fixtures = allFixtures.map((item: any) => ({
       id: item.fixture.id,
       league_id: league,
-      date: date,
+      date: new Date(item.fixture.timestamp * 1000).toISOString().split('T')[0],
       timestamp: item.fixture.timestamp,
       teams_home: {
         id: item.teams.home.id,

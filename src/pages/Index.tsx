@@ -30,8 +30,11 @@ const Index = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [selectedLeague, setSelectedLeague] = useState<any>(null);
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [analysis, setAnalysis] = useState<any>(null);
   const [valueAnalysis, setValueAnalysis] = useState<any>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -74,11 +77,12 @@ const Index = () => {
     return () => clearTimeout(timer);
   }, [queryClient]);
 
-  // Reset league and invalidate queries when country changes
+  // Reset league, date, and invalidate queries when country changes
   useEffect(() => {
     if (selectedCountry !== null) {
       console.log(`[Index] Country changed to: ${selectedCountry}`);
       setSelectedLeague(null);
+      setSelectedDate(today); // Reset to today
       setAnalysis(null);
       setValueAnalysis(null);
       setFilterCriteria(null);
@@ -148,33 +152,59 @@ const Index = () => {
     }
   }, [leaguesError, selectedCountry]);
 
-  // Fetch fixtures with React Query - properly keyed by country, season, league, and date
+  // Fetch upcoming fixtures (today + next 7 days) with React Query
   const { data: fixturesData, isLoading: loadingFixtures } = useQuery({
-    queryKey: ['fixtures', selectedCountry, SEASON, selectedLeague?.id, format(selectedDate, "yyyy-MM-dd")],
+    queryKey: ['fixtures', selectedCountry, SEASON, selectedLeague?.id, 'upcoming', userTimezone],
     queryFn: async () => {
       if (!selectedLeague) return { fixtures: [] };
 
-      console.log(`[Index] Fetching fixtures for league: ${selectedLeague.id}, date: ${format(selectedDate, "yyyy-MM-dd")}, season: ${SEASON}`);
+      console.log(`[Index] Fetching upcoming fixtures for league: ${selectedLeague.id}, season: ${SEASON}, tz: ${userTimezone}`);
 
       const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
         body: {
           league: selectedLeague.id,
           season: SEASON,
-          date: format(selectedDate, "yyyy-MM-dd"),
+          date: format(today, "yyyy-MM-dd"), // Still pass for compatibility
+          tz: userTimezone,
         },
       });
 
       if (error) throw error;
 
-      console.log(`[Index] Fetched ${data?.fixtures?.length || 0} fixtures`);
+      console.log(`[Index] Fetched ${data?.fixtures?.length || 0} upcoming fixtures`);
       return data;
     },
-    enabled: !!selectedLeague && !!selectedDate,
-    staleTime: 10 * 60 * 1000, // 10 min
+    enabled: !!selectedLeague,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const leagues = leaguesData?.leagues || [];
-  const fixtures = fixturesData?.fixtures || [];
+  
+  // Filter fixtures for selected date and ensure only upcoming fixtures
+  const nowSec = Math.floor(Date.now() / 1000);
+  const allUpcomingFixtures = (fixturesData?.fixtures || []).filter(
+    (fx: any) => fx.timestamp >= nowSec
+  );
+  
+  const fixtures = allUpcomingFixtures.filter(
+    (fx: any) => format(new Date(fx.timestamp * 1000), "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd")
+  );
+
+  // Auto-select next available date if current date has no fixtures
+  useEffect(() => {
+    if (!loadingFixtures && selectedLeague && allUpcomingFixtures.length > 0 && fixtures.length === 0) {
+      // Find the first date with fixtures in the next 7 days
+      const nextDateWithFixtures = allUpcomingFixtures[0];
+      if (nextDateWithFixtures) {
+        const nextDate = new Date(nextDateWithFixtures.timestamp * 1000);
+        nextDate.setHours(0, 0, 0, 0);
+        if (nextDate.getTime() !== selectedDate.getTime()) {
+          console.log(`Auto-selecting next date with fixtures: ${format(nextDate, "MMM d")}`);
+          setSelectedDate(nextDate);
+        }
+      }
+    }
+  }, [loadingFixtures, selectedLeague, allUpcomingFixtures.length, fixtures.length]);
 
   const handleAnalyze = async (fixture: any) => {
     setLoadingAnalysis(true);

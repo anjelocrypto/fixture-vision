@@ -46,8 +46,10 @@ export function CenterRail({
   loading,
   onAnalyze,
 }: CenterRailProps) {
-  // Show 7 dates: 3 before selected, selected, and 3 after
-  const dates = Array.from({ length: 7 }, (_, i) => addDays(selectedDate, i - 3));
+  // Show only upcoming 8 days: today + next 7 days
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dates = Array.from({ length: 8 }, (_, i) => addDays(today, i));
 
   return (
     <>
@@ -92,27 +94,13 @@ export function CenterRail({
       ) : fixtures.length === 0 ? (
         <Card className="p-8 text-center space-y-4">
           <div>
-            <p className="text-lg font-medium mb-2">No fixtures scheduled</p>
+            <p className="text-lg font-medium mb-2">No upcoming fixtures</p>
             <p className="text-muted-foreground text-sm">
-              {league?.name} has no matches on {format(selectedDate, "MMMM d, yyyy")}
+              {league?.name} has no matches scheduled in the next 7 days
             </p>
           </div>
-          <div className="flex gap-2 justify-center">
-            <Button 
-              variant="outline" 
-              onClick={() => onSelectDate(addDays(selectedDate, 1))}
-            >
-              Next day →
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => onSelectDate(addDays(selectedDate, -1))}
-            >
-              ← Previous day
-            </Button>
-          </div>
           <p className="text-xs text-muted-foreground">
-            Try selecting a different date or league
+            Try selecting a different league
           </p>
         </Card>
       ) : (
