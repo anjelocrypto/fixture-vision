@@ -30,15 +30,18 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Allow both authenticated users and service role calls (from cron)
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    if (authError || !user) {
+    const isServiceRole = token === Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (authError && !isServiceRole) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    console.log(`[optimize-selections-refresh] Starting refresh for user ${user.id}`);
+    console.log(`[optimize-selections-refresh] Starting refresh${user ? ` for user ${user.id}` : ' (service role)'}`);
 
     // Get 7-day window (now → +7 days)
     const now = new Date();

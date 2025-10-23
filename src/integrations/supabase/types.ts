@@ -362,6 +362,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      backfill_optimized_selections: {
+        Args: never
+        Returns: {
+          inserted: number
+          scanned: number
+          skipped: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
