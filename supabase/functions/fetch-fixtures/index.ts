@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { apiHeaders, API_BASE } from "../_shared/api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,9 +38,6 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
-    // Detect if this is a RapidAPI key
-    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
-
     // Initialize Supabase client for caching
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -75,22 +73,11 @@ serve(async (req) => {
       targetDate.setDate(targetDate.getDate() + dayOffset);
       const dateStr = targetDate.toISOString().split('T')[0];
       
-      const url = isRapidAPI
-        ? `https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${league}&season=${season}&date=${dateStr}`
-        : `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}&date=${dateStr}`;
-      
-      const headers: Record<string, string> = isRapidAPI
-        ? {
-            "x-rapidapi-key": API_KEY,
-            "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
-          }
-        : {
-            "x-apisports-key": API_KEY
-          };
+      const url = `${API_BASE}/fixtures?league=${league}&season=${season}&date=${dateStr}`;
       
       console.log(`[fetch-fixtures] Fetching day ${dayOffset}: ${dateStr}`);
       
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, { headers: apiHeaders() });
 
       if (!response.ok) {
         console.error(`[fetch-fixtures] API error ${response.status} for ${dateStr}`);

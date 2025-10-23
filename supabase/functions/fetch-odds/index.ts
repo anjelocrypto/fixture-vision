@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { apiHeaders, API_BASE } from "../_shared/api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +70,6 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
-    const baseUrl = "https://v3.football.api-sports.io";
     const cacheKey = `odds:${fixtureId}:${live ? "live" : "prematch"}:${markets?.join(",") || "all"}:${bookmakers?.join(",") || "all"}`;
 
     // Check cache
@@ -112,11 +112,9 @@ serve(async (req) => {
       searchParams.append("live", "true");
     }
 
-    const res = await fetch(`${baseUrl}/odds?${searchParams}`, {
+    const res = await fetch(`${API_BASE}/odds?${searchParams}`, {
       method: "GET",
-      headers: {
-        "x-apisports-key": API_KEY,
-      },
+      headers: apiHeaders(),
     });
 
     if (!res.ok) {
