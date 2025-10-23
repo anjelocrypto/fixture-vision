@@ -42,22 +42,54 @@ serve(async (req) => {
 
     // Fetch from API-Football
     console.log(`Fetching leagues for ${country}, season ${season}`);
-    const response = await fetch(
-      `https://v3.football.api-sports.io/leagues?country=${encodeURIComponent(country)}&season=${season}`,
-      {
-        headers: {
-          "x-apisports-key": API_KEY,
-        },
-      }
-    );
+    const url = `https://v3.football.api-sports.io/leagues?country=${encodeURIComponent(country)}&season=${season}`;
+    console.log(`[fetch-leagues] URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        "x-apisports-key": API_KEY,
+      },
+    });
 
-    if (!response.ok) {
-      throw new Error(`API-Football error: ${response.status}`);
+    console.log(`[fetch-leagues] API status: ${response.status}`);
+    
+    // Handle rate limiting
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After") || "60";
+      console.error(`[fetch-leagues] Rate limited. Retry after ${retryAfter}s`);
+      return new Response(
+        JSON.stringify({ 
+          error: "API rate limit exceeded",
+          retry_after: retryAfter 
+        }),
+        { 
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
     }
 
-    const data = await response.json();
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[fetch-leagues] API error ${response.status}: ${errorText.slice(0, 500)}`);
+      throw new Error(`API-Football error: ${response.status} - ${errorText.slice(0, 200)}`);
+    }
+
+    const responseText = await response.text();
+    console.log(`[fetch-leagues] Response body snippet: ${responseText.slice(0, 500)}`);
+    
+    const data = JSON.parse(responseText);
+    
+    // Log API response structure
+    console.log(`[fetch-leagues] Response structure:`, {
+      hasResponse: !!data.response,
+      responseLength: data.response?.length || 0,
+      hasErrors: !!data.errors,
+      errors: data.errors
+    });
     
     if (!data.response || data.response.length === 0) {
+      console.log(`[fetch-leagues] Empty response from API for ${country}, season ${season}`);
       return new Response(
         JSON.stringify({ leagues: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
