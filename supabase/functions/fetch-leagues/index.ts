@@ -5,11 +5,12 @@ import { apiHeaders, API_BASE } from "../_shared/api.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
@@ -61,7 +62,7 @@ serve(async (req) => {
     const url = `${API_BASE}/leagues?country=${encodeURIComponent(country)}&season=${season}`;
     
     console.log(`[fetch-leagues] URL: ${url}`);
-    console.log(`[fetch-leagues] Using ${API_BASE.includes('rapidapi') ? 'RapidAPI' : 'Direct API'} endpoint`);
+    console.log(`[fetch-leagues] Using API-Sports direct endpoint`);
     
     const response = await fetch(url, { headers: apiHeaders() });
 

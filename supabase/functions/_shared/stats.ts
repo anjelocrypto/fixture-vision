@@ -18,6 +18,7 @@ export type Last5Result = {
 
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
   console.log(`[stats] Fetching last 5 fixture IDs for team ${teamId}`);
+  console.log(`[stats] Using API_BASE: ${API_BASE}`);
   
   const url = `${API_BASE}/fixtures?team=${teamId}&last=5&status=FT`;
   const res = await fetch(url, { headers: apiHeaders() });
@@ -43,6 +44,12 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   // First, get the fixture details to determine goals and team side
   const fixtureUrl = `${API_BASE}/fixtures?id=${fixtureId}`;
   const fixtureRes = await fetch(fixtureUrl, { headers: apiHeaders() });
+  
+  if (!fixtureRes.ok) {
+    console.error(`[stats] Failed to fetch fixture ${fixtureId}: ${fixtureRes.status}`);
+    return { goals: 0, corners: 0, offsides: 0, fouls: 0, cards: 0 };
+  }
+  
   const fixtureJson = await fixtureRes.json();
   const fixture = fixtureJson?.response?.[0];
   
@@ -55,8 +62,10 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
     
     if (teamId === homeId) {
       goals = gHome;
+      console.log(`[stats] Team ${teamId} is home team: ${gHome} goals`);
     } else if (teamId === awayId) {
       goals = gAway;
+      console.log(`[stats] Team ${teamId} is away team: ${gAway} goals`);
     }
   }
   
@@ -65,7 +74,7 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const statsRes = await fetch(statsUrl, { headers: apiHeaders() });
   
   if (!statsRes.ok) {
-    console.warn(`[stats] Failed to fetch statistics for fixture ${fixtureId}, team ${teamId}`);
+    console.warn(`[stats] Failed to fetch statistics for fixture ${fixtureId}, team ${teamId}: ${statsRes.status}`);
     return { goals, corners: 0, offsides: 0, fouls: 0, cards: 0 };
   }
   
@@ -73,6 +82,12 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   
   // Find the statistics for this specific team
   const teamStats = (statsJson?.response ?? []).find((r: any) => r?.team?.id === teamId);
+  
+  if (!teamStats) {
+    console.warn(`[stats] No statistics found for team ${teamId} in fixture ${fixtureId}`);
+    return { goals, corners: 0, offsides: 0, fouls: 0, cards: 0 };
+  }
+  
   const statsArr = teamStats?.statistics ?? [];
   
   // Helper: find numeric value by type
