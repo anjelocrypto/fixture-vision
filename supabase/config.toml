@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.optimize-selections-refresh]
 verify_jwt = true
+
+[functions.backfill-odds]
+verify_jwt = true

@@ -7,6 +7,7 @@ import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
+import { AdminRefreshButton } from "@/components/AdminRefreshButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -415,6 +416,10 @@ const Index = () => {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       
+      // Get country code if country is selected
+      const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
+      const countryCode = country && country.id !== 0 ? country.code : undefined;
+      
       const { data, error } = await supabase.functions.invoke("filterizer-query", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
@@ -422,6 +427,7 @@ const Index = () => {
           market: filters.market,
           line: filters.line,
           minOdds: filters.minOdds,
+          countryCode,
           leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
         },
       });
@@ -519,15 +525,18 @@ const Index = () => {
                 : "All Fixtures"}
             </h2>
             
-            <Button
-              variant={showFilterizer ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowFilterizer(!showFilterizer)}
-              className="gap-2 shrink-0"
-            >
-              <Filter className="h-4 w-4" />
-              <span className="hidden sm:inline">{showFilterizer ? "Hide" : "Show"}</span>
-            </Button>
+            <div className="flex gap-2 shrink-0">
+              <AdminRefreshButton />
+              <Button
+                variant={showFilterizer ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFilterizer(!showFilterizer)}
+                className="gap-2"
+              >
+                <Filter className="h-4 w-4" />
+                <span className="hidden sm:inline">{showFilterizer ? "Hide" : "Show"}</span>
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
