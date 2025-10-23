@@ -1,10 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RequestSchema = z.object({
+  fixtureId: z.number().int().positive(),
+  markets: z.array(z.string()).optional(),
+  bookmakers: z.array(z.string()).optional(),
+  live: z.boolean().optional(),
+  forceRefresh: z.boolean().optional(),
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,232 +21,171 @@ serve(async (req) => {
   }
 
   try {
-    const { fixtureId, markets, bookmakers, live = false, forceRefresh = false } = await req.json();
+    // Verify authentication
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication token" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    // Validate input
+    const bodyRaw = await req.json().catch(() => null);
+    if (!bodyRaw) {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    const validation = RequestSchema.safeParse(bodyRaw);
+    if (!validation.success) {
+      console.error("[fetch-odds] Validation error:", validation.error.format());
+      return new Response(
+        JSON.stringify({ error: "Invalid request parameters" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+      );
+    }
+
+    const { fixtureId, markets, bookmakers, live = false, forceRefresh = false } = validation.data;
     
     const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
     if (!API_KEY) {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
-    // Detect if this is a RapidAPI key
-    const isRapidAPI = API_KEY.includes("jsn") || API_KEY.length > 40;
+    const baseUrl = "https://v3.football.api-sports.io";
+    const cacheKey = `odds:${fixtureId}:${live ? "live" : "prematch"}:${markets?.join(",") || "all"}:${bookmakers?.join(",") || "all"}`;
 
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    const source = live ? "live" : "prematch";
-    console.log(`[fetch-odds] Fetching ${source} odds for fixture ${fixtureId}`);
-
-    // Check cache for pre-match only (30 min TTL)
-    if (!live && !forceRefresh) {
+    // Check cache
+    if (!forceRefresh) {
       const { data: cachedOdds } = await supabaseClient
         .from("odds_cache")
         .select("*")
         .eq("fixture_id", fixtureId)
-        .gte("captured_at", new Date(Date.now() - 30 * 60 * 1000).toISOString())
         .single();
 
       if (cachedOdds) {
-        console.log(`[fetch-odds] Cache hit for fixture ${fixtureId}`);
-        const selections = flattenOddsToSelections(fixtureId, cachedOdds.payload);
-        return new Response(
-          JSON.stringify({ 
-            ...cachedOdds, 
-            cache_hit: true,
-            source: "prematch",
-            selections 
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        const cacheAge = Date.now() - new Date(cachedOdds.captured_at).getTime();
+        const ONE_HOUR = 60 * 60 * 1000;
+
+        if (cacheAge < ONE_HOUR) {
+          console.log(`[fetch-odds] Cache hit for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
+          return new Response(
+            JSON.stringify({
+              ...cachedOdds.payload,
+              source: live ? "live" : "prematch",
+              cached: true,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } else {
+          console.log(`[fetch-odds] Cache stale for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
+        }
+      } else {
+        console.log(`[fetch-odds] Cache miss for fixture ${fixtureId}`);
       }
     }
 
-    console.log(`[fetch-odds] ${forceRefresh ? 'Force refresh' : 'Cache miss'} for fixture ${fixtureId}, fetching from API`);
+    // Fetch from API
+    console.log(`[fetch-odds] Fetching odds from API for fixture ${fixtureId} (live=${live})`);
+    const searchParams = new URLSearchParams({
+      fixture: fixtureId.toString(),
+    });
 
-    // Fetch from API-Football (pre-match or live)
-    const baseUrl = isRapidAPI
-      ? "https://api-football-v1.p.rapidapi.com/v3"
-      : "https://v3.football.api-sports.io";
-    
-    const endpoint = live ? `/odds/live?fixture=${fixtureId}` : `/odds?fixture=${fixtureId}`;
-    const url = `${baseUrl}${endpoint}`;
-    
-    const headers: Record<string, string> = isRapidAPI
-      ? {
-          "x-rapidapi-key": API_KEY,
-          "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
-        }
-      : {
-          "x-apisports-key": API_KEY
-        };
-    
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-      throw new Error(`API-Football error: ${response.status}`);
+    if (live) {
+      searchParams.append("live", "true");
     }
 
-    const data = await response.json();
-    
-    if (!data.response || data.response.length === 0) {
+    const res = await fetch(`${baseUrl}/odds?${searchParams}`, {
+      method: "GET",
+      headers: {
+        "x-apisports-key": API_KEY,
+      },
+    });
+
+    if (!res.ok) {
+      console.error(`[fetch-odds] API error: ${res.status} ${res.statusText}`);
+      return new Response(JSON.stringify({ error: "API error" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+
+    const json = await res.json();
+    if (!json.response || json.response.length === 0) {
+      console.warn(`[fetch-odds] No odds found for fixture ${fixtureId}`);
       return new Response(
-        JSON.stringify({ 
-          available: false, 
-          fixture_id: fixtureId,
-          source,
-          selections: []
-        }),
+        JSON.stringify({ error: "No odds found", fixtureId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Normalize odds data
-    // API response structure: response[0].bookmakers[] contains the bookmakers array
-    const firstResponse = data.response[0];
-    if (!firstResponse || !firstResponse.bookmakers) {
-      return new Response(
-        JSON.stringify({ 
-          available: false, 
-          fixture_id: fixtureId,
-          source,
-          selections: []
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Transform and filter odds
+    const fixtureOdds = json.response[0];
+    const selections = flattenOddsToSelections(fixtureOdds);
 
-    const normalizedOdds = {
+    // Persist to cache
+    console.log(`[fetch-odds] Persisting ${selections.length} selections to cache for fixture ${fixtureId}`);
+    await supabaseClient.from("odds_cache").upsert({
       fixture_id: fixtureId,
-      available: true,
-      bookmakers: firstResponse.bookmakers.map((bm: any) => ({
-        id: bm.id,
-        name: bm.name,
-        markets: (bm.bets || []).map((bet: any) => ({
-          id: bet.id,
-          name: bet.name,
-          values: (bet.values || []).map((v: any) => ({
-            value: v.value,
-            odd: v.odd,
-          })),
-        })),
-      })),
       captured_at: new Date().toISOString(),
-    };
-
-    // Flatten to selections
-    const selections = flattenOddsToSelections(fixtureId, normalizedOdds);
-
-    // Cache the odds (pre-match only, not live)
-    if (!live) {
-      await supabaseClient
-        .from("odds_cache")
-        .upsert(
-          {
-            fixture_id: fixtureId,
-            payload: normalizedOdds,
-            bookmakers: bookmakers || [],
-            markets: markets || [],
-            captured_at: new Date().toISOString(),
-          },
-          { onConflict: "fixture_id" }
-        );
-    }
-
-    console.log(`[fetch-odds] Found ${selections.length} selections for fixture ${fixtureId}`);
+      payload: {
+        fixture: fixtureOdds.fixture,
+        bookmakers: fixtureOdds.bookmakers,
+      },
+    });
 
     return new Response(
-      JSON.stringify({ 
-        ...normalizedOdds, 
-        cache_hit: false,
-        source,
-        selections
+      JSON.stringify({
+        fixture: fixtureOdds.fixture,
+        selections,
+        source: live ? "live" : "prematch",
+        cached: false,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
-    console.error("[fetch-odds] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[fetch-odds] Internal error:", {
+      message: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+    });
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: "Internal server error" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
 
-// Helper: Flatten odds payload to normalized selections array
-function flattenOddsToSelections(fixtureId: number, payload: any): any[] {
+function flattenOddsToSelections(fixtureOdds: any) {
   const selections: any[] = [];
-  
-  if (!payload.bookmakers) return selections;
 
-  for (const bookmaker of payload.bookmakers) {
-    for (const market of bookmaker.markets || []) {
-      const marketName = (market.name || "").toLowerCase();
-      const marketId = market.id;
-      
-      // Determine normalized market type
-      let normalized = "other";
-      let marketType = "other";
-      
-      if (marketName.includes("goals") || marketName.includes("total") && marketName.includes("goals")) {
-        normalized = "goals";
-        marketType = "ou";
-      } else if (marketName.includes("corner")) {
-        normalized = "corners";
-        marketType = "ou";
-      } else if (marketName.includes("card") || marketName.includes("booking")) {
-        normalized = "cards";
-        marketType = "ou";
-      } else if (marketName.includes("offside")) {
-        normalized = "offsides";
-        marketType = "ou";
-      } else if (marketName.includes("foul")) {
-        normalized = "fouls";
-        marketType = "ou";
-      }
-
-      // Parse market values (over/under pairs, etc.)
-      for (const value of market.values || []) {
-        const label = String(value.value || "").trim();
-        const odds = parseFloat(value.odd);
-        
-        if (!label || isNaN(odds)) continue;
-
-        let kind = "other";
-        let line: number | undefined;
-
-        // Parse Over/Under selections
-        const overMatch = label.match(/(?:over|o)\s*([\d.]+)/i);
-        const underMatch = label.match(/(?:under|u)\s*([\d.]+)/i);
-        
-        if (overMatch) {
-          kind = "over";
-          line = parseFloat(overMatch[1]);
-        } else if (underMatch) {
-          kind = "under";
-          line = parseFloat(underMatch[1]);
-        } else if (label.toLowerCase().includes("yes")) {
-          kind = "yes";
-        } else if (label.toLowerCase().includes("no")) {
-          kind = "no";
-        } else if (["1", "x", "2"].includes(label.toLowerCase())) {
-          kind = label.toLowerCase();
-        }
-
+  for (const bookmaker of fixtureOdds.bookmakers) {
+    for (const market of bookmaker.markets) {
+      for (const outcome of market.outcomes) {
         selections.push({
-          fixtureId,
-          market: normalized,
-          provider_market_id: marketId,
-          label,
-          kind,
-          line,
           bookmaker: bookmaker.name,
-          odds
+          market: normalizeMarketNameOld(market.name),
+          kind: normalizeOutcomeName(outcome.name),
+          odds: outcome.odd,
+          line: extractLineFromMarket(market.name),
         });
       }
     }
@@ -246,3 +194,25 @@ function flattenOddsToSelections(fixtureId: number, payload: any): any[] {
   return selections;
 }
 
+function extractLineFromMarket(marketName: string): number | null {
+  const match = marketName.match(/Over (\d+\.?\d*)/i);
+  if (match) {
+    return parseFloat(match[1]);
+  }
+  return null;
+}
+
+function normalizeOutcomeName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes("over")) return "over";
+  if (lower.includes("under")) return "under";
+  return name;
+}
+
+function normalizeMarketNameOld(marketName: string): string {
+  const lower = marketName.toLowerCase();
+  if (lower.includes("goals")) return "goals";
+  if (lower.includes("card")) return "cards";
+  if (lower.includes("corner")) return "corners";
+  return "unknown";
+}

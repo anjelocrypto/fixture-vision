@@ -1,5 +1,11 @@
-import { Search, Twitter } from "lucide-react";
+import { Search, Twitter, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { Session } from "@supabase/supabase-js";
+import { useEffect, useState } from "react";
 
 const sports = [
   { name: "Football", active: true },
@@ -10,6 +16,33 @@ const sports = [
 ];
 
 export function AppHeader() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Signed out",
+      description: "You've been successfully signed out.",
+    });
+    navigate("/auth");
+  };
+
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="flex items-center justify-between px-3 sm:px-6 h-14 sm:h-16">
@@ -42,11 +75,29 @@ export function AppHeader() {
           <Button variant="ghost" size="icon" className="hidden sm:flex">
             <Twitter className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-secondary rounded-full text-xs sm:text-sm">
-            <span className="text-primary font-semibold">EN</span>
-            <span className="text-muted-foreground hidden sm:inline">/</span>
-            <span className="text-muted-foreground hidden sm:inline">KA</span>
-          </div>
+          
+          {session ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <User className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  {session.user.email}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="default" size="sm" onClick={() => navigate("/auth")}>
+              Sign In
+            </Button>
+          )}
         </div>
       </div>
     </header>

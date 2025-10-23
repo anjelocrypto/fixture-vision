@@ -1,34 +1,69 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const RequestSchema = z.object({
+  fixtureId: z.number().int().positive(),
+  homeTeamId: z.number().int().positive(),
+  awayTeamId: z.number().int().positive(),
+});
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { fixtureId, homeTeamId, awayTeamId } = await req.json();
-    
-    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}`);
-
-    if (!fixtureId || !homeTeamId || !awayTeamId) {
+    // Verify authentication
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "fixtureId, homeTeamId, and awayTeamId are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
+    const token = authHeader.replace("Bearer ", "");
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication token" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    // Validate input
+    const bodyRaw = await req.json().catch(() => null);
+    if (!bodyRaw) {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    const validation = RequestSchema.safeParse(bodyRaw);
+    if (!validation.success) {
+      console.error("[analyze-fixture] Validation error:", validation.error.format());
+      return new Response(
+        JSON.stringify({ error: "Invalid request parameters" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+      );
+    }
+
+    const { fixtureId, homeTeamId, awayTeamId } = validation.data;
+    
+    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}`);
 
     // Helper to get or compute team stats
     const getTeamStats = async (teamId: number) => {
@@ -119,11 +154,14 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("[analyze-fixture] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[analyze-fixture] Internal error:", {
+      message: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+    });
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Internal server error" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });

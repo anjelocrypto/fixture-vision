@@ -7,22 +7,22 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.analyze-fixture]
-verify_jwt = false
+verify_jwt = true
 
 [functions.fetch-odds]
-verify_jwt = false
+verify_jwt = true
 
 [functions.filterizer-query]
-verify_jwt = false
+verify_jwt = true
 
 [functions.stats-refresh]
-verify_jwt = false
+verify_jwt = true
 
 [functions.calculate-value]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-ticket]
-verify_jwt = false
+verify_jwt = true
 
 [functions.fetch-odds-bets]
-verify_jwt = false
+verify_jwt = true

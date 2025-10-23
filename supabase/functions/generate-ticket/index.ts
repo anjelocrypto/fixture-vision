@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, getRiskProfile, Market } from "../_shared/ticket_rules.ts";
 import { pickFromCombined } from "../_shared/rules.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,49 +33,105 @@ interface TicketLeg {
   source?: "prematch" | "live";
 }
 
+// Validation schemas
+const AITicketSchema = z.object({
+  fixtureIds: z.array(z.number().int().positive()).min(1).max(50),
+  minOdds: z.number().positive().min(1.01).max(1000),
+  maxOdds: z.number().positive().min(1.01).max(1000),
+  legsMin: z.number().int().min(1).max(50),
+  legsMax: z.number().int().min(1).max(50),
+  includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
+  risk: z.enum(["safe", "standard", "risky"]).optional(),
+  useLiveOdds: z.boolean().optional(),
+});
+
+const BetOptimizerSchema = z.object({
+  mode: z.enum(["day", "live"]),
+  date: z.string().optional(),
+  targetMin: z.number().positive().min(1.01).max(1000),
+  targetMax: z.number().positive().min(1.01).max(1000),
+  risk: z.enum(["safe", "standard", "risky"]).optional(),
+  includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
+  excludeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
+  maxLegs: z.number().int().min(1).max(50).optional(),
+  minLegs: z.number().int().min(1).max(50).optional(),
+});
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json();
-    
-    // Get auth token from header to extract user_id
+    // Verify authentication
     const authHeader = req.headers.get("authorization");
-    
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Get authenticated user
-    let userId: string | null = null;
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id || null;
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication token" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
     }
 
-    // Detect request type: NEW (fixtureIds) or OLD (mode + date)
-    if (body.fixtureIds && Array.isArray(body.fixtureIds)) {
-      // NEW AI Ticket Creator path
-      return await handleAITicketCreator(body, supabase, userId);
+    // Parse and validate request body
+    const bodyRaw = await req.json().catch(() => null);
+    if (!bodyRaw) {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    // Detect request type and validate
+    if (bodyRaw.fixtureIds && Array.isArray(bodyRaw.fixtureIds)) {
+      const validation = AITicketSchema.safeParse(bodyRaw);
+      if (!validation.success) {
+        console.error("[generate-ticket] Validation error:", validation.error.format());
+        return new Response(
+          JSON.stringify({ error: "Invalid request parameters" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+        );
+      }
+      return await handleAITicketCreator(validation.data, supabase, user.id);
     } else {
-      // OLD Bet Optimizer path
-      return await handleBetOptimizer(body, supabase, userId);
+      const validation = BetOptimizerSchema.safeParse(bodyRaw);
+      if (!validation.success) {
+        console.error("[generate-ticket] Validation error:", validation.error.format());
+        return new Response(
+          JSON.stringify({ error: "Invalid request parameters" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+        );
+      }
+      return await handleBetOptimizer(validation.data, supabase, user.id);
     }
   } catch (error) {
-    console.error("[generate-ticket] Error:", error);
+    console.error("[generate-ticket] Internal error:", {
+      message: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+    });
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "Internal server error" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
 
 // NEW: AI Ticket Creator with custom parameters
-async function handleAITicketCreator(body: any, supabase: any, userId: string | null) {
+async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supabase: any, userId: string) {
   // 1. VALIDATE INPUT
   const {
     fixtureIds,
@@ -98,35 +155,8 @@ async function handleAITicketCreator(body: any, supabase: any, userId: string | 
     useLiveOdds
   }));
 
-  if (!fixtureIds || !Array.isArray(fixtureIds) || fixtureIds.length === 0) {
-    return new Response(
-      JSON.stringify({ code: "INVALID_INPUT", message: "fixtureIds must be a non-empty array", details: {} }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-    );
-  }
-
-  if (!minOdds || !maxOdds || minOdds >= maxOdds) {
-    return new Response(
-      JSON.stringify({ code: "INVALID_RANGE", message: "minOdds must be less than maxOdds", details: { minOdds, maxOdds } }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-    );
-  }
-
-  if (!legsMin || !legsMax || legsMin > legsMax) {
-    return new Response(
-      JSON.stringify({ code: "INVALID_LEGS", message: "legsMin must be less than or equal to legsMax", details: { legsMin, legsMax } }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-    );
-  }
-
-  const markets = Object.keys(includeMarkets || {}).filter((k) => includeMarkets[k]);
-  if (markets.length === 0) {
-    return new Response(
-      JSON.stringify({ code: "NO_MARKETS", message: "At least one market must be enabled", details: {} }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-    );
-  }
-
+  const markets = includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"];
+  
   const riskProfile = getRiskProfile(risk);
   const candidatePool: TicketLeg[] = [];
   const logs: string[] = [];
@@ -354,13 +384,14 @@ async function handleAITicketCreator(body: any, supabase: any, userId: string | 
 }
 
 // OLD: Bet Optimizer (mode-based)
-async function handleBetOptimizer(body: any, supabase: any, userId: string | null) {
+async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supabase: any, userId: string) {
   const { 
-    mode = "standard",
+    mode,
     date,
-    leagueIds = [],
-    maxLegs = mode === "safe" ? 2 : mode === "standard" ? 5 : 8,
-    maxTotalOdds = 50
+    targetMin,
+    targetMax,
+    risk = "standard",
+    maxLegs = 5,
   } = body;
 
   console.log(`[bet-optimizer] Mode: ${mode}, Date: ${date}`);
@@ -369,10 +400,6 @@ async function handleBetOptimizer(body: any, supabase: any, userId: string | nul
     .from("fixtures")
     .select("*")
     .eq("date", date);
-
-  if (leagueIds.length > 0) {
-    fixturesQuery = fixturesQuery.in("league_id", leagueIds);
-  }
 
   const { data: fixtures, error: fixturesError } = await fixturesQuery;
 
@@ -383,13 +410,13 @@ async function handleBetOptimizer(body: any, supabase: any, userId: string | nul
         legs: [], 
         total_odds: 0,
         estimated_win_prob: 0,
-        notes: "No fixtures found for selected date/leagues"
+        notes: "No fixtures found for selected date"
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  const thresholds = getModeThresholds(mode);
+  const thresholds = { minProb: 0.58, minEdge: 0.03 };
   const candidates: any[] = [];
 
   for (const fixture of fixtures) {
@@ -420,8 +447,7 @@ async function handleBetOptimizer(body: any, supabase: any, userId: string | nul
 
     const validEdges = edges.filter((e: any) => 
       e.model_prob >= thresholds.minProb &&
-      e.edge >= thresholds.minEdge &&
-      (mode === "safe" ? e.market === "goals" : true)
+      e.edge >= thresholds.minEdge
     );
 
     if (validEdges.length === 0) continue;
@@ -459,6 +485,7 @@ async function handleBetOptimizer(body: any, supabase: any, userId: string | nul
   const selectedLegs: any[] = [];
   let totalOdds = 1;
   const usedLeagues: Record<number, number> = {};
+  const maxTotalOdds = targetMax || 50;
 
   for (const candidate of candidates) {
     if (selectedLegs.length >= maxLegs) break;
