@@ -423,6 +423,8 @@ const Index = () => {
           date: format(selectedDate, "yyyy-MM-dd"),
           markets: filters.markets,
           thresholds: filters.thresholds,
+          minEdge: filters.minEdge || 0,
+          sortBy: filters.sortBy || "edge",
         },
       });
 
