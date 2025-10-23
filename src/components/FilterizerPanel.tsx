@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { X, Filter } from "lucide-react";
 
 interface FilterizerPanelProps {
@@ -13,59 +13,64 @@ interface FilterizerPanelProps {
 }
 
 export interface FilterCriteria {
-  markets: string[];
-  thresholds: {
-    goals?: number;
-    cards?: number;
-    corners?: number;
-    fouls?: number;
-    offsides?: number;
-  };
+  market: string;
+  line: number;
+  minOdds: number;
   minEdge?: number;
-  sortBy?: "edge" | "confidence" | "odds";
+  sortBy?: "edge" | "confidence" | "odds" | "time";
 }
 
+// Rules-based lines from _shared/rules.ts
 const MARKET_OPTIONS = [
-  { id: "goals", label: "Goals", defaultThreshold: 2.5 },
-  { id: "cards", label: "Cards", defaultThreshold: 4.0 },
-  { id: "corners", label: "Corners", defaultThreshold: 10.0 },
-  { id: "fouls", label: "Fouls", defaultThreshold: 24.0 },
-  { id: "offsides", label: "Offsides", defaultThreshold: 3.0 },
+  { 
+    id: "goals", 
+    label: "Goals", 
+    lines: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5] 
+  },
+  { 
+    id: "corners", 
+    label: "Corners", 
+    lines: [7.5, 8.5, 9.5, 10.5, 12.0, 12.5, 13.5] 
+  },
+  { 
+    id: "cards", 
+    label: "Cards", 
+    lines: [1.5, 2.5, 3.5, 4.5, 5.5] 
+  },
+  { 
+    id: "fouls", 
+    label: "Fouls", 
+    lines: [16.5, 19.5, 20.5, 23.5, 24.5] 
+  },
+  { 
+    id: "offsides", 
+    label: "Offsides", 
+    lines: [1.5, 2.5, 3.5, 4.5] 
+  },
 ];
 
 export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: FilterizerPanelProps) {
-  const [selectedMarkets, setSelectedMarkets] = useState<string[]>([]);
-  const [thresholds, setThresholds] = useState<Record<string, number>>({
-    goals: 2.5,
-    cards: 4.0,
-    corners: 10.0,
-    fouls: 24.0,
-    offsides: 3.0,
-  });
+  const [selectedMarket, setSelectedMarket] = useState<string>("goals");
+  const [selectedLine, setSelectedLine] = useState<number>(2.5);
+  const [minOdds, setMinOdds] = useState<number>(1.50);
   const [minEdge, setMinEdge] = useState<number>(0);
-  const [sortBy, setSortBy] = useState<"edge" | "confidence" | "odds">("edge");
+  const [sortBy, setSortBy] = useState<"edge" | "confidence" | "odds" | "time">("edge");
 
-  const handleMarketToggle = (marketId: string) => {
-    setSelectedMarkets((prev) =>
-      prev.includes(marketId)
-        ? prev.filter((m) => m !== marketId)
-        : [...prev, marketId]
-    );
-  };
+  const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
-  const handleThresholdChange = (marketId: string, value: number[]) => {
-    setThresholds((prev) => ({
-      ...prev,
-      [marketId]: value[0],
-    }));
+  const handleMarketSelect = (marketId: string) => {
+    setSelectedMarket(marketId);
+    const market = MARKET_OPTIONS.find(m => m.id === marketId);
+    if (market) {
+      setSelectedLine(market.lines[0]);
+    }
   };
 
   const handleApply = () => {
     const filters: FilterCriteria = {
-      markets: selectedMarkets,
-      thresholds: Object.fromEntries(
-        Object.entries(thresholds).filter(([key]) => selectedMarkets.includes(key))
-      ),
+      market: selectedMarket,
+      line: selectedLine,
+      minOdds,
       minEdge,
       sortBy,
     };
@@ -73,14 +78,9 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   };
 
   const handleClear = () => {
-    setSelectedMarkets([]);
-    setThresholds({
-      goals: 2.5,
-      cards: 4.0,
-      corners: 10.0,
-      fouls: 24.0,
-      offsides: 3.0,
-    });
+    setSelectedMarket("goals");
+    setSelectedLine(2.5);
+    setMinOdds(1.50);
     setMinEdge(0);
     setSortBy("edge");
     onClearFilters();
@@ -104,39 +104,65 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       </div>
 
       <div className="space-y-6">
-        {MARKET_OPTIONS.map((market) => (
-          <div key={market.id} className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id={market.id}
-                checked={selectedMarkets.includes(market.id)}
-                onCheckedChange={() => handleMarketToggle(market.id)}
-              />
-              <Label htmlFor={market.id} className="font-medium cursor-pointer">
+        {/* Market Selection */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Select Market</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {MARKET_OPTIONS.map((market) => (
+              <Button
+                key={market.id}
+                variant={selectedMarket === market.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMarketSelect(market.id)}
+                className="capitalize"
+              >
                 {market.label}
-              </Label>
-            </div>
-            
-            {selectedMarkets.includes(market.id) && (
-              <div className="ml-6 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Combined Avg ≥</span>
-                  <span className="font-bold text-primary tabular-nums">
-                    {thresholds[market.id].toFixed(1)}
-                  </span>
-                </div>
-                <Slider
-                  value={[thresholds[market.id]]}
-                  onValueChange={(value) => handleThresholdChange(market.id, value)}
-                  min={0}
-                  max={market.id === "goals" ? 5 : market.id === "cards" ? 8 : market.id === "corners" ? 20 : market.id === "fouls" ? 40 : 6}
-                  step={0.1}
-                  className="w-full"
-                />
-              </div>
-            )}
+              </Button>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Line Selection (Pills) */}
+        {currentMarketOption && (
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Select Line (Over)</Label>
+            <div className="flex flex-wrap gap-2">
+              {currentMarketOption.lines.map((line) => (
+                <Badge
+                  key={line}
+                  variant={selectedLine === line ? "default" : "outline"}
+                  className="cursor-pointer px-3 py-1.5"
+                  onClick={() => setSelectedLine(line)}
+                >
+                  {line}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Min Odds Slider */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Min Odds</Label>
+            <span className="text-sm font-semibold text-primary tabular-nums">
+              {minOdds.toFixed(2)}
+            </span>
+          </div>
+          <Slider
+            value={[minOdds]}
+            onValueChange={(value) => setMinOdds(value[0])}
+            min={1.10}
+            max={3.00}
+            step={0.05}
+            className="w-full"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>1.10</span>
+            <span>2.00</span>
+            <span>3.00</span>
+          </div>
+        </div>
 
         {/* Min Edge Filter */}
         <div className="space-y-3 pt-4 border-t">
@@ -162,8 +188,8 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         {/* Sort Options */}
         <div className="space-y-3 pt-4 border-t">
           <Label className="text-sm font-medium">Sort By</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {(["edge", "confidence", "odds"] as const).map((option) => (
+          <div className="grid grid-cols-4 gap-2">
+            {(["edge", "confidence", "odds", "time"] as const).map((option) => (
               <Button
                 key={option}
                 variant={sortBy === option ? "default" : "outline"}
@@ -181,7 +207,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
           <Button 
             onClick={handleApply} 
             className="flex-1"
-            disabled={selectedMarkets.length === 0}
           >
             Apply Filters
           </Button>

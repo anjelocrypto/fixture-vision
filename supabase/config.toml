@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.fetch-odds-bets]
 verify_jwt = true
+
+[functions.optimize-selections-refresh]
+verify_jwt = true

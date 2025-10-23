@@ -192,6 +192,69 @@ export type Database = {
         }
         Relationships: []
       }
+      optimized_selections: {
+        Row: {
+          bookmaker: string | null
+          combined_snapshot: Json | null
+          computed_at: string | null
+          country_code: string | null
+          edge_pct: number | null
+          fixture_id: number
+          id: string
+          is_live: boolean | null
+          league_id: number
+          line: number
+          market: string
+          model_prob: number | null
+          odds: number
+          rules_version: string | null
+          sample_size: number | null
+          side: string
+          source: string | null
+          utc_kickoff: string
+        }
+        Insert: {
+          bookmaker?: string | null
+          combined_snapshot?: Json | null
+          computed_at?: string | null
+          country_code?: string | null
+          edge_pct?: number | null
+          fixture_id: number
+          id?: string
+          is_live?: boolean | null
+          league_id: number
+          line: number
+          market: string
+          model_prob?: number | null
+          odds: number
+          rules_version?: string | null
+          sample_size?: number | null
+          side: string
+          source?: string | null
+          utc_kickoff: string
+        }
+        Update: {
+          bookmaker?: string | null
+          combined_snapshot?: Json | null
+          computed_at?: string | null
+          country_code?: string | null
+          edge_pct?: number | null
+          fixture_id?: number
+          id?: string
+          is_live?: boolean | null
+          league_id?: number
+          line?: number
+          market?: string
+          model_prob?: number | null
+          odds?: number
+          rules_version?: string | null
+          sample_size?: number | null
+          side?: string
+          source?: string | null
+          utc_kickoff?: string
+        }
+        Relationships: []
+      }
       optimizer_cache: {
         Row: {
           bookmaker: string | null

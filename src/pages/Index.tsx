@@ -4,6 +4,7 @@ import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
 import { RightRail } from "@/components/RightRail";
 import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
+import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -408,8 +409,6 @@ const Index = () => {
   };
 
   const handleApplyFilters = async (filters: FilterCriteria) => {
-    if (!selectedLeague) return;
-
     setFilterCriteria(filters);
 
     try {
@@ -419,22 +418,23 @@ const Index = () => {
       const { data, error } = await supabase.functions.invoke("filterizer-query", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
-          leagueIds: [selectedLeague.id],
           date: format(selectedDate, "yyyy-MM-dd"),
-          markets: filters.markets,
-          thresholds: filters.thresholds,
+          market: filters.market,
+          line: filters.line,
+          minOdds: filters.minOdds,
           minEdge: filters.minEdge || 0,
           sortBy: filters.sortBy || "edge",
+          leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
         },
       });
 
       if (error) throw error;
 
-      setFilteredFixtures(data.fixtures || []);
+      setFilteredFixtures(data.selections || []);
 
       toast({
         title: "Filters Applied",
-        description: `Found ${data.filtered_count} fixtures matching your criteria`,
+        description: `Found ${data.count} selections matching your criteria (${filters.market} Over ${filters.line})`,
       });
     } catch (error: any) {
       console.error("Error applying filters:", error);
@@ -516,7 +516,9 @@ const Index = () => {
             </Button>
             
             <h2 className="text-base sm:text-xl font-semibold truncate">
-              {filterCriteria ? "Filtered Fixtures" : "All Fixtures"}
+              {filterCriteria 
+                ? `Optimized Selections: ${filterCriteria.market} Over ${filterCriteria.line}` 
+                : "All Fixtures"}
             </h2>
             
             <Button
@@ -539,14 +541,27 @@ const Index = () => {
               />
             )}
 
-            <CenterRail
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              league={selectedLeague}
-              fixtures={displayFixtures}
-              loading={loadingFixtures}
-              onAnalyze={handleAnalyze}
-            />
+            {filterCriteria ? (
+              <SelectionsDisplay 
+                selections={filteredFixtures}
+                onSelectionClick={(selection) => {
+                  console.log("Selection clicked:", selection);
+                  toast({
+                    title: "Selection Details",
+                    description: `${selection.market} ${selection.side} ${selection.line} @ ${selection.odds}`,
+                  });
+                }}
+              />
+            ) : (
+              <CenterRail
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                league={selectedLeague}
+                fixtures={displayFixtures}
+                loading={loadingFixtures}
+                onAnalyze={handleAnalyze}
+              />
+            )}
           </div>
         </div>
 
