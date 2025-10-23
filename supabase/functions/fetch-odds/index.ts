@@ -94,16 +94,30 @@ serve(async (req) => {
     }
 
     // Normalize odds data
+    // API response structure: response[0].bookmakers[] contains the bookmakers array
+    const firstResponse = data.response[0];
+    if (!firstResponse || !firstResponse.bookmakers) {
+      return new Response(
+        JSON.stringify({ 
+          available: false, 
+          fixture_id: fixtureId,
+          source,
+          selections: []
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const normalizedOdds = {
       fixture_id: fixtureId,
       available: true,
-      bookmakers: data.response.map((bm: any) => ({
-        id: bm.bookmaker.id,
-        name: bm.bookmaker.name,
-        markets: bm.bets.map((bet: any) => ({
+      bookmakers: firstResponse.bookmakers.map((bm: any) => ({
+        id: bm.id,
+        name: bm.name,
+        markets: (bm.bets || []).map((bet: any) => ({
           id: bet.id,
           name: bet.name,
-          values: bet.values.map((v: any) => ({
+          values: (bet.values || []).map((v: any) => ({
             value: v.value,
             odd: v.odd,
           })),
