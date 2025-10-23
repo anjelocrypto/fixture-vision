@@ -1,6 +1,5 @@
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Country {
   id: number;
@@ -36,8 +35,8 @@ export function LeftRail({
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
   return (
-    <div className="w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col">
-      <div className="p-4 border-b border-border">
+    <div className="w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col overflow-hidden">
+      <div className="p-4 border-b border-border shrink-0">
         <h2 className="text-lg font-semibold mb-3">Filters</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -48,11 +47,11 @@ export function LeftRail({
         </div>
       </div>
       
-      <div className="px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-medium text-muted-foreground mb-2">Region</h3>
+      <div className="px-4 py-3 border-b border-border shrink-0">
+        <h3 className="text-sm font-medium text-muted-foreground">Region</h3>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="p-2 space-y-1">
           {countries.map((country) => (
             <button
@@ -72,12 +71,12 @@ export function LeftRail({
 
         {selectedCountry && selectedCountry !== 0 && (
           <>
-            <div className="px-4 py-3 border-t border-border mt-2">
-              <h3 className="text-sm font-medium text-muted-foreground mb-2">
+            <div className="px-4 py-3 border-t border-border mt-2 sticky top-0 bg-card/30 backdrop-blur-sm">
+              <h3 className="text-sm font-medium text-muted-foreground">
                 {selectedCountryData?.name} Leagues
               </h3>
             </div>
-            <div className="p-2 space-y-1">
+            <div className="p-2 space-y-1 pb-4">
               {leagues.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground text-center">
                   Loading leagues...
@@ -94,7 +93,7 @@ export function LeftRail({
                     }`}
                   >
                     {league.logo && (
-                      <img src={league.logo} alt="" className="w-5 h-5 object-contain" />
+                      <img src={league.logo} alt="" className="w-5 h-5 object-contain shrink-0" />
                     )}
                     <span className="text-xs font-medium truncate">{league.name}</span>
                   </button>
@@ -103,7 +102,7 @@ export function LeftRail({
             </div>
           </>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

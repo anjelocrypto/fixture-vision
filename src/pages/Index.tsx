@@ -257,7 +257,7 @@ const Index = () => {
   const displayFixtures = filterCriteria ? filteredFixtures : fixtures;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       <AppHeader />
 
       <div className="flex flex-1 overflow-hidden">
@@ -270,8 +270,8 @@ const Index = () => {
           onSelectLeague={setSelectedLeague}
         />
 
-        <div className="flex-1 flex flex-col">
-          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4 flex items-center justify-between">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4 flex items-center justify-between shrink-0">
             <h2 className="text-xl font-semibold">
               {filterCriteria ? "Filtered Fixtures" : "All Fixtures"}
             </h2>
@@ -306,9 +306,9 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="flex flex-col">
+        <div className="w-[360px] flex flex-col overflow-hidden border-l border-border">
           {/* Ticket Generator */}
-          <div className="p-4 border-b bg-background space-y-2">
+          <div className="p-4 border-b bg-background space-y-2 shrink-0">
             <div className="text-sm font-semibold mb-2">Generate Ticket</div>
             <div className="grid grid-cols-3 gap-2">
               <Button
@@ -366,10 +366,6 @@ const Index = () => {
         ticket={currentTicket}
         loading={generatingTicket}
       />
-
-      <footer className="border-t border-border bg-card/30 backdrop-blur-sm py-4 text-center text-sm text-muted-foreground">
-        Made with ❤️ — BETAI 0.2
-      </footer>
     </div>
   );
 };
