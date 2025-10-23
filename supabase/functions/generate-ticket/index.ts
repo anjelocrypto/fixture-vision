@@ -40,18 +40,29 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
+    // Get auth token from header to extract user_id
+    const authHeader = req.headers.get("authorization");
+    
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Get authenticated user
+    let userId: string | null = null;
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id || null;
+    }
+
     // Detect request type: NEW (fixtureIds) or OLD (mode + date)
     if (body.fixtureIds && Array.isArray(body.fixtureIds)) {
       // NEW AI Ticket Creator path
-      return await handleAITicketCreator(body, supabase);
+      return await handleAITicketCreator(body, supabase, userId);
     } else {
       // OLD Bet Optimizer path
-      return await handleBetOptimizer(body, supabase);
+      return await handleBetOptimizer(body, supabase, userId);
     }
   } catch (error) {
     console.error("[generate-ticket] Error:", error);
@@ -63,7 +74,7 @@ serve(async (req) => {
 });
 
 // NEW: AI Ticket Creator with custom parameters
-async function handleAITicketCreator(body: any, supabase: any) {
+async function handleAITicketCreator(body: any, supabase: any, userId: string | null) {
   // 1. VALIDATE INPUT
   const {
     fixtureIds,
@@ -315,6 +326,7 @@ async function handleAITicketCreator(body: any, supabase: any) {
 
     // Write generated_tickets row
     await supabase.from("generated_tickets").insert({
+      user_id: userId,
       total_odds: ticket.total_odds,
       min_target: minOdds,
       max_target: maxOdds,
@@ -342,7 +354,7 @@ async function handleAITicketCreator(body: any, supabase: any) {
 }
 
 // OLD: Bet Optimizer (mode-based)
-async function handleBetOptimizer(body: any, supabase: any) {
+async function handleBetOptimizer(body: any, supabase: any, userId: string | null) {
   const { 
     mode = "standard",
     date,
