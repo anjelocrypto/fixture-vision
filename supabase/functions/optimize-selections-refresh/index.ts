@@ -111,6 +111,36 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Loaded odds for ${oddsMap.size} fixtures`);
 
+    // Batch fetch leagues for country_code
+    const leagueIds = [...new Set(fixtures.map((f: any) => f.league_id).filter(Boolean))];
+    const { data: allLeagues } = await supabaseClient
+      .from("leagues")
+      .select("id, country_id")
+      .in("id", leagueIds);
+
+    const leagueToCountryMap = new Map();
+    if (allLeagues) {
+      for (const league of allLeagues) {
+        leagueToCountryMap.set(league.id, league.country_id);
+      }
+    }
+
+    // Batch fetch countries for country_code
+    const countryIds = [...new Set(allLeagues?.map((l: any) => l.country_id).filter(Boolean) || [])];
+    const { data: allCountries } = await supabaseClient
+      .from("countries")
+      .select("id, code")
+      .in("id", countryIds);
+
+    const countryCodeMap = new Map();
+    if (allCountries) {
+      for (const country of allCountries) {
+        countryCodeMap.set(country.id, country.code);
+      }
+    }
+
+    console.log(`[optimize-selections-refresh] Loaded ${leagueToCountryMap.size} leagues and ${countryCodeMap.size} countries`);
+
     // Process each fixture
     let scanned = 0;
     let inserted = 0;
@@ -153,7 +183,7 @@ serve(async (req) => {
         continue;
       }
 
-      const bookmakers = oddsData.payload?.response?.[0]?.bookmakers || [];
+      const bookmakers = oddsData.payload?.bookmakers || [];
 
       // For each market, apply rules
       const markets: StatMarket[] = ["goals", "corners", "cards", "fouls", "offsides"];
@@ -169,29 +199,29 @@ serve(async (req) => {
         let bestBookmaker = "";
 
         for (const bookmaker of bookmakers) {
-          const bets = bookmaker.bets || [];
+          const marketData = bookmaker.markets || [];
           
-          // Match market type
-          let targetBet = null;
+          // Match market type by market ID (from _shared/market_map.ts)
+          let targetMarket = null;
           if (market === "goals") {
-            targetBet = bets.find((b: any) => 
-              b.name?.toLowerCase().includes("goals") && 
-              (b.name?.toLowerCase().includes("over/under") || b.name?.toLowerCase().includes("total"))
-            );
+            // Market ID 5 = Goals Over/Under
+            targetMarket = marketData.find((m: any) => m.id === 5 || m.name?.toLowerCase().includes("goals over/under"));
           } else if (market === "corners") {
-            targetBet = bets.find((b: any) => b.name?.toLowerCase().includes("corners"));
+            // Market ID 12 = Corners Over/Under
+            targetMarket = marketData.find((m: any) => m.id === 12 || m.name?.toLowerCase().includes("corners"));
           } else if (market === "cards") {
-            targetBet = bets.find((b: any) => b.name?.toLowerCase().includes("cards") || b.name?.toLowerCase().includes("bookings"));
+            // Market ID 14 = Cards Over/Under
+            targetMarket = marketData.find((m: any) => m.id === 14 || m.name?.toLowerCase().includes("cards") || m.name?.toLowerCase().includes("bookings"));
           } else if (market === "fouls") {
-            targetBet = bets.find((b: any) => b.name?.toLowerCase().includes("fouls"));
+            targetMarket = marketData.find((m: any) => m.name?.toLowerCase().includes("fouls"));
           } else if (market === "offsides") {
-            targetBet = bets.find((b: any) => b.name?.toLowerCase().includes("offsides"));
+            targetMarket = marketData.find((m: any) => m.name?.toLowerCase().includes("offsides"));
           }
 
-          if (!targetBet?.values) continue;
+          if (!targetMarket?.values) continue;
 
           // Find the specific line
-          const selection = targetBet.values.find((v: any) => {
+          const selection = targetMarket.values.find((v: any) => {
             const value = v.value?.toLowerCase() || "";
             const lineMatch = value.match(/(\d+\.?\d*)/);
             if (!lineMatch) return false;
@@ -221,11 +251,13 @@ serve(async (req) => {
 
         // Prepare selection
         const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
+        const countryId = leagueToCountryMap.get(fixture.league_id);
+        const countryCode = countryId ? countryCodeMap.get(countryId) : null;
 
         selections.push({
           fixture_id: fixture.id,
           league_id: fixture.league_id,
-          country_code: null, // TODO: join from leagues if needed
+          country_code: countryCode,
           utc_kickoff: utcKickoff,
           market,
           side: pick.side,
