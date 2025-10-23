@@ -135,6 +135,30 @@ export type Database = {
           },
         ]
       }
+      odds_cache: {
+        Row: {
+          bookmakers: string[] | null
+          captured_at: string | null
+          fixture_id: number
+          markets: string[] | null
+          payload: Json
+        }
+        Insert: {
+          bookmakers?: string[] | null
+          captured_at?: string | null
+          fixture_id: number
+          markets?: string[] | null
+          payload: Json
+        }
+        Update: {
+          bookmakers?: string[] | null
+          captured_at?: string | null
+          fixture_id?: number
+          markets?: string[] | null
+          payload?: Json
+        }
+        Relationships: []
+      }
       stats_cache: {
         Row: {
           cards: number

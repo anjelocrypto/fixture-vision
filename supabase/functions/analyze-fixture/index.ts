@@ -12,6 +12,7 @@ interface TeamStats {
   offsides: number;
   corners: number;
   fouls: number;
+  sample_size: number;
 }
 
 serve(async (req) => {
@@ -27,13 +28,14 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
-    // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Check analysis cache (2h)
+    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}`);
+
+    // Check analysis cache (2h TTL)
     const { data: cachedAnalysis } = await supabaseClient
       .from("analysis_cache")
       .select("*")
@@ -42,12 +44,14 @@ serve(async (req) => {
       .single();
 
     if (cachedAnalysis) {
-      console.log("Returning cached analysis");
+      console.log(`[analyze-fixture] Cache hit for fixture ${fixtureId}`);
       return new Response(
-        JSON.stringify(cachedAnalysis.summary_json),
+        JSON.stringify({ ...cachedAnalysis.summary_json, cache_hit: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[analyze-fixture] Cache miss for fixture ${fixtureId}`);
 
     // Get fixture details
     const { data: fixture } = await supabaseClient
@@ -63,16 +67,16 @@ serve(async (req) => {
     const homeTeamId = fixture.teams_home.id;
     const awayTeamId = fixture.teams_away.id;
 
-    // Fetch last 5 matches for each team
-    console.log(`Fetching last 5 matches for teams ${homeTeamId} and ${awayTeamId}`);
-    
+    console.log(`[analyze-fixture] Fetching stats for teams ${homeTeamId} and ${awayTeamId}`);
+
+    // Fetch stats from cache or compute
     const [homeStats, awayStats] = await Promise.all([
-      fetchTeamLast5Stats(homeTeamId, API_KEY),
-      fetchTeamLast5Stats(awayTeamId, API_KEY),
+      getTeamStats(homeTeamId, supabaseClient, API_KEY),
+      getTeamStats(awayTeamId, supabaseClient, API_KEY),
     ]);
 
     // Compute combined stats
-    const combined: TeamStats = {
+    const combined: Omit<TeamStats, 'sample_size'> = {
       goals: (homeStats.goals + awayStats.goals) / 2,
       cards: (homeStats.cards + awayStats.cards) / 2,
       offsides: (homeStats.offsides + awayStats.offsides) / 2,
@@ -80,19 +84,27 @@ serve(async (req) => {
       fouls: (homeStats.fouls + awayStats.fouls) / 2,
     };
 
+    // Determine staleness
+    const minSampleSize = Math.min(homeStats.sample_size, awayStats.sample_size);
+    const isStale = minSampleSize < 5;
+
     const analysis = {
       home: {
+        id: homeTeamId,
         name: fixture.teams_home.name,
         logo: fixture.teams_home.logo,
         stats: homeStats,
       },
       away: {
+        id: awayTeamId,
         name: fixture.teams_away.name,
         logo: fixture.teams_away.logo,
         stats: awayStats,
       },
       combined,
+      is_stale: isStale,
       computed_at: new Date().toISOString(),
+      cache_hit: false,
     };
 
     // Cache the analysis
@@ -107,12 +119,14 @@ serve(async (req) => {
         { onConflict: "fixture_id" }
       );
 
+    console.log(`[analyze-fixture] Analysis complete for fixture ${fixtureId}`);
+
     return new Response(
       JSON.stringify(analysis),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error in analyze-fixture:", error);
+    console.error("[analyze-fixture] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: errorMessage }),
@@ -124,7 +138,57 @@ serve(async (req) => {
   }
 });
 
-async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<TeamStats> {
+async function getTeamStats(
+  teamId: number,
+  supabaseClient: any,
+  apiKey: string
+): Promise<TeamStats> {
+  // Check stats cache first (2h TTL, min sample size 3)
+  const { data: cachedStats } = await supabaseClient
+    .from("stats_cache")
+    .select("*")
+    .eq("team_id", teamId)
+    .gte("computed_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+    .single();
+
+  if (cachedStats && cachedStats.sample_size >= 3) {
+    console.log(`[getTeamStats] Cache hit for team ${teamId}`);
+    return {
+      goals: Number(cachedStats.goals),
+      cards: Number(cachedStats.cards),
+      offsides: Number(cachedStats.offsides),
+      corners: Number(cachedStats.corners),
+      fouls: Number(cachedStats.fouls),
+      sample_size: cachedStats.sample_size,
+    };
+  }
+
+  console.log(`[getTeamStats] Cache miss for team ${teamId}, computing from API`);
+
+  // Compute from API-Football
+  const stats = await computeTeamStatsFromAPI(teamId, apiKey);
+
+  // Upsert to cache
+  await supabaseClient
+    .from("stats_cache")
+    .upsert(
+      {
+        team_id: teamId,
+        goals: stats.goals,
+        cards: stats.cards,
+        offsides: stats.offsides,
+        corners: stats.corners,
+        fouls: stats.fouls,
+        sample_size: stats.sample_size,
+        computed_at: new Date().toISOString(),
+      },
+      { onConflict: "team_id" }
+    );
+
+  return stats;
+}
+
+async function computeTeamStatsFromAPI(teamId: number, apiKey: string): Promise<TeamStats> {
   try {
     // Fetch last 5 completed fixtures for the team
     const response = await fetch(
@@ -143,8 +207,7 @@ async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<Team
     const data = await response.json();
     
     if (!data.response || data.response.length === 0) {
-      // Return zeros if no data
-      return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0 };
+      return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0, sample_size: 0 };
     }
 
     let totalGoals = 0;
@@ -156,9 +219,8 @@ async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<Team
 
     for (const match of data.response) {
       const isHome = match.teams.home.id === teamId;
-      const teamStats = isHome ? match.teams.home : match.teams.away;
       
-      // Get statistics
+      // Get statistics for this match
       const statsResponse = await fetch(
         `https://v3.football.api-sports.io/fixtures/statistics?fixture=${match.fixture.id}`,
         {
@@ -178,9 +240,10 @@ async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<Team
           if (teamStatsData && teamStatsData.statistics) {
             const stats = teamStatsData.statistics;
             
-            // Extract stats
             const goals = match.goals[isHome ? "home" : "away"] || 0;
-            const cards = getStatValue(stats, "Yellow Cards") + getStatValue(stats, "Red Cards");
+            const yellowCards = getStatValue(stats, "Yellow Cards");
+            const redCards = getStatValue(stats, "Red Cards");
+            const cards = yellowCards + redCards;
             const offsides = getStatValue(stats, "Offsides");
             const corners = getStatValue(stats, "Corner Kicks");
             const fouls = getStatValue(stats, "Fouls");
@@ -197,7 +260,7 @@ async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<Team
     }
 
     if (count === 0) {
-      return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0 };
+      return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0, sample_size: 0 };
     }
 
     return {
@@ -206,10 +269,11 @@ async function fetchTeamLast5Stats(teamId: number, apiKey: string): Promise<Team
       offsides: totalOffsides / count,
       corners: totalCorners / count,
       fouls: totalFouls / count,
+      sample_size: count,
     };
   } catch (error) {
-    console.error(`Error fetching stats for team ${teamId}:`, error);
-    return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0 };
+    console.error(`[computeTeamStatsFromAPI] Error for team ${teamId}:`, error);
+    return { goals: 0, cards: 0, offsides: 0, corners: 0, fouls: 0, sample_size: 0 };
   }
 }
 

@@ -8,3 +8,12 @@ verify_jwt = false
 
 [functions.analyze-fixture]
 verify_jwt = false
+
+[functions.fetch-odds]
+verify_jwt = false
+
+[functions.filterizer-query]
+verify_jwt = false
+
+[functions.stats-refresh]
+verify_jwt = false

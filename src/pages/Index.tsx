@@ -3,9 +3,12 @@ import { AppHeader } from "@/components/AppHeader";
 import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
 import { RightRail } from "@/components/RightRail";
+import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Filter } from "lucide-react";
 
 // Mock countries data (will be populated from API)
 const MOCK_COUNTRIES = [
@@ -28,6 +31,9 @@ const Index = () => {
   const [analysis, setAnalysis] = useState<any>(null);
   const [loadingFixtures, setLoadingFixtures] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [showFilterizer, setShowFilterizer] = useState(false);
+  const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
+  const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
 
   // Fetch leagues when country changes
   useEffect(() => {
@@ -101,13 +107,24 @@ const Index = () => {
     setAnalysis(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("analyze-fixture", {
+      // Fetch analysis
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
         body: { fixtureId: fixture.id },
       });
 
-      if (error) throw error;
+      if (analysisError) throw analysisError;
 
-      setAnalysis(data);
+      // Check if odds are available
+      const { data: oddsData } = await supabase
+        .from("odds_cache")
+        .select("fixture_id")
+        .eq("fixture_id", fixture.id)
+        .single();
+
+      setAnalysis({
+        ...analysisData,
+        odds_available: !!oddsData,
+      });
     } catch (error: any) {
       console.error("Error analyzing fixture:", error);
       toast({
@@ -120,6 +137,50 @@ const Index = () => {
     }
   };
 
+  const handleApplyFilters = async (filters: FilterCriteria) => {
+    if (!league) return;
+
+    setLoadingFixtures(true);
+    setFilterCriteria(filters);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("filterizer-query", {
+        body: {
+          leagueIds: [league.id],
+          date: format(selectedDate, "yyyy-MM-dd"),
+          markets: filters.markets,
+          thresholds: filters.thresholds,
+        },
+      });
+
+      if (error) throw error;
+
+      setFilteredFixtures(data.fixtures || []);
+      
+      toast({
+        title: "Filters Applied",
+        description: `Found ${data.filtered_count} fixtures matching your criteria`,
+      });
+    } catch (error: any) {
+      console.error("Error applying filters:", error);
+      toast({
+        title: "Error",
+        description: "Failed to apply filters. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingFixtures(false);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setFilterCriteria(null);
+    setFilteredFixtures([]);
+    setShowFilterizer(false);
+  };
+
+  const displayFixtures = filterCriteria ? filteredFixtures : fixtures;
+
   return (
     <div className="min-h-screen flex flex-col">
       <AppHeader />
@@ -131,14 +192,41 @@ const Index = () => {
           onSelectCountry={setSelectedCountry}
         />
         
-        <CenterRail
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-          league={league}
-          fixtures={fixtures}
-          loading={loadingFixtures}
-          onAnalyze={handleAnalyze}
-        />
+        <div className="flex-1 flex flex-col">
+          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">
+              {filterCriteria ? "Filtered Fixtures" : "All Fixtures"}
+            </h2>
+            <Button
+              variant={showFilterizer ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowFilterizer(!showFilterizer)}
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              {showFilterizer ? "Hide Filters" : "Show Filters"}
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {showFilterizer && (
+              <FilterizerPanel
+                onApplyFilters={handleApplyFilters}
+                onClearFilters={handleClearFilters}
+                isActive={!!filterCriteria}
+              />
+            )}
+
+            <CenterRail
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              league={league}
+              fixtures={displayFixtures}
+              loading={loadingFixtures}
+              onAnalyze={handleAnalyze}
+            />
+          </div>
+        </div>
         
         <RightRail analysis={analysis} loading={loadingAnalysis} />
       </div>

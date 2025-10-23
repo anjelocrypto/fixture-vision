@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface TeamStats {
@@ -15,15 +15,17 @@ interface Analysis {
   home: {
     name: string;
     logo: string;
-    stats: TeamStats;
+    stats: TeamStats & { sample_size: number };
   };
   away: {
     name: string;
     logo: string;
-    stats: TeamStats;
+    stats: TeamStats & { sample_size: number };
   };
   combined: TeamStats;
+  is_stale?: boolean;
   computed_at: string;
+  odds_available?: boolean;
 }
 
 interface RightRailProps {
@@ -85,11 +87,27 @@ export function RightRail({ analysis, loading }: RightRailProps) {
         <div className="space-y-4">
           {/* Header */}
           <Card className="p-4 bg-primary/5 border-primary/20">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold">AI Analysis</h3>
               <Badge variant="outline" className="border-primary/30 text-primary">
                 BETAI 0.1
               </Badge>
+            </div>
+            
+            {/* Status Chips */}
+            <div className="flex flex-wrap gap-2">
+              {analysis.is_stale && (
+                <div className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-1 rounded-full border border-amber-500/20">
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>Uncertainty: Low Sample Size</span>
+                </div>
+              )}
+              {analysis.odds_available && (
+                <div className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full border border-primary/20">
+                  <TrendingUp className="h-3 w-3" />
+                  <span>Odds Available</span>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -135,10 +153,17 @@ export function RightRail({ analysis, loading }: RightRailProps) {
             </div>
           </Card>
 
-          {/* Timestamp */}
-          <p className="text-xs text-muted-foreground text-center">
-            Last updated: {new Date(analysis.computed_at).toLocaleString()}
-          </p>
+          {/* Metadata */}
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground text-center">
+              Last updated: {new Date(analysis.computed_at).toLocaleString()}
+            </p>
+            {analysis.is_stale && (
+              <p className="text-xs text-amber-500 text-center">
+                Sample size: {Math.min(analysis.home.stats.sample_size, analysis.away.stats.sample_size)} matches
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
     </div>

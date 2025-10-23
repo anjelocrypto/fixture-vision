@@ -10,6 +10,17 @@ interface Fixture {
   teams_home: { id: number; name: string; logo: string };
   teams_away: { id: number; name: string; logo: string };
   status: string;
+  stat_preview?: {
+    combined: {
+      goals: number;
+      cards: number;
+      corners: number;
+      fouls: number;
+      offsides: number;
+    };
+    home: any;
+    away: any;
+  };
 }
 
 interface League {
@@ -38,49 +49,48 @@ export function CenterRail({
   const dates = Array.from({ length: 5 }, (_, i) => addDays(new Date(), i));
 
   return (
-    <div className="flex-1 flex flex-col">
+    <>
       {/* Date Strip */}
-      <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4">
-        <div className="flex gap-2 overflow-x-auto">
-          {dates.map((date) => (
-            <Button
-              key={date.toISOString()}
-              onClick={() => onSelectDate(date)}
-              variant={
-                format(date, "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd")
-                  ? "default"
-                  : "outline"
-              }
-              className="rounded-full shrink-0"
-            >
-              {format(date, "MMM d")}
-            </Button>
-          ))}
-        </div>
+      <div className="flex gap-2 overflow-x-auto pb-4 border-b border-border/50 mb-4">
+        {dates.map((date) => (
+          <Button
+            key={date.toISOString()}
+            onClick={() => onSelectDate(date)}
+            variant={
+              format(date, "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd")
+                ? "default"
+                : "outline"
+            }
+            className="rounded-full shrink-0"
+          >
+            {format(date, "MMM d")}
+          </Button>
+        ))}
       </div>
 
-      {/* Fixtures List */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {league && (
-          <div className="flex items-center gap-3 mb-4">
-            <img src={league.logo} alt={league.name} className="w-8 h-8" />
-            <h2 className="text-xl font-semibold">{league.name}</h2>
-          </div>
-        )}
+      {/* League Header */}
+      {league && (
+        <div className="flex items-center gap-3 mb-4">
+          <img src={league.logo} alt={league.name} className="w-8 h-8" />
+          <h2 className="text-xl font-semibold">{league.name}</h2>
+        </div>
+      )}
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : fixtures.length === 0 ? (
-          <Card className="p-8 text-center">
-            <p className="text-muted-foreground mb-4">No fixtures for this date.</p>
-            <Button variant="outline" onClick={() => onSelectDate(addDays(selectedDate, 1))}>
-              Show next day
-            </Button>
-          </Card>
-        ) : (
-          fixtures.map((fixture) => (
+      {/* Fixtures List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : fixtures.length === 0 ? (
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground mb-4">No fixtures for this date.</p>
+          <Button variant="outline" onClick={() => onSelectDate(addDays(selectedDate, 1))}>
+            Show next day
+          </Button>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {fixtures.map((fixture) => (
             <Card
               key={fixture.id}
               className="p-4 hover:border-primary/50 transition-colors"
@@ -112,6 +122,18 @@ export function CenterRail({
                       <span className="font-medium">{fixture.teams_away.name}</span>
                     </div>
                   </div>
+
+                  {/* Show stat preview if available (from Filterizer) */}
+                  {fixture.stat_preview && (
+                    <div className="mt-3 pt-3 border-t border-border/50">
+                      <div className="text-xs text-muted-foreground mb-1">Combined Averages:</div>
+                      <div className="flex gap-3 text-xs">
+                        <span className="tabular-nums">⚽ {fixture.stat_preview.combined.goals.toFixed(1)}</span>
+                        <span className="tabular-nums">🟨 {fixture.stat_preview.combined.cards.toFixed(1)}</span>
+                        <span className="tabular-nums">🏁 {fixture.stat_preview.combined.corners.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Analyze Button */}
@@ -123,9 +145,9 @@ export function CenterRail({
                 </Button>
               </div>
             </Card>
-          ))
-        )}
-      </div>
-    </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
