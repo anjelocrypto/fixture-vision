@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Filter, Ticket, Shield, Zap } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Mock countries data
 const MOCK_COUNTRIES = [
@@ -25,13 +26,12 @@ const MOCK_COUNTRIES = [
 
 const Index = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [league, setLeague] = useState<any>(null);
-  const [fixtures, setFixtures] = useState<any[]>([]);
+  const [selectedLeague, setSelectedLeague] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [valueAnalysis, setValueAnalysis] = useState<any>(null);
-  const [loadingFixtures, setLoadingFixtures] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [showFilterizer, setShowFilterizer] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
@@ -40,71 +40,74 @@ const Index = () => {
   const [currentTicket, setCurrentTicket] = useState<any>(null);
   const [generatingTicket, setGeneratingTicket] = useState(false);
 
-  // Fetch leagues when country changes
+  const SEASON = 2025;
+
+  // Reset league and invalidate queries when country changes
   useEffect(() => {
-    if (selectedCountry && selectedCountry !== 0) {
-      fetchLeagues();
+    if (selectedCountry !== null) {
+      console.log(`[Index] Country changed to: ${selectedCountry}`);
+      setSelectedLeague(null);
+      setAnalysis(null);
+      setValueAnalysis(null);
+      setFilterCriteria(null);
+      setFilteredFixtures([]);
+      
+      // Invalidate all related queries
+      queryClient.removeQueries({ queryKey: ['leagues'] });
+      queryClient.removeQueries({ queryKey: ['fixtures'] });
+      queryClient.invalidateQueries({ queryKey: ['leagues', selectedCountry, SEASON] });
     }
   }, [selectedCountry]);
 
-  // Fetch fixtures when league or date changes
-  useEffect(() => {
-    if (league) {
-      fetchFixtures();
-    }
-  }, [league, selectedDate]);
-
-  const fetchLeagues = async () => {
-    try {
+  // Fetch leagues with React Query - properly keyed by country and season
+  const { data: leaguesData } = useQuery({
+    queryKey: ['leagues', selectedCountry, SEASON],
+    queryFn: async () => {
       const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
-      if (!country) return;
+      if (!country || country.id === 0) return { leagues: [] };
+
+      console.log(`[Index] Fetching leagues for country: ${country.name}, season: ${SEASON}`);
 
       const { data, error } = await supabase.functions.invoke("fetch-leagues", {
-        body: { country: country.name, season: 2025 },
+        body: { country: country.name, season: SEASON },
       });
 
       if (error) throw error;
 
-      if (data?.leagues && data.leagues.length > 0) {
-        setLeague(data.leagues[0]);
-      }
-    } catch (error: any) {
-      console.error("Error fetching leagues:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load leagues. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+      console.log(`[Index] Fetched ${data?.leagues?.length || 0} leagues for ${country.name}`);
+      return data;
+    },
+    enabled: !!selectedCountry && selectedCountry !== 0,
+    staleTime: 60 * 60 * 1000, // 1 hour
+  });
 
-  const fetchFixtures = async () => {
-    if (!league) return;
+  // Fetch fixtures with React Query - properly keyed by country, season, league, and date
+  const { data: fixturesData, isLoading: loadingFixtures } = useQuery({
+    queryKey: ['fixtures', selectedCountry, SEASON, selectedLeague?.id, format(selectedDate, "yyyy-MM-dd")],
+    queryFn: async () => {
+      if (!selectedLeague) return { fixtures: [] };
 
-    setLoadingFixtures(true);
-    try {
+      console.log(`[Index] Fetching fixtures for league: ${selectedLeague.id}, date: ${format(selectedDate, "yyyy-MM-dd")}, season: ${SEASON}`);
+
       const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
         body: {
-          league: league.id,
-          season: 2025,
+          league: selectedLeague.id,
+          season: SEASON,
           date: format(selectedDate, "yyyy-MM-dd"),
         },
       });
 
       if (error) throw error;
 
-      setFixtures(data?.fixtures || []);
-    } catch (error: any) {
-      console.error("Error fetching fixtures:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load fixtures. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingFixtures(false);
-    }
-  };
+      console.log(`[Index] Fetched ${data?.fixtures?.length || 0} fixtures`);
+      return data;
+    },
+    enabled: !!selectedLeague && !!selectedDate,
+    staleTime: 10 * 60 * 1000, // 10 min
+  });
+
+  const leagues = leaguesData?.leagues || [];
+  const fixtures = fixturesData?.fixtures || [];
 
   const handleAnalyze = async (fixture: any) => {
     setLoadingAnalysis(true);
@@ -165,7 +168,7 @@ const Index = () => {
         body: {
           mode,
           date: format(selectedDate, "yyyy-MM-dd"),
-          leagueIds: league ? [league.id] : [],
+          leagueIds: selectedLeague ? [selectedLeague.id] : [],
         },
       });
 
@@ -191,15 +194,14 @@ const Index = () => {
   };
 
   const handleApplyFilters = async (filters: FilterCriteria) => {
-    if (!league) return;
+    if (!selectedLeague) return;
 
-    setLoadingFixtures(true);
     setFilterCriteria(filters);
 
     try {
       const { data, error } = await supabase.functions.invoke("filterizer-query", {
         body: {
-          leagueIds: [league.id],
+          leagueIds: [selectedLeague.id],
           date: format(selectedDate, "yyyy-MM-dd"),
           markets: filters.markets,
           thresholds: filters.thresholds,
@@ -221,8 +223,6 @@ const Index = () => {
         description: "Failed to apply filters. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setLoadingFixtures(false);
     }
   };
 
@@ -243,6 +243,9 @@ const Index = () => {
           countries={MOCK_COUNTRIES}
           selectedCountry={selectedCountry}
           onSelectCountry={setSelectedCountry}
+          leagues={leagues}
+          selectedLeague={selectedLeague}
+          onSelectLeague={setSelectedLeague}
         />
 
         <div className="flex-1 flex flex-col">
@@ -273,7 +276,7 @@ const Index = () => {
             <CenterRail
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
-              league={league}
+              league={selectedLeague}
               fixtures={displayFixtures}
               loading={loadingFixtures}
               onAnalyze={handleAnalyze}

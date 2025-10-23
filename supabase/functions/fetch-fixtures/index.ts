@@ -14,6 +14,12 @@ serve(async (req) => {
   try {
     const { league, season, date } = await req.json();
     
+    console.log(`[fetch-fixtures] Request params - league: ${league}, season: ${season}, date: ${date}`);
+    
+    if (!league) {
+      throw new Error("League ID is required");
+    }
+    
     const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
     if (!API_KEY) {
       throw new Error("API_FOOTBALL_KEY not configured");

@@ -14,6 +14,8 @@ serve(async (req) => {
   try {
     const { country, season } = await req.json();
     
+    console.log(`[fetch-leagues] Request params - country: ${country}, season: ${season}`);
+    
     const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
     if (!API_KEY) {
       throw new Error("API_FOOTBALL_KEY not configured");
