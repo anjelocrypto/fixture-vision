@@ -18,19 +18,16 @@ export type Database = {
         Row: {
           computed_at: string | null
           fixture_id: number
-          id: string
           summary_json: Json
         }
         Insert: {
           computed_at?: string | null
           fixture_id: number
-          id?: string
           summary_json: Json
         }
         Update: {
           computed_at?: string | null
           fixture_id?: number
-          id?: string
           summary_json?: Json
         }
         Relationships: []
@@ -140,24 +137,33 @@ export type Database = {
       }
       stats_cache: {
         Row: {
+          cards: number
           computed_at: string | null
-          fixture_id: number | null
-          id: string
-          last5_stats: Json
+          corners: number
+          fouls: number
+          goals: number
+          offsides: number
+          sample_size: number
           team_id: number
         }
         Insert: {
+          cards?: number
           computed_at?: string | null
-          fixture_id?: number | null
-          id?: string
-          last5_stats: Json
+          corners?: number
+          fouls?: number
+          goals?: number
+          offsides?: number
+          sample_size?: number
           team_id: number
         }
         Update: {
+          cards?: number
           computed_at?: string | null
-          fixture_id?: number | null
-          id?: string
-          last5_stats?: Json
+          corners?: number
+          fouls?: number
+          goals?: number
+          offsides?: number
+          sample_size?: number
           team_id?: number
         }
         Relationships: []
