@@ -1,18 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface FilterCriteria {
-  goals?: number;
-  cards?: number;
-  corners?: number;
-  fouls?: number;
-  offsides?: number;
-}
+const RequestSchema = z.object({
+  leagueIds: z.array(z.number().int().positive()).optional(),
+  date: z.string(),
+  markets: z.array(z.enum(["goals", "cards", "corners", "fouls", "offsides"])).optional(),
+  thresholds: z.record(z.number()).optional(),
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,19 +20,50 @@ serve(async (req) => {
   }
 
   try {
-    const { leagueIds, date, markets, thresholds } = await req.json();
-    
-    const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
-    if (!API_KEY) {
-      throw new Error("API_FOOTBALL_KEY not configured");
+    // Verify authentication
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
     }
 
+    const token = authHeader.replace("Bearer ", "");
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    console.log(`[filterizer-query] Filtering fixtures for date ${date}`);
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication token" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    // Validate input
+    const bodyRaw = await req.json().catch(() => null);
+    if (!bodyRaw) {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    const validation = RequestSchema.safeParse(bodyRaw);
+    if (!validation.success) {
+      console.error("[filterizer-query] Validation error:", validation.error.format());
+      return new Response(
+        JSON.stringify({ error: "Invalid request parameters" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+      );
+    }
+
+    const { leagueIds, date, markets, thresholds } = validation.data;
+
+    console.log(`[filterizer-query] User ${user.id} filtering fixtures for date ${date}`);
 
     // Get fixtures for the specified date and leagues
     let query = supabaseClient
@@ -47,7 +78,11 @@ serve(async (req) => {
     const { data: fixtures, error: fixturesError } = await query;
 
     if (fixturesError) {
-      throw fixturesError;
+      console.error("[filterizer-query] Error fetching fixtures:", fixturesError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch fixtures" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
     }
 
     if (!fixtures || fixtures.length === 0) {
@@ -96,7 +131,7 @@ serve(async (req) => {
       // Apply threshold filters
       let passes = true;
 
-      if (markets && Array.isArray(markets)) {
+      if (markets && thresholds) {
         for (const market of markets) {
           const threshold = thresholds[market];
           if (threshold !== undefined && threshold !== null) {
@@ -143,10 +178,13 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[filterizer-query] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[filterizer-query] Internal error:", {
+      message: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+    });
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

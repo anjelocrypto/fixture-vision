@@ -220,7 +220,11 @@ const Index = () => {
       }
 
       // Fetch analysis with team IDs
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: { 
           fixtureId: fixture.id,
           homeTeamId,
@@ -256,6 +260,7 @@ const Index = () => {
       // If odds available, fetch value analysis
       if (oddsData) {
         const { data: valueData, error: valueError } = await supabase.functions.invoke("calculate-value", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: { fixtureId: fixture.id },
         });
 
@@ -286,7 +291,11 @@ const Index = () => {
   const generateQuickTicket = async (mode: "safe" | "standard" | "risky") => {
     setGeneratingTicket(true);
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      
       const { data, error } = await supabase.functions.invoke("generate-ticket", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
           mode,
           date: format(selectedDate, "yyyy-MM-dd"),
@@ -336,7 +345,11 @@ const Index = () => {
         return acc;
       }, {});
 
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke("generate-ticket", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
           fixtureIds,
           minOdds: params.targetMin,
@@ -400,7 +413,11 @@ const Index = () => {
     setFilterCriteria(filters);
 
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      
       const { data, error } = await supabase.functions.invoke("filterizer-query", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
           leagueIds: [selectedLeague.id],
           date: format(selectedDate, "yyyy-MM-dd"),
