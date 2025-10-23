@@ -64,7 +64,7 @@ const Index = () => {
   }, [selectedCountry]);
 
   // Fetch leagues with React Query - properly keyed by country and season
-  const { data: leaguesData } = useQuery({
+  const { data: leaguesData, isError: leaguesError, error: leaguesErrorData } = useQuery({
     queryKey: ['leagues', selectedCountry, SEASON],
     queryFn: async () => {
       const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
@@ -76,14 +76,30 @@ const Index = () => {
         body: { country: country.name, season: SEASON },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`[Index] Error fetching leagues for ${country.name}:`, error);
+        throw error;
+      }
 
       console.log(`[Index] Fetched ${data?.leagues?.length || 0} leagues for ${country.name}`);
       return data;
     },
     enabled: !!selectedCountry && selectedCountry !== 0,
     staleTime: 60 * 60 * 1000, // 1 hour
+    retry: 1, // Only retry once
   });
+
+  // Show error toast when leagues fail to load
+  useEffect(() => {
+    if (leaguesError && selectedCountry) {
+      const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
+      toast({
+        title: "Unable to load leagues",
+        description: `Could not fetch leagues for ${country?.name}. The API might be rate limited or unavailable. Please try again later.`,
+        variant: "destructive",
+      });
+    }
+  }, [leaguesError, selectedCountry]);
 
   // Fetch fixtures with React Query - properly keyed by country, season, league, and date
   const { data: fixturesData, isLoading: loadingFixtures } = useQuery({
@@ -362,6 +378,7 @@ const Index = () => {
               setSelectedLeague(league);
               setLeftSheetOpen(false);
             }}
+            leaguesError={leaguesError}
           />
         </div>
 
@@ -381,6 +398,7 @@ const Index = () => {
                 setSelectedLeague(league);
                 setLeftSheetOpen(false);
               }}
+              leaguesError={leaguesError}
             />
           </SheetContent>
         </Sheet>

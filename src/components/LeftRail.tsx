@@ -22,6 +22,8 @@ interface LeftRailProps {
   leagues: League[];
   selectedLeague: League | null;
   onSelectLeague: (league: League) => void;
+  leaguesLoading?: boolean;
+  leaguesError?: boolean;
 }
 
 export function LeftRail({ 
@@ -30,7 +32,9 @@ export function LeftRail({
   onSelectCountry,
   leagues,
   selectedLeague,
-  onSelectLeague 
+  onSelectLeague,
+  leaguesLoading = false,
+  leaguesError = false
 }: LeftRailProps) {
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
@@ -77,9 +81,17 @@ export function LeftRail({
               </h3>
             </div>
             <div className="p-2 space-y-1 pb-4">
-              {leagues.length === 0 ? (
+              {leaguesError ? (
+                <div className="px-3 py-2 text-xs text-destructive text-center">
+                  Failed to load leagues
+                </div>
+              ) : leagues.length === 0 && leaguesLoading ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground text-center">
                   Loading leagues...
+                </div>
+              ) : leagues.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                  No leagues available
                 </div>
               ) : (
                 leagues.map((league) => (
