@@ -4,13 +4,14 @@ import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
 import { RightRail } from "@/components/RightRail";
 import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
+import { TicketDrawer } from "@/components/TicketDrawer";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Filter } from "lucide-react";
+import { Filter, Ticket, Shield, Zap } from "lucide-react";
 
-// Mock countries data (will be populated from API)
+// Mock countries data
 const MOCK_COUNTRIES = [
   { id: 0, name: "World", flag: "🌍", code: "WORLD" },
   { id: 39, name: "England", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", code: "GB" },
@@ -29,11 +30,15 @@ const Index = () => {
   const [league, setLeague] = useState<any>(null);
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
+  const [valueAnalysis, setValueAnalysis] = useState<any>(null);
   const [loadingFixtures, setLoadingFixtures] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [showFilterizer, setShowFilterizer] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
+  const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
+  const [currentTicket, setCurrentTicket] = useState<any>(null);
+  const [generatingTicket, setGeneratingTicket] = useState(false);
 
   // Fetch leagues when country changes
   useEffect(() => {
@@ -61,7 +66,6 @@ const Index = () => {
       if (error) throw error;
 
       if (data?.leagues && data.leagues.length > 0) {
-        // Set first league as default (e.g., La Liga for Spain)
         setLeague(data.leagues[0]);
       }
     } catch (error: any) {
@@ -105,6 +109,7 @@ const Index = () => {
   const handleAnalyze = async (fixture: any) => {
     setLoadingAnalysis(true);
     setAnalysis(null);
+    setValueAnalysis(null);
 
     try {
       // Fetch analysis
@@ -125,6 +130,17 @@ const Index = () => {
         ...analysisData,
         odds_available: !!oddsData,
       });
+
+      // If odds available, fetch value analysis
+      if (oddsData) {
+        const { data: valueData, error: valueError } = await supabase.functions.invoke("calculate-value", {
+          body: { fixtureId: fixture.id },
+        });
+
+        if (!valueError && valueData) {
+          setValueAnalysis(valueData);
+        }
+      }
     } catch (error: any) {
       console.error("Error analyzing fixture:", error);
       toast({
@@ -134,6 +150,38 @@ const Index = () => {
       });
     } finally {
       setLoadingAnalysis(false);
+    }
+  };
+
+  const generateTicket = async (mode: "safe" | "standard" | "risky") => {
+    setGeneratingTicket(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-ticket", {
+        body: {
+          mode,
+          date: format(selectedDate, "yyyy-MM-dd"),
+          leagueIds: league ? [league.id] : [],
+        },
+      });
+
+      if (error) throw error;
+
+      setCurrentTicket(data);
+      setTicketDrawerOpen(true);
+
+      toast({
+        title: "Ticket generated!",
+        description: `${data.legs.length} selections with ${data.total_odds.toFixed(2)}x total odds`,
+      });
+    } catch (error: any) {
+      console.error("Error generating ticket:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate ticket. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingTicket(false);
     }
   };
 
@@ -156,7 +204,7 @@ const Index = () => {
       if (error) throw error;
 
       setFilteredFixtures(data.fixtures || []);
-      
+
       toast({
         title: "Filters Applied",
         description: `Found ${data.filtered_count} fixtures matching your criteria`,
@@ -184,14 +232,14 @@ const Index = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <AppHeader />
-      
+
       <div className="flex flex-1 overflow-hidden">
         <LeftRail
           countries={MOCK_COUNTRIES}
           selectedCountry={selectedCountry}
           onSelectCountry={setSelectedCountry}
         />
-        
+
         <div className="flex-1 flex flex-col">
           <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">
@@ -227,12 +275,70 @@ const Index = () => {
             />
           </div>
         </div>
-        
-        <RightRail analysis={analysis} loading={loadingAnalysis} />
+
+        <div className="flex flex-col">
+          {/* Ticket Generator */}
+          <div className="p-4 border-b bg-background space-y-2">
+            <div className="text-sm font-semibold mb-2">Generate Ticket</div>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateTicket("safe")}
+                disabled={generatingTicket}
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Safe
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateTicket("standard")}
+                disabled={generatingTicket}
+              >
+                <Ticket className="h-3.5 w-3.5" />
+                Standard
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateTicket("risky")}
+                disabled={generatingTicket}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Risky
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <RightRail
+              analysis={analysis}
+              loading={loadingAnalysis}
+              suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+              onAddToTicket={(market) => {
+                toast({
+                  title: "Market added",
+                  description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                });
+              }}
+            />
+          </div>
+        </div>
       </div>
 
+      <TicketDrawer
+        open={ticketDrawerOpen}
+        onOpenChange={setTicketDrawerOpen}
+        ticket={currentTicket}
+        loading={generatingTicket}
+      />
+
       <footer className="border-t border-border bg-card/30 backdrop-blur-sm py-4 text-center text-sm text-muted-foreground">
-        Made with ❤️ — BETAI
+        Made with ❤️ — BETAI 0.2
       </footer>
     </div>
   );

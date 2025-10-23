@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertTriangle, TrendingUp, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface TeamStats {
@@ -9,6 +10,18 @@ interface TeamStats {
   offsides: number;
   corners: number;
   fouls: number;
+}
+
+interface SuggestedMarket {
+  market: string;
+  line: number;
+  side: string;
+  model_prob: number;
+  book_prob: number;
+  edge: number;
+  odds: number;
+  bookmaker: string;
+  confidence?: string;
 }
 
 interface Analysis {
@@ -31,6 +44,8 @@ interface Analysis {
 interface RightRailProps {
   analysis: Analysis | null;
   loading: boolean;
+  suggested_markets?: SuggestedMarket[];
+  onAddToTicket?: (market: SuggestedMarket) => void;
 }
 
 function StatRow({ label, value }: { label: string; value: number }) {
@@ -63,7 +78,15 @@ function StatRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function RightRail({ analysis, loading }: RightRailProps) {
+export function RightRail({ analysis, loading, suggested_markets = [], onAddToTicket }: RightRailProps) {
+  const [addingMarket, setAddingMarket] = useState<string | null>(null);
+
+  const handleAddMarket = (market: SuggestedMarket) => {
+    setAddingMarket(`${market.market}-${market.line}`);
+    onAddToTicket?.(market);
+    setTimeout(() => setAddingMarket(null), 1000);
+  };
+
   if (!analysis && !loading) {
     return (
       <div className="w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-6">
@@ -90,7 +113,7 @@ export function RightRail({ analysis, loading }: RightRailProps) {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold">AI Analysis</h3>
               <Badge variant="outline" className="border-primary/30 text-primary">
-                BETAI 0.1
+                BETAI 0.2
               </Badge>
             </div>
             
@@ -99,7 +122,7 @@ export function RightRail({ analysis, loading }: RightRailProps) {
               {analysis.is_stale && (
                 <div className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-1 rounded-full border border-amber-500/20">
                   <AlertTriangle className="h-3 w-3" />
-                  <span>Uncertainty: Low Sample Size</span>
+                  <span>Uncertainty</span>
                 </div>
               )}
               {analysis.odds_available && (
@@ -108,8 +131,58 @@ export function RightRail({ analysis, loading }: RightRailProps) {
                   <span>Odds Available</span>
                 </div>
               )}
+              <div className="text-xs text-muted-foreground">
+                {new Date(analysis.computed_at).toLocaleTimeString()}
+              </div>
             </div>
           </Card>
+
+          {/* Suggested Markets */}
+          {suggested_markets.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Suggested Markets</h4>
+                <Badge variant="secondary" className="text-xs">Value</Badge>
+              </div>
+              
+              {suggested_markets.slice(0, 4).map((market, idx) => (
+                <Card key={idx} className="p-3 bg-card/50 hover:bg-card transition-colors">
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium capitalize">
+                          {market.market} {market.side} {market.line}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{market.bookmaker}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold">@{market.odds.toFixed(2)}</div>
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                          +{(market.edge * 100).toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-1.5 border-t text-xs">
+                      <div className="text-muted-foreground">
+                        Model: {(market.model_prob * 100).toFixed(0)}% vs Book: {(market.book_prob * 100).toFixed(0)}%
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 gap-1 text-xs"
+                        onClick={() => handleAddMarket(market)}
+                        disabled={addingMarket === `${market.market}-${market.line}`}
+                      >
+                        <Plus className="h-3 w-3" />
+                        {addingMarket === `${market.market}-${market.line}` ? "Added" : "Add"}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
           {/* Home Team */}
           <Card className="p-4">
@@ -152,18 +225,6 @@ export function RightRail({ analysis, loading }: RightRailProps) {
               <StatRow label="Fouls" value={analysis.combined.fouls} />
             </div>
           </Card>
-
-          {/* Metadata */}
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground text-center">
-              Last updated: {new Date(analysis.computed_at).toLocaleString()}
-            </p>
-            {analysis.is_stale && (
-              <p className="text-xs text-amber-500 text-center">
-                Sample size: {Math.min(analysis.home.stats.sample_size, analysis.away.stats.sample_size)} matches
-              </p>
-            )}
-          </div>
         </div>
       ) : null}
     </div>

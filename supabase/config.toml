@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.stats-refresh]
 verify_jwt = false
+
+[functions.calculate-value]
+verify_jwt = false
+
+[functions.generate-ticket]
+verify_jwt = false
