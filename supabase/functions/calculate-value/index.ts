@@ -294,8 +294,14 @@ function computeEdges(models: ModelOutput[], oddsPayload: any): EdgeResult[] {
           if (!pair.over?.odd || !pair.under?.odd) continue;
 
           const line = parseFloat(lineKey);
-          const overOdds = pair.over.odd;
-          const underOdds = pair.under.odd;
+          const overOdds = Number(pair.over.odd);
+          const underOdds = Number(pair.under.odd);
+
+          // Skip invalid odds
+          if (!isFinite(overOdds) || !isFinite(underOdds) || overOdds <= 1 || underOdds <= 1) {
+            console.log(`[computeEdges] Invalid odds for ${marketName} ${line}: over=${overOdds}, under=${underOdds}`);
+            continue;
+          }
 
           // Find matching model (tolerance 0.01)
           const model = models.find(

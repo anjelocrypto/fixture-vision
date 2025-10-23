@@ -273,8 +273,14 @@ async function calculateFixtureEdges(fixture: any, homeStats: any, awayStats: an
           if (!pair.over?.odd || !pair.under?.odd) continue;
 
           const line = parseFloat(lineKey);
-          const overOdds = pair.over.odd;
-          const underOdds = pair.under.odd;
+          const overOdds = Number(pair.over.odd);
+          const underOdds = Number(pair.under.odd);
+
+          // Skip invalid odds
+          if (!isFinite(overOdds) || !isFinite(underOdds) || overOdds <= 1 || underOdds <= 1) {
+            console.log(`[calculateFixtureEdges] Invalid odds for goals ${line}: over=${overOdds}, under=${underOdds}`);
+            continue;
+          }
 
           // Model probabilities (Poisson)
           const probUnder = poissonCDF(lambdaTotal, Math.floor(line));
