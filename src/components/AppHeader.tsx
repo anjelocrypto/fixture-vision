@@ -16,7 +16,7 @@ export function AppHeader() {
         {/* Logo */}
         <div className="flex items-center gap-2">
           <div className="text-2xl font-bold text-primary animate-glow">
-            BET AI
+            TICKET AI
           </div>
         </div>
 

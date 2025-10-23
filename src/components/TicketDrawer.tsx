@@ -50,7 +50,7 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
       )
       .join("\n\n");
 
-    const fullText = `BET AI ${ticket.mode.toUpperCase()} TICKET\n\n${text}\n\nTotal Odds: ${ticket.total_odds.toFixed(2)}\nEst. Win Probability: ${(ticket.estimated_win_prob * 100).toFixed(1)}%`;
+    const fullText = `TICKET AI ${ticket.mode.toUpperCase()} TICKET\n\n${text}\n\nTotal Odds: ${ticket.total_odds.toFixed(2)}\nEst. Win Probability: ${(ticket.estimated_win_prob * 100).toFixed(1)}%`;
 
     navigator.clipboard.writeText(fullText);
     toast({
