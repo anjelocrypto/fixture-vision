@@ -166,8 +166,11 @@ export type Database = {
           corners: number
           fouls: number
           goals: number
+          last_final_fixture: number | null
+          last_five_fixture_ids: number[] | null
           offsides: number
           sample_size: number
+          source: string | null
           team_id: number
         }
         Insert: {
@@ -176,8 +179,11 @@ export type Database = {
           corners?: number
           fouls?: number
           goals?: number
+          last_final_fixture?: number | null
+          last_five_fixture_ids?: number[] | null
           offsides?: number
           sample_size?: number
+          source?: string | null
           team_id: number
         }
         Update: {
@@ -186,8 +192,11 @@ export type Database = {
           corners?: number
           fouls?: number
           goals?: number
+          last_final_fixture?: number | null
+          last_five_fixture_ids?: number[] | null
           offsides?: number
           sample_size?: number
+          source?: string | null
           team_id?: number
         }
         Relationships: []

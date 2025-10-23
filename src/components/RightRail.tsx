@@ -27,19 +27,21 @@ interface SuggestedMarket {
 }
 
 interface Analysis {
-  home: {
-    name: string;
-    logo: string;
-    stats: TeamStats & { sample_size: number };
+  home: TeamStats & { 
+    team_id: number;
+    sample_size: number;
+    computed_at: string;
+    name?: string;
+    logo?: string;
   };
-  away: {
-    name: string;
-    logo: string;
-    stats: TeamStats & { sample_size: number };
+  away: TeamStats & { 
+    team_id: number;
+    sample_size: number;
+    computed_at: string;
+    name?: string;
+    logo?: string;
   };
-  combined: TeamStats;
-  is_stale?: boolean;
-  computed_at: string;
+  combined: TeamStats & { sample_size: number };
   odds_available?: boolean;
 }
 
@@ -121,7 +123,7 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
             
             {/* Status Chips */}
             <div className="flex flex-wrap gap-2">
-              {analysis.is_stale && (
+              {(analysis.home.sample_size < 5 || analysis.away.sample_size < 5) && (
                 <div className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-1 rounded-full border border-amber-500/20">
                   <AlertTriangle className="h-3 w-3" />
                   <span>Uncertainty</span>
@@ -134,7 +136,7 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
                 </div>
               )}
               <div className="text-xs text-muted-foreground">
-                {new Date(analysis.computed_at).toLocaleTimeString()}
+                {new Date(analysis.home.computed_at).toLocaleTimeString()}
               </div>
             </div>
           </Card>
@@ -203,30 +205,30 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           {/* Home Team */}
           <Card className="p-4">
             <div className="flex items-center gap-3 mb-4">
-              <img src={analysis.home.logo} alt={analysis.home.name} className="w-8 h-8" />
-              <h4 className="font-semibold">{analysis.home.name}</h4>
+              {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8" />}
+              <h4 className="font-semibold">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
             </div>
             <div className="space-y-1">
-              <StatRow label="Goals" value={analysis.home.stats.goals} />
-              <StatRow label="Cards" value={analysis.home.stats.cards} />
-              <StatRow label="Offsides" value={analysis.home.stats.offsides} />
-              <StatRow label="Corners" value={analysis.home.stats.corners} />
-              <StatRow label="Fouls" value={analysis.home.stats.fouls} />
+              <StatRow label="Goals" value={analysis.home.goals} />
+              <StatRow label="Cards" value={analysis.home.cards} />
+              <StatRow label="Offsides" value={analysis.home.offsides} />
+              <StatRow label="Corners" value={analysis.home.corners} />
+              <StatRow label="Fouls" value={analysis.home.fouls} />
             </div>
           </Card>
 
           {/* Away Team */}
           <Card className="p-4">
             <div className="flex items-center gap-3 mb-4">
-              <img src={analysis.away.logo} alt={analysis.away.name} className="w-8 h-8" />
-              <h4 className="font-semibold">{analysis.away.name}</h4>
+              {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8" />}
+              <h4 className="font-semibold">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
             </div>
             <div className="space-y-1">
-              <StatRow label="Goals" value={analysis.away.stats.goals} />
-              <StatRow label="Cards" value={analysis.away.stats.cards} />
-              <StatRow label="Offsides" value={analysis.away.stats.offsides} />
-              <StatRow label="Corners" value={analysis.away.stats.corners} />
-              <StatRow label="Fouls" value={analysis.away.stats.fouls} />
+              <StatRow label="Goals" value={analysis.away.goals} />
+              <StatRow label="Cards" value={analysis.away.cards} />
+              <StatRow label="Offsides" value={analysis.away.offsides} />
+              <StatRow label="Corners" value={analysis.away.corners} />
+              <StatRow label="Fouls" value={analysis.away.fouls} />
             </div>
           </Card>
 

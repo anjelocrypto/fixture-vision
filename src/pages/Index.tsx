@@ -115,9 +115,20 @@ const Index = () => {
     setValueAnalysis(null);
 
     try {
-      // Fetch analysis
+      const homeTeamId = fixture.teams_home?.id;
+      const awayTeamId = fixture.teams_away?.id;
+
+      if (!homeTeamId || !awayTeamId) {
+        throw new Error("Missing team IDs in fixture data");
+      }
+
+      // Fetch analysis with team IDs
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
-        body: { fixtureId: fixture.id },
+        body: { 
+          fixtureId: fixture.id,
+          homeTeamId,
+          awayTeamId
+        },
       });
 
       if (analysisError) throw analysisError;
@@ -129,8 +140,19 @@ const Index = () => {
         .eq("fixture_id", fixture.id)
         .single();
 
+      // Enrich analysis with fixture data and odds info
       setAnalysis({
         ...analysisData,
+        home: {
+          ...analysisData.home,
+          name: fixture.teams_home?.name,
+          logo: fixture.teams_home?.logo,
+        },
+        away: {
+          ...analysisData.away,
+          name: fixture.teams_away?.name,
+          logo: fixture.teams_away?.logo,
+        },
         odds_available: !!oddsData,
       });
 
