@@ -422,8 +422,6 @@ const Index = () => {
           market: filters.market,
           line: filters.line,
           minOdds: filters.minOdds,
-          minEdge: filters.minEdge || 0,
-          sortBy: filters.sortBy || "edge",
           leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
         },
       });

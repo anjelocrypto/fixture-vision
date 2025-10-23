@@ -13,10 +13,8 @@ const RequestSchema = z.object({
   market: z.enum(["goals", "cards", "corners", "fouls", "offsides"]),
   line: z.number(),
   minOdds: z.number().min(1.0).optional(),
-  minEdge: z.number().min(0).max(100).optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number().int().positive()).optional(),
-  sortBy: z.enum(["edge", "confidence", "odds", "time"]).optional(),
   live: z.boolean().optional(),
 });
 
@@ -72,14 +70,12 @@ serve(async (req) => {
       market, 
       line, 
       minOdds = 1.0, 
-      minEdge, 
       countryCode, 
       leagueIds, 
-      sortBy = "edge", 
       live = false 
     } = validation.data;
 
-    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, line=${line}, minOdds=${minOdds}, minEdge=${minEdge}, sortBy=${sortBy}`);
+    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, line=${line}, minOdds=${minOdds}`);
 
     // Calculate 7-day window from date
     const startDate = new Date(date);
@@ -106,11 +102,6 @@ serve(async (req) => {
     // Filter by line (with small tolerance)
     query = query.gte("line", line - 0.01).lte("line", line + 0.01);
 
-    // Apply edge filter if specified
-    if (minEdge !== undefined && minEdge > 0) {
-      query = query.gte("edge_pct", minEdge);
-    }
-
     // Scope by country or leagues
     if (leagueIds && leagueIds.length > 0) {
       query = query.in("league_id", leagueIds);
@@ -118,16 +109,8 @@ serve(async (req) => {
       query = query.eq("country_code", countryCode);
     }
 
-    // Apply sorting
-    if (sortBy === "edge") {
-      query = query.order("edge_pct", { ascending: false, nullsFirst: false });
-    } else if (sortBy === "confidence") {
-      query = query.order("sample_size", { ascending: false }).order("odds", { ascending: false });
-    } else if (sortBy === "odds") {
-      query = query.order("odds", { ascending: false });
-    } else if (sortBy === "time") {
-      query = query.order("utc_kickoff", { ascending: true });
-    }
+    // Sort by kickoff time (earliest first)
+    query = query.order("utc_kickoff", { ascending: true });
 
     const { data: selections, error: selectionsError } = await query;
 
@@ -146,7 +129,7 @@ serve(async (req) => {
         selections: selections || [],
         count: selections?.length || 0,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
-        filters: { market, line, minOdds, minEdge, sortBy },
+        filters: { market, line, minOdds },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

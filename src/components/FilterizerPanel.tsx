@@ -16,8 +16,6 @@ export interface FilterCriteria {
   market: string;
   line: number;
   minOdds: number;
-  minEdge?: number;
-  sortBy?: "edge" | "confidence" | "odds" | "time";
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -53,8 +51,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
-  const [minEdge, setMinEdge] = useState<number>(0);
-  const [sortBy, setSortBy] = useState<"edge" | "confidence" | "odds" | "time">("edge");
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -71,8 +67,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       market: selectedMarket,
       line: selectedLine,
       minOdds,
-      minEdge,
-      sortBy,
     };
     onApplyFilters(filters);
   };
@@ -81,8 +75,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setSelectedMarket("goals");
     setSelectedLine(2.5);
     setMinOdds(1.50);
-    setMinEdge(0);
-    setSortBy("edge");
     onClearFilters();
   };
 
@@ -161,45 +153,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
             <span>1.10</span>
             <span>2.00</span>
             <span>3.00</span>
-          </div>
-        </div>
-
-        {/* Min Edge Filter */}
-        <div className="space-y-3 pt-4 border-t">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Min Edge (%)</Label>
-            <span className="text-sm font-semibold text-primary">{minEdge}%</span>
-          </div>
-          <Slider
-            value={[minEdge]}
-            onValueChange={(value) => setMinEdge(value[0])}
-            min={0}
-            max={10}
-            step={0.5}
-            className="w-full"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0%</span>
-            <span>5%</span>
-            <span>10%</span>
-          </div>
-        </div>
-
-        {/* Sort Options */}
-        <div className="space-y-3 pt-4 border-t">
-          <Label className="text-sm font-medium">Sort By</Label>
-          <div className="grid grid-cols-4 gap-2">
-            {(["edge", "confidence", "odds", "time"] as const).map((option) => (
-              <Button
-                key={option}
-                variant={sortBy === option ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSortBy(option)}
-                className="capitalize"
-              >
-                {option}
-              </Button>
-            ))}
           </div>
         </div>
 
