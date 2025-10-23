@@ -49,6 +49,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
   const [maxLegs, setMaxLegs] = useState(8);
   const [useLiveOdds, setUseLiveOdds] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePresetRange = (min: number, max: number) => {
     setTargetMin(min);
@@ -67,6 +68,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
     if (includeMarkets.length === 0) return;
     
     setGenerating(true);
+    setErrorMessage(null);
     try {
       await onGenerate({
         targetMin,
@@ -77,6 +79,8 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
         maxLegs,
         useLiveOdds,
       });
+    } catch (error: any) {
+      setErrorMessage(error.message || "Failed to generate ticket");
     } finally {
       setGenerating(false);
     }
@@ -269,6 +273,13 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
               </>
             )}
           </Button>
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+              {errorMessage}
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

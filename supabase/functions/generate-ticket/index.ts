@@ -64,24 +64,65 @@ serve(async (req) => {
 
 // NEW: AI Ticket Creator with custom parameters
 async function handleAITicketCreator(body: any, supabase: any) {
+  // 1. VALIDATE INPUT
   const {
     fixtureIds,
-    targetMin,
-    targetMax,
+    minOdds,
+    maxOdds,
+    legsMin,
+    legsMax,
+    includeMarkets,
     risk = "standard",
-    includeMarkets = ["goals", "corners", "cards", "fouls", "offsides"],
-    excludeMarkets = [],
-    maxLegs = 8,
-    minLegs = 3,
     useLiveOdds = false,
   } = body;
 
-  console.log(`[AI-ticket] Creating ticket: fixtures=${fixtureIds.length}, target=${targetMin}-${targetMax}, risk=${risk}, live=${useLiveOdds}`);
+  console.log(`[AI-ticket] Input:`, JSON.stringify({
+    fixtureIds: fixtureIds?.length,
+    minOdds,
+    maxOdds,
+    legsMin,
+    legsMax,
+    includeMarkets,
+    risk,
+    useLiveOdds
+  }));
 
-  const markets = includeMarkets.filter((m: string) => !excludeMarkets.includes(m));
+  if (!fixtureIds || !Array.isArray(fixtureIds) || fixtureIds.length === 0) {
+    return new Response(
+      JSON.stringify({ code: "INVALID_INPUT", message: "fixtureIds must be a non-empty array", details: {} }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
+  }
+
+  if (!minOdds || !maxOdds || minOdds >= maxOdds) {
+    return new Response(
+      JSON.stringify({ code: "INVALID_RANGE", message: "minOdds must be less than maxOdds", details: { minOdds, maxOdds } }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
+  }
+
+  if (!legsMin || !legsMax || legsMin > legsMax) {
+    return new Response(
+      JSON.stringify({ code: "INVALID_LEGS", message: "legsMin must be less than or equal to legsMax", details: { legsMin, legsMax } }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
+  }
+
+  const markets = Object.keys(includeMarkets || {}).filter((k) => includeMarkets[k]);
+  if (markets.length === 0) {
+    return new Response(
+      JSON.stringify({ code: "NO_MARKETS", message: "At least one market must be enabled", details: {} }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
+  }
+
   const riskProfile = getRiskProfile(risk);
   const candidatePool: TicketLeg[] = [];
+  const logs: string[] = [];
+  let usedLive = false;
+  let fallbackToPrematch = false;
 
+  // 2. BUILD CANDIDATE POOL
   for (const fixtureId of fixtureIds) {
     const { data: fixture } = await supabase
       .from("fixtures")
@@ -89,13 +130,17 @@ async function handleAITicketCreator(body: any, supabase: any) {
       .eq("id", fixtureId)
       .single();
 
-    if (!fixture) continue;
+    if (!fixture) {
+      logs.push(`[fixture:${fixtureId}] Not found in DB`);
+      continue;
+    }
 
     const homeTeam = fixture.teams_home?.name || "Home";
     const awayTeam = fixture.teams_away?.name || "Away";
     const start = fixture.date || "";
 
-    const { data: analysisData } = await supabase.functions.invoke("analyze-fixture", {
+    // Fetch analysis (combined stats)
+    const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
       body: {
         fixtureId,
         homeTeamId: fixture.teams_home?.id,
@@ -103,104 +148,194 @@ async function handleAITicketCreator(body: any, supabase: any) {
       },
     });
 
-    if (!analysisData?.combined) continue;
+    if (analysisError || !analysisData?.combined) {
+      logs.push(`[fixture:${fixtureId}] No combined stats`);
+      continue;
+    }
 
     const combined = analysisData.combined;
 
-    const { data: oddsData } = await supabase.functions.invoke("fetch-odds", {
+    // Fetch odds (live with fallback)
+    let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
       body: { 
         fixtureId,
         live: useLiveOdds,
       },
     });
 
-    if (!oddsData?.available || !oddsData.bookmakers) continue;
+    if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
+      if (useLiveOdds) {
+        logs.push(`[fixture:${fixtureId}] Live odds unavailable, trying pre-match...`);
+        const { data: prematchData } = await supabase.functions.invoke("fetch-odds", {
+          body: { fixtureId, live: false },
+        });
+        if (prematchData && prematchData.selections && prematchData.selections.length > 0) {
+          oddsData = prematchData;
+          fallbackToPrematch = true;
+        } else {
+          logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty)`);
+          continue;
+        }
+      } else {
+        logs.push(`[fixture:${fixtureId}] No odds available`);
+        continue;
+      }
+    }
 
+    usedLive = oddsData.source === "live";
+
+    const selections = oddsData.selections || [];
+    const marketCoverage: string[] = [];
+
+    // For each enabled market, use rules to pick line
     for (const market of markets) {
       const avgValue = combined[market];
-      if (avgValue === undefined || avgValue === null) continue;
-
-      const line = pickLine(market, avgValue);
-      if (!line) continue;
-
-      const marketName = getMarketName(market);
-      let bestOdds: { odds: number; bookmaker: string } | null = null;
-
-      for (const bookmaker of oddsData.bookmakers) {
-        const marketData = bookmaker.markets.find((m: any) => 
-          normalizeMarketName(m.name) === marketName
-        );
-        if (!marketData) continue;
-
-        const oddsValue = marketData.values.find((v: any) => 
-          normalizeSelection(v.value) === line.label
-        );
-
-        if (oddsValue) {
-          const odds = parseFloat(oddsValue.odd);
-          if (!bestOdds || odds > bestOdds.odds) {
-            bestOdds = { odds, bookmaker: bookmaker.name };
-          }
-        }
+      if (avgValue === undefined || avgValue === null) {
+        logs.push(`[fixture:${fixtureId}] No combined stat for ${market}`);
+        continue;
       }
 
-      if (!bestOdds && line.threshold !== undefined) {
-        const nearestOdds = findNearestLine(oddsData.bookmakers, marketName, line.threshold);
-        if (nearestOdds) bestOdds = nearestOdds;
+      // USE RULES TO PICK LINE
+      const rulePick = pickFromCombined(market as any, avgValue);
+      if (!rulePick) {
+        logs.push(`[fixture:${fixtureId}] ${market}: ${avgValue} → no rule match`);
+        continue;
       }
 
-      if (bestOdds && bestOdds.odds >= riskProfile.minOdds && bestOdds.odds <= riskProfile.maxOdds * 1.5) {
+      const { side, line } = rulePick;
+      logs.push(`[fixture:${fixtureId}] ${market}: ${avgValue} → ${side} ${line}`);
+
+      // Find matching selection (exact or nearest within ±0.5)
+      const exactMatch = selections.find((s: any) =>
+        s.market === market && s.kind === side && s.line === line
+      );
+
+      if (exactMatch) {
+        marketCoverage.push(`${market}:exact`);
         candidatePool.push({
           fixtureId,
           homeTeam,
           awayTeam,
           start,
           market: market as Market,
-          selection: `${line.label} ${marketName}`,
-          odds: bestOdds.odds,
-          bookmaker: bestOdds.bookmaker,
+          selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${line}`,
+          odds: exactMatch.odds,
+          bookmaker: exactMatch.bookmaker,
           combinedAvg: avgValue,
+          source: oddsData.source,
         });
+        logs.push(`[fixture:${fixtureId}] ${market}: exact match ${side} ${line} @ ${exactMatch.odds} (${exactMatch.bookmaker})`);
+      } else {
+        // Find nearest within ±0.5
+        const nearest = selections
+          .filter((s: any) => s.market === market && s.kind === side && s.line && Math.abs(s.line - line) <= 0.5)
+          .sort((a: any, b: any) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
+
+        if (nearest) {
+          marketCoverage.push(`${market}:nearest`);
+          candidatePool.push({
+            fixtureId,
+            homeTeam,
+            awayTeam,
+            start,
+            market: market as Market,
+            selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${nearest.line}`,
+            odds: nearest.odds,
+            bookmaker: nearest.bookmaker,
+            combinedAvg: avgValue,
+            source: oddsData.source,
+          });
+          logs.push(`[fixture:${fixtureId}] ${market}: nearest match ${side} ${nearest.line} @ ${nearest.odds} (${nearest.bookmaker})`);
+        } else {
+          logs.push(`[fixture:${fixtureId}] ${market}: no odds within ±0.5 of ${line}`);
+        }
       }
+    }
+
+    if (marketCoverage.length > 0) {
+      logs.push(`[fixture:${fixtureId}] Market coverage: ${marketCoverage.join(", ")}`);
     }
   }
 
-  console.log(`[AI-ticket] Candidate pool size: ${candidatePool.length}`);
+  logs.push(`[AI-ticket] Candidate pool size: ${candidatePool.length}`);
+  console.log(logs.join("\n"));
 
-  if (candidatePool.length < minLegs) {
+  // 3. CHECK MINIMUM CANDIDATES
+  if (candidatePool.length < legsMin) {
     return new Response(
       JSON.stringify({
-        error: `Not enough valid candidates (found ${candidatePool.length}, need at least ${minLegs})`,
-        pool_size: candidatePool.length,
+        code: "INSUFFICIENT_CANDIDATES",
+        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin})`,
+        details: { found: candidatePool.length, required: legsMin },
+        logs,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
     );
   }
 
+  // 4. COMPOSE TICKET
   const ticket = generateOptimizedTicket(
     candidatePool,
-    targetMin,
-    targetMax,
-    minLegs,
-    maxLegs,
+    minOdds,
+    maxOdds,
+    legsMin,
+    legsMax,
     riskProfile.preferredOdds
   );
 
   if (!ticket) {
     return new Response(
       JSON.stringify({
-        error: "Could not generate ticket within target range after multiple attempts",
-        pool_size: candidatePool.length,
+        code: "OPTIMIZATION_FAILED",
+        message: "Could not generate ticket within target range after multiple attempts",
+        details: { pool_size: candidatePool.length, target: { min: minOdds, max: maxOdds } },
+        logs,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
     );
+  }
+
+  logs.push(`[AI-ticket] Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}`);
+
+  // 5. PERSIST TO DB
+  try {
+    // Write optimizer_cache rows (one per leg)
+    for (const leg of ticket.legs) {
+      await supabase.from("optimizer_cache").insert({
+        fixture_id: leg.fixtureId,
+        market: leg.market,
+        side: leg.selection.toLowerCase().includes("over") ? "over" : "under",
+        line: parseFloat(leg.selection.match(/[\d.]+/)?.[0] || "0"),
+        combined_value: leg.combinedAvg || 0,
+        bookmaker: leg.bookmaker,
+        odds: leg.odds,
+        source: leg.source || "prematch",
+      });
+    }
+
+    // Write generated_tickets row
+    await supabase.from("generated_tickets").insert({
+      total_odds: ticket.total_odds,
+      min_target: minOdds,
+      max_target: maxOdds,
+      used_live: usedLive && !fallbackToPrematch,
+      legs: ticket.legs,
+    });
+
+    logs.push(`[AI-ticket] Persisted ${ticket.legs.length} legs to optimizer_cache and 1 ticket to generated_tickets`);
+  } catch (dbError) {
+    console.error("[AI-ticket] DB persistence error:", dbError);
+    logs.push(`[AI-ticket] Warning: DB persistence failed`);
   }
 
   return new Response(
     JSON.stringify({
       ticket,
       pool_size: candidatePool.length,
-      target: { min: targetMin, max: targetMax },
+      target: { min: minOdds, max: maxOdds },
+      used_live: usedLive && !fallbackToPrematch,
+      fallback_to_prematch: fallbackToPrematch,
+      logs,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

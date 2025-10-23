@@ -234,20 +234,34 @@ const Index = () => {
         return;
       }
 
+      // Build includeMarkets object from array
+      const includeMarketsObj = params.includeMarkets.reduce((acc: any, market: string) => {
+        acc[market] = true;
+        return acc;
+      }, {});
+
       const { data, error } = await supabase.functions.invoke("generate-ticket", {
         body: {
           fixtureIds,
-          targetMin: params.targetMin,
-          targetMax: params.targetMax,
+          minOdds: params.targetMin,
+          maxOdds: params.targetMax,
           risk: params.risk,
-          includeMarkets: params.includeMarkets,
-          minLegs: params.minLegs,
-          maxLegs: params.maxLegs,
+          includeMarkets: includeMarketsObj,
+          legsMin: params.minLegs,
+          legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMsg = error.message || "Failed to generate ticket";
+        throw new Error(errorMsg);
+      }
+
+      // Check for error response
+      if (data.code) {
+        throw new Error(data.message || "Failed to generate ticket");
+      }
 
       const ticketData = {
         mode: params.risk,
@@ -261,23 +275,24 @@ const Index = () => {
           bookmaker: leg.bookmaker,
         })),
         total_odds: data.ticket.total_odds,
+        used_live: data.used_live,
+        fallback_to_prematch: data.fallback_to_prematch,
       };
 
       setCurrentTicket(ticketData);
       setTicketDrawerOpen(true);
       setTicketCreatorOpen(false);
 
+      const oddsSource = data.used_live ? "Live" : "Pre-match";
+      const fallbackNote = data.fallback_to_prematch ? " (fallback from live)" : "";
+
       toast({
         title: "AI Ticket created!",
-        description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds`,
+        description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds • ${oddsSource}${fallbackNote}`,
       });
     } catch (error: any) {
       console.error("Error generating AI ticket:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to generate ticket. Please try again.",
-        variant: "destructive",
-      });
+      throw error; // Re-throw so dialog can catch it
     } finally {
       setGeneratingTicket(false);
     }
