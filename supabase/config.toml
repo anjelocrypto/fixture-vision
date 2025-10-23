@@ -1,1 +1,10 @@
 project_id = "dutkpzrisvqgxadxbkxo"
+
+[functions.fetch-leagues]
+verify_jwt = false
+
+[functions.fetch-fixtures]
+verify_jwt = false
+
+[functions.analyze-fixture]
+verify_jwt = false

@@ -14,7 +14,154 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analysis_cache: {
+        Row: {
+          computed_at: string | null
+          fixture_id: number
+          id: string
+          summary_json: Json
+        }
+        Insert: {
+          computed_at?: string | null
+          fixture_id: number
+          id?: string
+          summary_json: Json
+        }
+        Update: {
+          computed_at?: string | null
+          fixture_id?: number
+          id?: string
+          summary_json?: Json
+        }
+        Relationships: []
+      }
+      countries: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          flag: string | null
+          id: number
+          name: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string | null
+          flag?: string | null
+          id: number
+          name: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string | null
+          flag?: string | null
+          id?: number
+          name?: string
+        }
+        Relationships: []
+      }
+      fixtures: {
+        Row: {
+          created_at: string | null
+          date: string
+          id: number
+          league_id: number | null
+          status: string | null
+          teams_away: Json
+          teams_home: Json
+          timestamp: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          id: number
+          league_id?: number | null
+          status?: string | null
+          teams_away: Json
+          teams_home: Json
+          timestamp?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          id?: number
+          league_id?: number | null
+          status?: string | null
+          teams_away?: Json
+          teams_home?: Json
+          timestamp?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fixtures_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leagues: {
+        Row: {
+          country_id: number | null
+          created_at: string | null
+          id: number
+          logo: string | null
+          name: string
+          season: number
+        }
+        Insert: {
+          country_id?: number | null
+          created_at?: string | null
+          id: number
+          logo?: string | null
+          name: string
+          season: number
+        }
+        Update: {
+          country_id?: number | null
+          created_at?: string | null
+          id?: number
+          logo?: string | null
+          name?: string
+          season?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leagues_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stats_cache: {
+        Row: {
+          computed_at: string | null
+          fixture_id: number | null
+          id: string
+          last5_stats: Json
+          team_id: number
+        }
+        Insert: {
+          computed_at?: string | null
+          fixture_id?: number | null
+          id?: string
+          last5_stats: Json
+          team_id: number
+        }
+        Update: {
+          computed_at?: string | null
+          fixture_id?: number | null
+          id?: string
+          last5_stats?: Json
+          team_id?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
