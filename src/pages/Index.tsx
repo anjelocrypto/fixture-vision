@@ -122,7 +122,7 @@ const Index = () => {
       // Check if odds are available
       const { data: oddsData } = await supabase
         .from("odds_cache")
-        .select("fixture_id")
+        .select("fixture_id, captured_at")
         .eq("fixture_id", fixture.id)
         .single();
 
@@ -138,7 +138,12 @@ const Index = () => {
         });
 
         if (!valueError && valueData) {
-          setValueAnalysis(valueData);
+          // Add computed_at to each edge
+          const edgesWithTimestamp = valueData.edges?.map((edge: any) => ({
+            ...edge,
+            computed_at: oddsData.captured_at,
+          }));
+          setValueAnalysis({ ...valueData, edges: edgesWithTimestamp });
         }
       }
     } catch (error: any) {

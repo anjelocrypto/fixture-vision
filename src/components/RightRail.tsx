@@ -22,6 +22,8 @@ interface SuggestedMarket {
   odds: number;
   bookmaker: string;
   confidence?: string;
+  normalized_sum?: number;
+  computed_at?: string;
 }
 
 interface Analysis {
@@ -138,7 +140,7 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           </Card>
 
           {/* Suggested Markets */}
-          {suggested_markets.length > 0 && (
+          {suggested_markets.length > 0 ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Suggested Markets</h4>
@@ -150,10 +152,19 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
                   <div className="space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="space-y-0.5">
-                        <div className="text-sm font-medium capitalize">
-                          {market.market} {market.side} {market.line}
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium capitalize">
+                            {market.market} {market.side} {market.line}
+                          </div>
+                          {market.normalized_sum && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                              Σ={market.normalized_sum.toFixed(2)}
+                            </Badge>
+                          )}
                         </div>
-                        <div className="text-xs text-muted-foreground">{market.bookmaker}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {market.bookmaker}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-bold">@{market.odds.toFixed(2)}</div>
@@ -165,7 +176,7 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
                     
                     <div className="flex items-center justify-between pt-1.5 border-t text-xs">
                       <div className="text-muted-foreground">
-                        Model: {(market.model_prob * 100).toFixed(0)}% vs Book: {(market.book_prob * 100).toFixed(0)}%
+                        Model {(market.model_prob * 100).toFixed(0)}% vs Book {(market.book_prob * 100).toFixed(0)}%
                       </div>
                       <Button
                         size="sm"
@@ -182,6 +193,11 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
                 </Card>
               ))}
             </div>
+          ) : analysis?.odds_available && (
+            <Card className="p-4 text-center text-sm text-muted-foreground">
+              <p>No value opportunities found for this fixture.</p>
+              <p className="text-xs mt-1">Model probabilities may be too close to bookmaker odds.</p>
+            </Card>
           )}
 
           {/* Home Team */}

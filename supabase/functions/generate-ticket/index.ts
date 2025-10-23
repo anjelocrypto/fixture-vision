@@ -223,33 +223,72 @@ function getModeThresholds(mode: TicketMode) {
 async function calculateFixtureEdges(fixture: any, homeStats: any, awayStats: any, oddsPayload: any) {
   const edges: any[] = [];
   const HOME_ADVANTAGE = 1.06;
-  
-  // Simplified goals model
-  const lambdaHome = homeStats.goals * HOME_ADVANTAGE;
-  const lambdaAway = awayStats.goals;
+  const SHRINKAGE_TAU = 10;
+  const LEAGUE_MEAN_GOALS = 1.4;
+
+  // Bayesian shrinkage for rates
+  const homeWeight = homeStats.sample_size / (homeStats.sample_size + SHRINKAGE_TAU);
+  const awayWeight = awayStats.sample_size / (awayStats.sample_size + SHRINKAGE_TAU);
+
+  const lambdaHome = (homeStats.goals * homeWeight + LEAGUE_MEAN_GOALS * (1 - homeWeight)) * HOME_ADVANTAGE;
+  const lambdaAway = awayStats.goals * awayWeight + LEAGUE_MEAN_GOALS * (1 - awayWeight);
   const lambdaTotal = lambdaHome + lambdaAway;
 
   try {
-    const bookmakers = oddsPayload.response?.[0]?.bookmakers || [];
+    // Access bookmakers directly from cached payload
+    const bookmakers = oddsPayload.bookmakers || [];
 
-    for (const bookmaker of bookmakers.slice(0, 5)) {
-      for (const bet of bookmaker.bets || []) {
-        if (!bet.name.toLowerCase().includes("goals")) continue;
+    for (const bookmaker of bookmakers.slice(0, 10)) {
+      const bookmakerName = bookmaker.name;
 
-        for (const value of bet.values || []) {
-          const line = parseFloat(value.value);
+      for (const market of bookmaker.markets || []) {
+        const marketName = normalizeMarketName(market.name);
+        if (marketName !== "goals") continue;
+
+        // Build line pairs
+        const linePairs: Record<string, { over?: any; under?: any }> = {};
+
+        for (const value of market.values || []) {
+          const parsed = parseValueString(value.value);
+          if (!parsed) continue;
+
+          const { side, line } = parsed;
           if (![0.5, 1.5, 2.5, 3.5, 4.5].includes(line)) continue;
 
-          const overOdds = value.odd;
-          if (!overOdds) continue;
+          const lineKey = line.toFixed(2);
 
-          // Simple Poisson probability
-          const probOver = 1 - poissonCDF(lambdaTotal, Math.floor(line));
-          const probUnder = 1 - probOver;
+          if (!linePairs[lineKey]) {
+            linePairs[lineKey] = {};
+          }
 
-          const bookOverProb = 1 / overOdds;
-          const bookUnderProb = 1 - bookOverProb;
+          if (side === "over") {
+            linePairs[lineKey].over = { odd: value.odd };
+          } else if (side === "under") {
+            linePairs[lineKey].under = { odd: value.odd };
+          }
+        }
 
+        // Process complete pairs
+        for (const [lineKey, pair] of Object.entries(linePairs)) {
+          if (!pair.over?.odd || !pair.under?.odd) continue;
+
+          const line = parseFloat(lineKey);
+          const overOdds = pair.over.odd;
+          const underOdds = pair.under.odd;
+
+          // Model probabilities (Poisson)
+          const probUnder = poissonCDF(lambdaTotal, Math.floor(line));
+          const probOver = 1 - probUnder;
+
+          // Overround removal
+          const rawOverProb = 1 / overOdds;
+          const rawUnderProb = 1 / underOdds;
+          const totalRaw = rawOverProb + rawUnderProb;
+
+          const bookOverProb = rawOverProb / totalRaw;
+          const bookUnderProb = rawUnderProb / totalRaw;
+
+          // Compute edges
           const edgeOver = probOver - bookOverProb;
           const edgeUnder = probUnder - bookUnderProb;
 
@@ -262,7 +301,20 @@ async function calculateFixtureEdges(fixture: any, homeStats: any, awayStats: an
               book_prob: bookOverProb,
               edge: edgeOver,
               odds: overOdds,
-              bookmaker: bookmaker.name,
+              bookmaker: bookmakerName,
+            });
+          }
+
+          if (edgeUnder > 0) {
+            edges.push({
+              market: "goals",
+              line,
+              side: "under",
+              model_prob: probUnder,
+              book_prob: bookUnderProb,
+              edge: edgeUnder,
+              odds: underOdds,
+              bookmaker: bookmakerName,
             });
           }
         }
@@ -273,6 +325,29 @@ async function calculateFixtureEdges(fixture: any, homeStats: any, awayStats: an
   }
 
   return edges;
+}
+
+function parseValueString(valueStr: string): { side: "over" | "under"; line: number } | null {
+  const lower = valueStr.toLowerCase().trim();
+
+  const overMatch = lower.match(/(?:over|o)\s*([\d.]+)/);
+  const underMatch = lower.match(/(?:under|u)\s*([\d.]+)/);
+
+  if (overMatch) {
+    return { side: "over", line: parseFloat(overMatch[1]) };
+  } else if (underMatch) {
+    return { side: "under", line: parseFloat(underMatch[1]) };
+  }
+
+  return null;
+}
+
+function normalizeMarketName(marketName: string): string {
+  const lower = marketName.toLowerCase();
+  if (lower.includes("goals")) return "goals";
+  if (lower.includes("card")) return "cards";
+  if (lower.includes("corner")) return "corners";
+  return "unknown";
 }
 
 function poissonCDF(lambda: number, k: number): number {

@@ -89,6 +89,9 @@ interface EdgeResult {
   bookmaker: string;
   confidence: string;
   rationale: string;
+  raw_over_prob?: number;
+  raw_under_prob?: number;
+  normalized_sum?: number;
 }
 
 serve(async (req) => {
@@ -255,48 +258,80 @@ function computeEdges(models: ModelOutput[], oddsPayload: any): EdgeResult[] {
   const edges: EdgeResult[] = [];
 
   try {
-    const bookmakers = oddsPayload.response?.[0]?.bookmakers || [];
+    // Access bookmakers directly from cached payload
+    const bookmakers = oddsPayload.bookmakers || [];
 
     for (const bookmaker of bookmakers) {
       const bookmakerName = bookmaker.name;
 
-      for (const bet of bookmaker.bets || []) {
-        const marketName = normalizeMarketName(bet.name);
-        
-        for (const value of bet.values || []) {
-          const line = parseFloat(value.value);
-          const overOdds = value.odd;
-          
-          // Find corresponding under odds
-          const underValue = bet.values.find((v: any) => 
-            v.value === value.value && v.value !== value.value
-          );
-          
-          if (!overOdds || !underValue?.odd) continue;
-          
-          const underOdds = underValue.odd;
+      for (const market of bookmaker.markets || []) {
+        const marketName = normalizeMarketName(market.name);
+        if (marketName === "unknown") continue;
 
-          // Find matching model
-          const model = models.find(m => 
-            m.market === marketName && 
-            Math.abs(m.line - line) < 0.1
+        // Build a map of line -> {over, under} pairs
+        const linePairs: Record<string, { over?: any; under?: any }> = {};
+
+        for (const value of market.values || []) {
+          const parsed = parseValueString(value.value);
+          if (!parsed) continue;
+
+          const { side, line } = parsed;
+          const lineKey = line.toFixed(2); // Normalize to 2 decimals
+
+          if (!linePairs[lineKey]) {
+            linePairs[lineKey] = {};
+          }
+
+          if (side === "over") {
+            linePairs[lineKey].over = { odd: value.odd };
+          } else if (side === "under") {
+            linePairs[lineKey].under = { odd: value.odd };
+          }
+        }
+
+        // Process complete pairs only
+        for (const [lineKey, pair] of Object.entries(linePairs)) {
+          if (!pair.over?.odd || !pair.under?.odd) continue;
+
+          const line = parseFloat(lineKey);
+          const overOdds = pair.over.odd;
+          const underOdds = pair.under.odd;
+
+          // Find matching model (tolerance 0.01)
+          const model = models.find(
+            (m) => m.market === marketName && Math.abs(m.line - line) <= 0.01
           );
 
           if (!model) continue;
 
-          // Normalize bookmaker odds (remove overround)
+          // Overround removal (bookmaker + market + line level)
           const rawOverProb = 1 / overOdds;
           const rawUnderProb = 1 / underOdds;
           const totalRaw = rawOverProb + rawUnderProb;
-          
+
           const bookOverProb = rawOverProb / totalRaw;
           const bookUnderProb = rawUnderProb / totalRaw;
+
+          console.log(
+            `[computeEdges] bookmaker=${bookmakerName}, market=${marketName}, line=${line}, ` +
+            `p_over_raw=${rawOverProb.toFixed(4)}, p_under_raw=${rawUnderProb.toFixed(4)}, ` +
+            `sum_raw=${totalRaw.toFixed(4)}, p_over=${bookOverProb.toFixed(4)}, ` +
+            `p_under=${bookUnderProb.toFixed(4)}, sum=${(bookOverProb + bookUnderProb).toFixed(2)}`
+          );
 
           // Compute edges
           const edgeOver = model.model_prob_over - bookOverProb;
           const edgeUnder = model.model_prob_under - bookUnderProb;
 
+          console.log(
+            `[computeEdges] model_prob_over=${model.model_prob_over.toFixed(4)}, ` +
+            `model_prob_under=${model.model_prob_under.toFixed(4)}, ` +
+            `edge_over=${edgeOver.toFixed(4)}, edge_under=${edgeUnder.toFixed(4)}`
+          );
+
           // Add both sides if edge > 0
+          const normalizedSum = bookOverProb + bookUnderProb;
+          
           if (edgeOver > 0) {
             edges.push({
               market: marketName,
@@ -309,6 +344,9 @@ function computeEdges(models: ModelOutput[], oddsPayload: any): EdgeResult[] {
               bookmaker: bookmakerName,
               confidence: model.model_confidence,
               rationale: model.rationale,
+              raw_over_prob: rawOverProb,
+              raw_under_prob: rawUnderProb,
+              normalized_sum: normalizedSum,
             });
           }
 
@@ -324,6 +362,9 @@ function computeEdges(models: ModelOutput[], oddsPayload: any): EdgeResult[] {
               bookmaker: bookmakerName,
               confidence: model.model_confidence,
               rationale: model.rationale,
+              raw_over_prob: rawOverProb,
+              raw_under_prob: rawUnderProb,
+              normalized_sum: normalizedSum,
             });
           }
         }
@@ -334,6 +375,22 @@ function computeEdges(models: ModelOutput[], oddsPayload: any): EdgeResult[] {
   }
 
   return edges;
+}
+
+function parseValueString(valueStr: string): { side: "over" | "under"; line: number } | null {
+  const lower = valueStr.toLowerCase().trim();
+  
+  // Match patterns like "Over 2.5", "O 2.5", "Under 3", "U 3.5"
+  const overMatch = lower.match(/(?:over|o)\s*([\d.]+)/);
+  const underMatch = lower.match(/(?:under|u)\s*([\d.]+)/);
+  
+  if (overMatch) {
+    return { side: "over", line: parseFloat(overMatch[1]) };
+  } else if (underMatch) {
+    return { side: "under", line: parseFloat(underMatch[1]) };
+  }
+  
+  return null;
 }
 
 function normalizeMarketName(betName: string): string {
