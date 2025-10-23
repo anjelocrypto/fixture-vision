@@ -35,14 +35,14 @@ export function LeftRail({
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
   return (
-    <div className="w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col overflow-hidden">
-      <div className="p-4 border-b border-border shrink-0">
-        <h2 className="text-lg font-semibold mb-3">Filters</h2>
+    <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col overflow-hidden">
+      <div className="p-3 sm:p-4 border-b border-border shrink-0">
+        <h2 className="text-base sm:text-lg font-semibold mb-3">Filters</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search countries/leagues..." 
-            className="pl-9 bg-secondary/50"
+            className="pl-9 bg-secondary/50 text-sm"
           />
         </div>
       </div>

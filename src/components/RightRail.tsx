@@ -93,9 +93,9 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
 
   if (!analysis && !loading) {
     return (
-      <div className="w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-6">
-        <Card className="p-6 text-center">
-          <p className="text-muted-foreground">
+      <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-4 sm:p-6">
+        <Card className="p-4 sm:p-6 text-center">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Select a fixture and click <span className="text-primary font-medium">Analyse</span> to
             view AI predictions
           </p>
@@ -105,7 +105,7 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
   }
 
   return (
-    <div className="w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-6 overflow-y-auto">
+    <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />

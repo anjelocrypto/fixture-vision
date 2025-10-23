@@ -10,7 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Filter, Sparkles, Shield, Zap, Ticket } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Mock countries data
@@ -40,6 +41,8 @@ const Index = () => {
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const [currentTicket, setCurrentTicket] = useState<any>(null);
   const [generatingTicket, setGeneratingTicket] = useState(false);
+  const [leftSheetOpen, setLeftSheetOpen] = useState(false);
+  const [rightSheetOpen, setRightSheetOpen] = useState(false);
 
   const SEASON = 2025;
 
@@ -343,33 +346,73 @@ const Index = () => {
     <div className="h-screen flex flex-col">
       <AppHeader />
 
-      <div className="flex flex-1 overflow-hidden">
-        <LeftRail
-          countries={MOCK_COUNTRIES}
-          selectedCountry={selectedCountry}
-          onSelectCountry={setSelectedCountry}
-          leagues={leagues}
-          selectedLeague={selectedLeague}
-          onSelectLeague={setSelectedLeague}
-        />
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Desktop Left Rail */}
+        <div className="hidden lg:block">
+          <LeftRail
+            countries={MOCK_COUNTRIES}
+            selectedCountry={selectedCountry}
+            onSelectCountry={(id) => {
+              setSelectedCountry(id);
+              setLeftSheetOpen(false);
+            }}
+            leagues={leagues}
+            selectedLeague={selectedLeague}
+            onSelectLeague={(league) => {
+              setSelectedLeague(league);
+              setLeftSheetOpen(false);
+            }}
+          />
+        </div>
+
+        {/* Mobile Left Sheet */}
+        <Sheet open={leftSheetOpen} onOpenChange={setLeftSheetOpen}>
+          <SheetContent side="left" className="w-[280px] p-0 lg:hidden">
+            <LeftRail
+              countries={MOCK_COUNTRIES}
+              selectedCountry={selectedCountry}
+              onSelectCountry={(id) => {
+                setSelectedCountry(id);
+                setLeftSheetOpen(false);
+              }}
+              leagues={leagues}
+              selectedLeague={selectedLeague}
+              onSelectLeague={(league) => {
+                setSelectedLeague(league);
+                setLeftSheetOpen(false);
+              }}
+            />
+          </SheetContent>
+        </Sheet>
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-4 flex items-center justify-between shrink-0">
-            <h2 className="text-xl font-semibold">
+          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-between shrink-0 gap-2">
+            {/* Mobile menu button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden shrink-0"
+              onClick={() => setLeftSheetOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            
+            <h2 className="text-base sm:text-xl font-semibold truncate">
               {filterCriteria ? "Filtered Fixtures" : "All Fixtures"}
             </h2>
+            
             <Button
               variant={showFilterizer ? "default" : "outline"}
               size="sm"
               onClick={() => setShowFilterizer(!showFilterizer)}
-              className="gap-2"
+              className="gap-2 shrink-0"
             >
               <Filter className="h-4 w-4" />
-              {showFilterizer ? "Hide Filters" : "Show Filters"}
+              <span className="hidden sm:inline">{showFilterizer ? "Hide" : "Show"}</span>
             </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
             {showFilterizer && (
               <FilterizerPanel
                 onApplyFilters={handleApplyFilters}
@@ -389,7 +432,8 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="w-[360px] flex flex-col overflow-hidden border-l border-border">
+        {/* Desktop Right Rail */}
+        <div className="hidden lg:flex w-[360px] flex-col overflow-hidden border-l border-border">
           {/* Bet Optimizer (Quick) */}
           <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
             <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
@@ -454,6 +498,109 @@ const Index = () => {
             />
           </div>
         </div>
+
+        {/* Mobile Right Sheet */}
+        <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
+          <SheetContent side="right" className="w-full sm:w-[380px] p-0">
+            <div className="flex flex-col h-full">
+              {/* Bet Optimizer (Quick) */}
+              <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
+                <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => {
+                      generateQuickTicket("safe");
+                      setRightSheetOpen(false);
+                    }}
+                    disabled={generatingTicket}
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    Safe
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => {
+                      generateQuickTicket("standard");
+                      setRightSheetOpen(false);
+                    }}
+                    disabled={generatingTicket}
+                  >
+                    <Ticket className="h-3.5 w-3.5" />
+                    Standard
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => {
+                      generateQuickTicket("risky");
+                      setRightSheetOpen(false);
+                    }}
+                    disabled={generatingTicket}
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    Risky
+                  </Button>
+                </div>
+              </div>
+
+              {/* AI Ticket Creator (Advanced) */}
+              <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+                <Button
+                  className="w-full gap-2"
+                  variant="default"
+                  onClick={() => {
+                    setTicketCreatorOpen(true);
+                    setRightSheetOpen(false);
+                  }}
+                  disabled={displayFixtures.length === 0}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  AI Ticket Creator
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                <RightRail
+                  analysis={analysis}
+                  loading={loadingAnalysis}
+                  suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+                  onAddToTicket={(market) => {
+                    toast({
+                      title: "Market added",
+                      description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                    });
+                    setRightSheetOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Mobile Floating Action Button */}
+        <Button
+          className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg"
+          size="icon"
+          onClick={() => setRightSheetOpen(true)}
+        >
+          <BarChart3 className="h-6 w-6" />
+        </Button>
+
+        {/* Mobile AI Ticket Creator FAB */}
+        <Button
+          className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
+          onClick={() => setTicketCreatorOpen(true)}
+          disabled={displayFixtures.length === 0}
+        >
+          <Sparkles className="h-5 w-5" />
+          <span className="text-sm font-semibold">AI Ticket</span>
+        </Button>
       </div>
 
       <TicketCreatorDialog
