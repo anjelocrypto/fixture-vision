@@ -60,15 +60,33 @@ serve(async (req) => {
           "x-apisports-key": API_KEY
         };
     
+    console.log(`[fetch-fixtures] URL: ${url}`);
+    console.log(`[fetch-fixtures] Using ${isRapidAPI ? 'RapidAPI' : 'Direct API'} endpoint`);
+    
     const response = await fetch(url, { headers });
 
+    console.log(`[fetch-fixtures] API status: ${response.status}`);
+    
     if (!response.ok) {
-      throw new Error(`API-Football error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[fetch-fixtures] API error ${response.status}: ${errorText.slice(0, 500)}`);
+      throw new Error(`API-Football error: ${response.status} - ${errorText.slice(0, 200)}`);
     }
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log(`[fetch-fixtures] Response body snippet: ${responseText.slice(0, 500)}`);
+    
+    const data = JSON.parse(responseText);
+    
+    console.log(`[fetch-fixtures] Response structure:`, {
+      hasResponse: !!data.response,
+      responseLength: data.response?.length || 0,
+      hasErrors: !!data.errors,
+      errors: data.errors
+    });
     
     if (!data.response || data.response.length === 0) {
+      console.log(`[fetch-fixtures] Empty response from API for league ${league}, date ${date}`);
       return new Response(
         JSON.stringify({ fixtures: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
