@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
@@ -64,7 +64,7 @@ const Index = () => {
   }, [selectedCountry]);
 
   // Fetch leagues with React Query - properly keyed by country and season
-  const { data: leaguesData, isError: leaguesError, error: leaguesErrorData } = useQuery({
+  const { data: leaguesData, isError: leaguesError, isLoading: leaguesLoading } = useQuery({
     queryKey: ['leagues', selectedCountry, SEASON],
     queryFn: async () => {
       const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
@@ -85,9 +85,28 @@ const Index = () => {
       return data;
     },
     enabled: !!selectedCountry && selectedCountry !== 0,
-    staleTime: 60 * 60 * 1000, // 1 hour
-    retry: 1, // Only retry once
+    staleTime: 5 * 60 * 1000, // 5 minutes (shorter for faster updates)
+    gcTime: 60 * 60 * 1000, // Keep in cache for 1 hour
+    retry: 1,
+    refetchOnWindowFocus: false, // Don't refetch on window focus for better performance
   });
+
+  // Prefetch leagues for adjacent countries on hover
+  const prefetchLeagues = useCallback((countryId: number) => {
+    const country = MOCK_COUNTRIES.find((c) => c.id === countryId);
+    if (!country || country.id === 0) return;
+
+    queryClient.prefetchQuery({
+      queryKey: ['leagues', countryId, SEASON],
+      queryFn: async () => {
+        const { data } = await supabase.functions.invoke("fetch-leagues", {
+          body: { country: country.name, season: SEASON },
+        });
+        return data;
+      },
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [queryClient]);
 
   // Show error toast when leagues fail to load
   useEffect(() => {
@@ -378,7 +397,9 @@ const Index = () => {
               setSelectedLeague(league);
               setLeftSheetOpen(false);
             }}
+            leaguesLoading={leaguesLoading}
             leaguesError={leaguesError}
+            onCountryHover={prefetchLeagues}
           />
         </div>
 
@@ -398,7 +419,9 @@ const Index = () => {
                 setSelectedLeague(league);
                 setLeftSheetOpen(false);
               }}
+              leaguesLoading={leaguesLoading}
               leaguesError={leaguesError}
+              onCountryHover={prefetchLeagues}
             />
           </SheetContent>
         </Sheet>

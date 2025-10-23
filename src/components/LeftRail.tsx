@@ -24,6 +24,7 @@ interface LeftRailProps {
   onSelectLeague: (league: League) => void;
   leaguesLoading?: boolean;
   leaguesError?: boolean;
+  onCountryHover?: (countryId: number) => void;
 }
 
 export function LeftRail({ 
@@ -34,7 +35,8 @@ export function LeftRail({
   selectedLeague,
   onSelectLeague,
   leaguesLoading = false,
-  leaguesError = false
+  leaguesError = false,
+  onCountryHover
 }: LeftRailProps) {
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
@@ -61,6 +63,7 @@ export function LeftRail({
             <button
               key={country.id}
               onClick={() => onSelectCountry(country.id)}
+              onMouseEnter={() => onCountryHover?.(country.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                 selectedCountry === country.id
                   ? "bg-primary/10 text-primary border border-primary/20"
@@ -85,10 +88,17 @@ export function LeftRail({
                 <div className="px-3 py-2 text-xs text-destructive text-center">
                   Failed to load leagues
                 </div>
-              ) : leagues.length === 0 && leaguesLoading ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground text-center">
-                  Loading leagues...
-                </div>
+              ) : leaguesLoading ? (
+                // Skeleton loader
+                <>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className="px-3 py-2 rounded-md bg-accent/20 animate-pulse"
+                      style={{ height: '32px' }}
+                    />
+                  ))}
+                </>
               ) : leagues.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground text-center">
                   No leagues available
