@@ -46,6 +46,34 @@ const Index = () => {
 
   const SEASON = 2025;
 
+  // Prefetch leagues for all major countries on initial load
+  useEffect(() => {
+    const prefetchAllCountries = async () => {
+      // Skip World (id: 0) and prefetch all others
+      const countriesToPrefetch = MOCK_COUNTRIES.filter(c => c.id !== 0);
+      
+      for (const country of countriesToPrefetch) {
+        queryClient.prefetchQuery({
+          queryKey: ['leagues', country.id, SEASON],
+          queryFn: async () => {
+            const { data } = await supabase.functions.invoke("fetch-leagues", {
+              body: { country: country.name, season: SEASON },
+            });
+            return data;
+          },
+          staleTime: 5 * 60 * 1000,
+        });
+      }
+    };
+
+    // Start prefetching after a short delay to prioritize initial render
+    const timer = setTimeout(() => {
+      prefetchAllCountries();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [queryClient]);
+
   // Reset league and invalidate queries when country changes
   useEffect(() => {
     if (selectedCountry !== null) {
