@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { fixtureId, markets, bookmakers } = await req.json();
+    const { fixtureId, markets, bookmakers, live = false, forceRefresh = false } = await req.json();
     
     const API_KEY = Deno.env.get("API_FOOTBALL_KEY");
     if (!API_KEY) {
@@ -27,30 +27,42 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    console.log(`[fetch-odds] Fetching odds for fixture ${fixtureId}`);
+    const source = live ? "live" : "prematch";
+    console.log(`[fetch-odds] Fetching ${source} odds for fixture ${fixtureId}`);
 
-    // Check cache (30 min TTL)
-    const { data: cachedOdds } = await supabaseClient
-      .from("odds_cache")
-      .select("*")
-      .eq("fixture_id", fixtureId)
-      .gte("captured_at", new Date(Date.now() - 30 * 60 * 1000).toISOString())
-      .single();
+    // Check cache for pre-match only (30 min TTL)
+    if (!live && !forceRefresh) {
+      const { data: cachedOdds } = await supabaseClient
+        .from("odds_cache")
+        .select("*")
+        .eq("fixture_id", fixtureId)
+        .gte("captured_at", new Date(Date.now() - 30 * 60 * 1000).toISOString())
+        .single();
 
-    if (cachedOdds) {
-      console.log(`[fetch-odds] Cache hit for fixture ${fixtureId}`);
-      return new Response(
-        JSON.stringify({ ...cachedOdds, cache_hit: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (cachedOdds) {
+        console.log(`[fetch-odds] Cache hit for fixture ${fixtureId}`);
+        const selections = flattenOddsToSelections(fixtureId, cachedOdds.payload);
+        return new Response(
+          JSON.stringify({ 
+            ...cachedOdds, 
+            cache_hit: true,
+            source: "prematch",
+            selections 
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
-    console.log(`[fetch-odds] Cache miss for fixture ${fixtureId}, fetching from API`);
+    console.log(`[fetch-odds] ${forceRefresh ? 'Force refresh' : 'Cache miss'} for fixture ${fixtureId}, fetching from API`);
 
-    // Fetch from API-Football
-    const url = isRapidAPI
-      ? `https://api-football-v1.p.rapidapi.com/v3/odds?fixture=${fixtureId}`
-      : `https://v3.football.api-sports.io/odds?fixture=${fixtureId}`;
+    // Fetch from API-Football (pre-match or live)
+    const baseUrl = isRapidAPI
+      ? "https://api-football-v1.p.rapidapi.com/v3"
+      : "https://v3.football.api-sports.io";
+    
+    const endpoint = live ? `/odds/live?fixture=${fixtureId}` : `/odds?fixture=${fixtureId}`;
+    const url = `${baseUrl}${endpoint}`;
     
     const headers: Record<string, string> = isRapidAPI
       ? {
@@ -71,7 +83,12 @@ serve(async (req) => {
     
     if (!data.response || data.response.length === 0) {
       return new Response(
-        JSON.stringify({ available: false, fixture_id: fixtureId }),
+        JSON.stringify({ 
+          available: false, 
+          fixture_id: fixtureId,
+          source,
+          selections: []
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -95,22 +112,34 @@ serve(async (req) => {
       captured_at: new Date().toISOString(),
     };
 
-    // Cache the odds
-    await supabaseClient
-      .from("odds_cache")
-      .upsert(
-        {
-          fixture_id: fixtureId,
-          payload: normalizedOdds,
-          bookmakers: bookmakers || [],
-          markets: markets || [],
-          captured_at: new Date().toISOString(),
-        },
-        { onConflict: "fixture_id" }
-      );
+    // Flatten to selections
+    const selections = flattenOddsToSelections(fixtureId, normalizedOdds);
+
+    // Cache the odds (pre-match only, not live)
+    if (!live) {
+      await supabaseClient
+        .from("odds_cache")
+        .upsert(
+          {
+            fixture_id: fixtureId,
+            payload: normalizedOdds,
+            bookmakers: bookmakers || [],
+            markets: markets || [],
+            captured_at: new Date().toISOString(),
+          },
+          { onConflict: "fixture_id" }
+        );
+    }
+
+    console.log(`[fetch-odds] Found ${selections.length} selections for fixture ${fixtureId}`);
 
     return new Response(
-      JSON.stringify({ ...normalizedOdds, cache_hit: false }),
+      JSON.stringify({ 
+        ...normalizedOdds, 
+        cache_hit: false,
+        source,
+        selections
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
@@ -125,3 +154,81 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper: Flatten odds payload to normalized selections array
+function flattenOddsToSelections(fixtureId: number, payload: any): any[] {
+  const selections: any[] = [];
+  
+  if (!payload.bookmakers) return selections;
+
+  for (const bookmaker of payload.bookmakers) {
+    for (const market of bookmaker.markets || []) {
+      const marketName = (market.name || "").toLowerCase();
+      const marketId = market.id;
+      
+      // Determine normalized market type
+      let normalized = "other";
+      let marketType = "other";
+      
+      if (marketName.includes("goals") || marketName.includes("total") && marketName.includes("goals")) {
+        normalized = "goals";
+        marketType = "ou";
+      } else if (marketName.includes("corner")) {
+        normalized = "corners";
+        marketType = "ou";
+      } else if (marketName.includes("card") || marketName.includes("booking")) {
+        normalized = "cards";
+        marketType = "ou";
+      } else if (marketName.includes("offside")) {
+        normalized = "offsides";
+        marketType = "ou";
+      } else if (marketName.includes("foul")) {
+        normalized = "fouls";
+        marketType = "ou";
+      }
+
+      // Parse market values (over/under pairs, etc.)
+      for (const value of market.values || []) {
+        const label = String(value.value || "").trim();
+        const odds = parseFloat(value.odd);
+        
+        if (!label || isNaN(odds)) continue;
+
+        let kind = "other";
+        let line: number | undefined;
+
+        // Parse Over/Under selections
+        const overMatch = label.match(/(?:over|o)\s*([\d.]+)/i);
+        const underMatch = label.match(/(?:under|u)\s*([\d.]+)/i);
+        
+        if (overMatch) {
+          kind = "over";
+          line = parseFloat(overMatch[1]);
+        } else if (underMatch) {
+          kind = "under";
+          line = parseFloat(underMatch[1]);
+        } else if (label.toLowerCase().includes("yes")) {
+          kind = "yes";
+        } else if (label.toLowerCase().includes("no")) {
+          kind = "no";
+        } else if (["1", "x", "2"].includes(label.toLowerCase())) {
+          kind = label.toLowerCase();
+        }
+
+        selections.push({
+          fixtureId,
+          market: normalized,
+          provider_market_id: marketId,
+          label,
+          kind,
+          line,
+          bookmaker: bookmaker.name,
+          odds
+        });
+      }
+    }
+  }
+
+  return selections;
+}
+

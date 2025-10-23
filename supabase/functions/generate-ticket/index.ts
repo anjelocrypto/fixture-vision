@@ -71,9 +71,10 @@ async function handleAITicketCreator(body: any, supabase: any) {
     excludeMarkets = [],
     maxLegs = 8,
     minLegs = 3,
+    useLiveOdds = false,
   } = body;
 
-  console.log(`[AI-ticket] Creating ticket: fixtures=${fixtureIds.length}, target=${targetMin}-${targetMax}, risk=${risk}`);
+  console.log(`[AI-ticket] Creating ticket: fixtures=${fixtureIds.length}, target=${targetMin}-${targetMax}, risk=${risk}, live=${useLiveOdds}`);
 
   const markets = includeMarkets.filter((m: string) => !excludeMarkets.includes(m));
   const riskProfile = getRiskProfile(risk);
@@ -105,7 +106,10 @@ async function handleAITicketCreator(body: any, supabase: any) {
     const combined = analysisData.combined;
 
     const { data: oddsData } = await supabase.functions.invoke("fetch-odds", {
-      body: { fixtureId },
+      body: { 
+        fixtureId,
+        live: useLiveOdds,
+      },
     });
 
     if (!oddsData?.available || !oddsData.bookmakers) continue;

@@ -243,6 +243,7 @@ const Index = () => {
           includeMarkets: params.includeMarkets,
           minLegs: params.minLegs,
           maxLegs: params.maxLegs,
+          useLiveOdds: params.useLiveOdds,
         },
       });
 

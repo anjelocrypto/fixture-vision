@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Sparkles, Radio } from "lucide-react";
 
 interface TicketCreatorDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ export interface GenerateParams {
   includeMarkets: string[];
   minLegs: number;
   maxLegs: number;
+  useLiveOdds: boolean;
 }
 
 const PRESET_RANGES = [
@@ -45,6 +47,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
   const [includeMarkets, setIncludeMarkets] = useState(["goals", "corners", "cards"]);
   const [minLegs, setMinLegs] = useState(3);
   const [maxLegs, setMaxLegs] = useState(8);
+  const [useLiveOdds, setUseLiveOdds] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const handlePresetRange = (min: number, max: number) => {
@@ -72,6 +75,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
         includeMarkets,
         minLegs,
         maxLegs,
+        useLiveOdds,
       });
     } finally {
       setGenerating(false);
@@ -192,6 +196,26 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Live Odds Toggle */}
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+            <div className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <Label htmlFor="liveOdds" className="text-sm font-medium cursor-pointer">
+                  Use Live Odds
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Fetch real-time odds for in-play fixtures (if available)
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="liveOdds"
+              checked={useLiveOdds}
+              onCheckedChange={setUseLiveOdds}
+            />
           </div>
 
           {/* Legs Range */}

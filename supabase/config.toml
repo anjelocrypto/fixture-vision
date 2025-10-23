@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.generate-ticket]
 verify_jwt = false
+
+[functions.fetch-odds-bets]
+verify_jwt = false
