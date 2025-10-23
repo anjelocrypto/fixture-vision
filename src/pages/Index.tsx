@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Filter, Sparkles } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Mock countries data
@@ -186,10 +186,43 @@ const Index = () => {
 
   const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
 
-  const generateTicket = async (params: any) => {
+  // OLD Bet Optimizer (Safe/Standard/Risky)
+  const generateQuickTicket = async (mode: "safe" | "standard" | "risky") => {
     setGeneratingTicket(true);
     try {
-      // Get fixture IDs from current displayed fixtures
+      const { data, error } = await supabase.functions.invoke("generate-ticket", {
+        body: {
+          mode,
+          date: format(selectedDate, "yyyy-MM-dd"),
+          leagueIds: selectedLeague ? [selectedLeague.id] : [],
+        },
+      });
+
+      if (error) throw error;
+
+      setCurrentTicket(data);
+      setTicketDrawerOpen(true);
+
+      toast({
+        title: "Ticket generated!",
+        description: `${data.legs.length} selections with ${data.total_odds.toFixed(2)}x total odds`,
+      });
+    } catch (error: any) {
+      console.error("Error generating ticket:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate ticket. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingTicket(false);
+    }
+  };
+
+  // NEW AI Ticket Creator (with custom parameters)
+  const generateAITicket = async (params: any) => {
+    setGeneratingTicket(true);
+    try {
       const fixtureIds = displayFixtures.map((f: any) => f.id);
 
       if (fixtureIds.length === 0) {
@@ -215,7 +248,6 @@ const Index = () => {
 
       if (error) throw error;
 
-      // Convert to old ticket format for display
       const ticketData = {
         mode: params.risk,
         legs: data.ticket.legs.map((leg: any) => ({
@@ -235,11 +267,11 @@ const Index = () => {
       setTicketCreatorOpen(false);
 
       toast({
-        title: "Ticket generated!",
+        title: "AI Ticket created!",
         description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds`,
       });
     } catch (error: any) {
-      console.error("Error generating ticket:", error);
+      console.error("Error generating AI ticket:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to generate ticket. Please try again.",
@@ -342,8 +374,45 @@ const Index = () => {
         </div>
 
         <div className="w-[360px] flex flex-col overflow-hidden border-l border-border">
-          {/* AI Ticket Creator */}
-          <div className="p-4 border-b bg-background space-y-2 shrink-0">
+          {/* Bet Optimizer (Quick) */}
+          <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
+            <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateQuickTicket("safe")}
+                disabled={generatingTicket}
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Safe
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateQuickTicket("standard")}
+                disabled={generatingTicket}
+              >
+                <Ticket className="h-3.5 w-3.5" />
+                Standard
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => generateQuickTicket("risky")}
+                disabled={generatingTicket}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Risky
+              </Button>
+            </div>
+          </div>
+
+          {/* AI Ticket Creator (Advanced) */}
+          <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
             <Button
               className="w-full gap-2"
               variant="default"
@@ -374,7 +443,7 @@ const Index = () => {
       <TicketCreatorDialog
         open={ticketCreatorOpen}
         onOpenChange={setTicketCreatorOpen}
-        onGenerate={generateTicket}
+        onGenerate={generateAITicket}
         fixturesCount={displayFixtures.length}
       />
 
