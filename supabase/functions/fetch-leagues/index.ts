@@ -30,20 +30,32 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Check cache first
-    const { data: cachedLeagues, error: cacheError } = await supabaseClient
-      .from("leagues")
-      .select("*")
-      .eq("season", season)
-      .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // 24h cache
+    // First, look up the country_id to properly filter cached leagues
+    const { data: cachedCountry } = await supabaseClient
+      .from("countries")
+      .select("id")
+      .eq("name", country)
+      .single();
 
-    if (cachedLeagues && cachedLeagues.length > 0) {
-      console.log("Returning cached leagues");
-      return new Response(
-        JSON.stringify({ leagues: cachedLeagues }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Check cache first - MUST filter by both season AND country_id
+    if (cachedCountry) {
+      const { data: cachedLeagues } = await supabaseClient
+        .from("leagues")
+        .select("*")
+        .eq("season", season)
+        .eq("country_id", cachedCountry.id)
+        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // 24h cache
+
+      if (cachedLeagues && cachedLeagues.length > 0) {
+        console.log(`[fetch-leagues] Returning ${cachedLeagues.length} cached leagues for ${country} (country_id: ${cachedCountry.id})`);
+        return new Response(
+          JSON.stringify({ leagues: cachedLeagues }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
+
+    console.log(`[fetch-leagues] No cache found for ${country}, fetching from API...`);
 
     // Fetch from API-Football
     console.log(`Fetching leagues for ${country}, season ${season}`);
@@ -151,8 +163,11 @@ serve(async (req) => {
       name: item.league.name,
       logo: item.league.logo,
       country_id: countryId,
+      country_name: countryData?.name || country,
       season: season,
     }));
+
+    console.log(`[fetch-leagues] Caching ${leagues.length} leagues for ${country} (country_id: ${countryId})`);
 
     // Cache in database (upsert)
     for (const league of leagues) {
