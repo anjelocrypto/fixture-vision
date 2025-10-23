@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, getRiskProfile, Market } from "../_shared/ticket_rules.ts";
+import { pickFromCombined } from "../_shared/rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,7 @@ interface TicketLeg {
   odds: number;
   bookmaker: string;
   combinedAvg?: number;
+  source?: "prematch" | "live";
 }
 
 serve(async (req) => {

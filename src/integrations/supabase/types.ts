@@ -100,6 +100,36 @@ export type Database = {
           },
         ]
       }
+      generated_tickets: {
+        Row: {
+          created_at: string | null
+          id: string
+          legs: Json
+          max_target: number
+          min_target: number
+          total_odds: number
+          used_live: boolean
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          legs: Json
+          max_target: number
+          min_target: number
+          total_odds: number
+          used_live?: boolean
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          legs?: Json
+          max_target?: number
+          min_target?: number
+          total_odds?: number
+          used_live?: boolean
+        }
+        Relationships: []
+      }
       leagues: {
         Row: {
           country_id: number | null
@@ -156,6 +186,45 @@ export type Database = {
           fixture_id?: number
           markets?: string[] | null
           payload?: Json
+        }
+        Relationships: []
+      }
+      optimizer_cache: {
+        Row: {
+          bookmaker: string | null
+          combined_value: number
+          computed_at: string | null
+          fixture_id: number
+          id: string
+          line: number
+          market: string
+          odds: number | null
+          side: string
+          source: string | null
+        }
+        Insert: {
+          bookmaker?: string | null
+          combined_value: number
+          computed_at?: string | null
+          fixture_id: number
+          id?: string
+          line: number
+          market: string
+          odds?: number | null
+          side: string
+          source?: string | null
+        }
+        Update: {
+          bookmaker?: string | null
+          combined_value?: number
+          computed_at?: string | null
+          fixture_id?: number
+          id?: string
+          line?: number
+          market?: string
+          odds?: number | null
+          side?: string
+          source?: string | null
         }
         Relationships: []
       }
