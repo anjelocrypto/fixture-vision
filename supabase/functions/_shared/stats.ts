@@ -12,6 +12,8 @@ export type Last5Result = {
   sample_size: number;
   last_five_fixture_ids: number[];
   last_final_fixture: number | null;
+  computed_at?: string;
+  source?: string;
 };
 
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
@@ -130,6 +132,8 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
     sample_size: n,
     last_five_fixture_ids: fixtures,
     last_final_fixture: fixtures[0] ?? null,
+    computed_at: new Date().toISOString(),
+    source: "api-football",
   };
   
   console.log(`[stats] Team ${teamId} averages (${n} matches): goals=${result.goals.toFixed(2)}, corners=${result.corners.toFixed(2)}, cards=${result.cards.toFixed(2)}`);
