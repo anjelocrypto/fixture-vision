@@ -45,6 +45,27 @@ serve(async (req) => {
 
     // Parse window_hours from request body (default 48h)
     const { window_hours = 48 } = await req.json().catch(() => ({}));
+
+    // Overlap guard: check if another optimize run is currently running for this window
+    const runKey = `optimize-selections-${window_hours}h`;
+    const { data: recentRuns } = await supabaseClient
+      .from("optimizer_run_logs")
+      .select("id, started_at, finished_at")
+      .eq("run_type", runKey)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentRuns && !recentRuns.finished_at) {
+      const runningForMs = Date.now() - new Date(recentRuns.started_at).getTime();
+      if (runningForMs < 180000) { // 3 min max runtime before we consider it stale
+        console.log(`[optimize-selections-refresh] Another ${runKey} run is in progress (started ${Math.floor(runningForMs/1000)}s ago), skipping`);
+        return new Response(
+          JSON.stringify({ skipped: true, reason: "concurrent_run_in_progress" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
     
     // Get window (default 48h, can be 6h or 1h from cron)
     const now = new Date();
@@ -285,7 +306,16 @@ serve(async (req) => {
     }
 
     const with_odds = fixtures.filter(f => oddsMap.has(f.id)).length;
-    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (with_odds: ${with_odds}, skipped: ${skipped})`);
+    const coveragePct = fixtures.length > 0 ? Math.round((with_odds / fixtures.length) * 100) : 0;
+    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (with_odds: ${with_odds}/${fixtures.length} = ${coveragePct}%, skipped: ${skipped})`);
+
+    // Alert on low coverage
+    if (coveragePct < 90 && fixtures.length >= 5) {
+      console.warn(`[optimize-selections-refresh] ⚠️ LOW COVERAGE: Only ${coveragePct}% of fixtures have odds (${with_odds}/${fixtures.length})`);
+    }
+    if (with_odds > 0 && selections.length < with_odds * 2) {
+      console.warn(`[optimize-selections-refresh] ⚠️ LOW SELECTIONS: Only ${selections.length} selections from ${with_odds} fixtures with odds (expected ~${with_odds * 4}+)`);
+    }
 
     // Upsert selections (batch)
     if (selections.length > 0) {

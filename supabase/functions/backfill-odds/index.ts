@@ -43,6 +43,27 @@ serve(async (req) => {
 
     // Parse window_hours from request body (default 48h)
     const { window_hours = 48 } = await req.json().catch(() => ({}));
+
+    // Overlap guard: check if another backfill is currently running for this window
+    const runKey = `backfill-odds-${window_hours}h`;
+    const { data: recentRuns } = await supabaseClient
+      .from("optimizer_run_logs")
+      .select("id, started_at, finished_at")
+      .eq("run_type", runKey)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentRuns && !recentRuns.finished_at) {
+      const runningForMs = Date.now() - new Date(recentRuns.started_at).getTime();
+      if (runningForMs < 300000) { // 5 min max runtime before we consider it stale
+        console.log(`[backfill-odds] Another ${runKey} run is in progress (started ${Math.floor(runningForMs/1000)}s ago), skipping`);
+        return new Response(
+          JSON.stringify({ skipped: true, reason: "concurrent_run_in_progress" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
     
     // Get window (default 48h, can be 6h or 1h from cron)
     const now = new Date();
@@ -83,17 +104,45 @@ serve(async (req) => {
     let failed = 0;
     let skipped = 0;
 
-    // Adaptive rate limiting with exponential backoff
-    const MAX_RPM = Math.floor((Deno.env.get("API_RATE_LIMIT_RPM") || "30") as any * 0.8);
-    const BASE_DELAY = Math.ceil(60000 / MAX_RPM);
+    // ULTRA plan: 50 RPM soft target (75k/day = ~52 RPM, so 50 is safe)
+    const MAX_RPM = parseInt(Deno.env.get("API_RATE_LIMIT_RPM") || "50");
+    const BASE_DELAY = Math.ceil(60000 / MAX_RPM); // ~1200ms for 50 RPM
     let currentDelay = BASE_DELAY;
     const MAX_BACKOFF_DELAY = 10000;
+    const DAILY_BUDGET = parseInt(Deno.env.get("API_DAILY_BUDGET") || "65000");
+    const PREMATCH_TTL_MIN = parseInt(Deno.env.get("PREMATCH_TTL_MIN") || "45");
+
+    // Daily budget guard: count today's backfill calls
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { count: todayCallCount } = await supabaseClient
+      .from("optimizer_run_logs")
+      .select("*", { count: "exact", head: true })
+      .gte("started_at", todayStart.toISOString())
+      .like("run_type", "backfill-odds-%");
+
+    if (todayCallCount && todayCallCount >= DAILY_BUDGET) {
+      console.warn(`[backfill-odds] DAILY BUDGET EXCEEDED: ${todayCallCount}/${DAILY_BUDGET} calls today. Halting to protect quota.`);
+      return new Response(
+        JSON.stringify({ 
+          scanned: 0, 
+          fetched: 0, 
+          failed: 0, 
+          budget_exceeded: true,
+          daily_calls: todayCallCount,
+          budget: DAILY_BUDGET 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[backfill-odds] Daily budget check: ${todayCallCount || 0}/${DAILY_BUDGET} calls used today (${MAX_RPM} RPM, ${PREMATCH_TTL_MIN}min TTL)`);
 
     for (const fixture of fixtures) {
       scanned++;
       
       try {
-        // Check if we already have recent odds (within last 90 minutes)
+        // Check if we already have recent odds (within TTL window)
         const { data: existingOdds } = await supabaseClient
           .from("odds_cache")
           .select("captured_at")
@@ -104,9 +153,8 @@ serve(async (req) => {
 
         if (existingOdds) {
           const capturedAt = new Date(existingOdds.captured_at);
-          const ninetyMinAgo = new Date(Date.now() - 90 * 60 * 1000);
-          if (capturedAt > ninetyMinAgo) {
-            console.log(`[backfill-odds] Fixture ${fixture.id} has recent odds (within 90min), skipping`);
+          const ttlAgo = new Date(Date.now() - PREMATCH_TTL_MIN * 60 * 1000);
+          if (capturedAt > ttlAgo) {
             skipped++;
             continue;
           }
