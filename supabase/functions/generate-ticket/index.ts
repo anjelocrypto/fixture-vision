@@ -801,7 +801,7 @@ function generateOptimizedTicket(
   maxLegs: number,
   preferredOdds: number
 ): { total_odds: number; legs: TicketLeg[]; attempts: number } | null {
-  const MAX_ATTEMPTS = 50;
+  const MAX_ATTEMPTS = 200;
   let bestTicket: { total_odds: number; legs: TicketLeg[] } | null = null;
   let bestDistance = Infinity;
 
@@ -834,7 +834,7 @@ function generateOptimizedTicket(
       const newProduct = product * candidate.odds;
 
       // Accept if within or approaching target
-      if (newProduct <= targetMax * 1.15) {
+      if (newProduct <= targetMax * 1.25) {
         legs.push(candidate);
         product = newProduct;
         usedFixtures.add(candidate.fixtureId);
