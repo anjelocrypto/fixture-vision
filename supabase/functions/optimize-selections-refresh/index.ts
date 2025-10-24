@@ -223,16 +223,19 @@ serve(async (req) => {
 
           if (!targetBet?.values) continue;
 
-          // Find the specific line in values array
+          // Find the specific line in values array with exact matching
           const selection = targetBet.values.find((v: any) => {
-            const value = v.value?.toLowerCase() || "";
-            const lineMatch = value.match(/(\d+\.?\d*)/);
+            const value = v.value || "";
+            const valueLower = value.toLowerCase();
+            
+            // Extract the line number from the value string
+            const lineMatch = valueLower.match(/(\d+\.?\d*)/);
             if (!lineMatch) return false;
             const oddsLine = parseFloat(lineMatch[1]);
-            return (
-              value.includes(pick.side) &&
-              Math.abs(oddsLine - pick.line) < 0.01
-            );
+            
+            // Check exact match: side must be at start and line must match exactly
+            const targetString = `${pick.side} ${pick.line}`;
+            return valueLower.startsWith(pick.side) && Math.abs(oddsLine - pick.line) < 0.01;
           });
 
           if (selection?.odd) {
