@@ -187,42 +187,52 @@ serve(async (req) => {
 function flattenOddsToSelections(fixtureOdds: any) {
   const selections: any[] = [];
 
-  for (const bookmaker of fixtureOdds.bookmakers) {
-    for (const market of bookmaker.markets) {
-      for (const outcome of market.outcomes) {
+  for (const bookmaker of fixtureOdds.bookmakers || []) {
+    const bookmakerName = bookmaker.name || `Bookmaker ${bookmaker.id}`;
+    
+    // API-Football uses "bets" not "markets"
+    for (const bet of bookmaker.bets || bookmaker.markets || []) {
+      const betName = bet.name;
+      const normalizedMarket = normalizeMarketNameOld(betName);
+      
+      // Skip non-relevant markets
+      if (normalizedMarket === "unknown") continue;
+      
+      for (const value of bet.values || []) {
+        const parsed = parseValueString(value.value);
+        if (!parsed) continue;
+        
         selections.push({
-          bookmaker: bookmaker.name,
-          market: normalizeMarketNameOld(market.name),
-          kind: normalizeOutcomeName(outcome.name),
-          odds: outcome.odd,
-          line: extractLineFromMarket(market.name),
+          bookmaker: bookmakerName,
+          market: normalizedMarket,
+          kind: parsed.side,
+          odds: parseFloat(value.odd),
+          line: parsed.line,
         });
       }
     }
   }
 
+  console.log(`[fetch-odds] Flattened ${selections.length} selections from ${fixtureOdds.bookmakers?.length || 0} bookmakers`);
   return selections;
 }
 
-function extractLineFromMarket(marketName: string): number | null {
-  const match = marketName.match(/Over (\d+\.?\d*)/i);
-  if (match) {
-    return parseFloat(match[1]);
-  }
+function parseValueString(valueStr: string): { side: "over" | "under"; line: number } | null {
+  const lower = valueStr.toLowerCase().trim();
+  const overMatch = lower.match(/(?:over|o)\s*([\d.]+)/);
+  const underMatch = lower.match(/(?:under|u)\s*([\d.]+)/);
+  
+  if (overMatch) return { side: "over", line: parseFloat(overMatch[1]) };
+  if (underMatch) return { side: "under", line: parseFloat(underMatch[1]) };
   return null;
-}
-
-function normalizeOutcomeName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("over")) return "over";
-  if (lower.includes("under")) return "under";
-  return name;
 }
 
 function normalizeMarketNameOld(marketName: string): string {
   const lower = marketName.toLowerCase();
-  if (lower.includes("goals")) return "goals";
+  if (lower.includes("goal")) return "goals";
   if (lower.includes("card")) return "cards";
   if (lower.includes("corner")) return "corners";
+  if (lower.includes("foul")) return "fouls";
+  if (lower.includes("offside")) return "offsides";
   return "unknown";
 }
