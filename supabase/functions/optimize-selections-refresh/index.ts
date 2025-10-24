@@ -229,17 +229,27 @@ serve(async (req) => {
 
           if (!targetBet?.values) continue;
 
-          // Find the specific line in values array with EXACT format matching
+          // Find the specific line in values array with STRICT format matching
           const selection = targetBet.values.find((v: any) => {
             const value = v.value || "";
-            const valueLower = value.toLowerCase().trim();
+            // Normalize: lowercase, trim, collapse multiple spaces
+            const valueLower = value.toLowerCase().trim().replace(/\s+/g, ' ');
             
             // Build exact target string: "over 2.5" or "under 2.5"
             const targetString = `${pick.side.toLowerCase()} ${pick.line}`;
             
-            // EXACT match only - must be exactly "over 2.5" format
-            // This prevents matching "Over 1.5" when looking for "over 2.5"
-            return valueLower === targetString;
+            // STRICT match - must be exactly "over 2.5" format
+            if (valueLower !== targetString) return false;
+            
+            // ADDITIONAL VALIDATION: odds must be reasonable for this line
+            // Over 2.5 should be 1.4-3.5 range, never 5.0+
+            const odds = parseFloat(v.odd);
+            if (pick.line === 2.5 && odds >= 5.0) {
+              console.warn(`[optimize] Rejected suspicious odds for ${targetString}: ${odds} (bookmaker may have wrong data)`);
+              return false;
+            }
+            
+            return true;
           });
 
           if (selection?.odd) {
