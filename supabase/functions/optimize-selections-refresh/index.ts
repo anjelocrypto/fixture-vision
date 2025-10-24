@@ -43,14 +43,16 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Starting refresh${user ? ` for user ${user.id}` : ' (service role)'}`);
 
-    // Get 7-day window (now → +7 days)
+    // Parse window_hours from request body (default 48h)
+    const { window_hours = 48 } = await req.json().catch(() => ({}));
+    
+    // Get window (default 48h, can be 6h or 1h from cron)
     const now = new Date();
     const nowTimestamp = Math.floor(now.getTime() / 1000);
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 7);
+    const endDate = new Date(now.getTime() + (window_hours * 60 * 60 * 1000));
     const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
-    console.log(`[optimize-selections-refresh] Window: ${now.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`[optimize-selections-refresh] Window: ${now.toISOString()} to ${endDate.toISOString()} (${window_hours}h)`);
 
     // Fetch upcoming fixtures in window
     const { data: fixtures, error: fixturesError } = await supabaseClient
@@ -146,6 +148,7 @@ serve(async (req) => {
     let inserted = 0;
     let skipped = 0;
     const selections: any[] = [];
+    const started_at = new Date();
 
     for (const fixture of fixtures) {
       scanned++;
@@ -276,7 +279,8 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (skipped: ${skipped})`);
+    const with_odds = fixtures.filter(f => oddsMap.has(f.id)).length;
+    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (with_odds: ${with_odds}, skipped: ${skipped})`);
 
     // Upsert selections (batch)
     if (selections.length > 0) {
@@ -300,13 +304,37 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Successfully upserted ${inserted} selections`);
 
+    // Record run log
+    const finished_at = new Date();
+    const duration_ms = finished_at.getTime() - started_at.getTime();
+    const runLogId = crypto.randomUUID();
+    
+    await supabaseClient.from("optimizer_run_logs").insert({
+      id: runLogId,
+      run_type: `optimize-selections-${window_hours}h`,
+      window_start: now.toISOString(),
+      window_end: endDate.toISOString(),
+      scope: {},
+      scanned,
+      with_odds,
+      upserted: inserted,
+      skipped,
+      failed: 0,
+      started_at: started_at.toISOString(),
+      finished_at: finished_at.toISOString(),
+      duration_ms,
+    });
+
     return new Response(
       JSON.stringify({
         scanned,
+        with_odds,
         inserted,
         skipped,
+        failed: 0,
         window: { start: now.toISOString(), end: endDate.toISOString() },
         rules_version: RULES_VERSION,
+        duration_ms,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

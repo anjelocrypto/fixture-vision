@@ -26,7 +26,7 @@ export const AdminRefreshButton = () => {
       const oddsResult = oddsData as { scanned: number; fetched: number; skipped: number; failed: number };
       
       toast.success(
-        `Odds backfill: ${oddsResult.fetched} fetched, ${oddsResult.skipped} skipped, ${oddsResult.failed} failed`
+        `Odds (48h): ${oddsResult.scanned} scanned, ${oddsResult.fetched} fetched, ${oddsResult.skipped} skipped (90min cache), ${oddsResult.failed} failed`
       );
 
       // Step 2: Optimize selections
@@ -41,10 +41,17 @@ export const AdminRefreshButton = () => {
         throw selectionsError;
       }
 
-      const selectionsResult = selectionsData as { scanned: number; inserted: number; skipped: number };
+      const selectionsResult = selectionsData as { 
+        scanned: number; 
+        with_odds: number;
+        inserted: number; 
+        skipped: number;
+        failed: number;
+        duration_ms: number;
+      };
 
       toast.success(
-        `Selections: ${selectionsResult.inserted} upserted from ${selectionsResult.scanned} fixtures`
+        `Selections (48h): ${selectionsResult.inserted} upserted from ${selectionsResult.scanned} fixtures (${selectionsResult.with_odds} with odds) in ${(selectionsResult.duration_ms / 1000).toFixed(1)}s`
       );
 
     } catch (error) {

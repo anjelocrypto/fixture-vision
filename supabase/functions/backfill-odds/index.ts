@@ -41,14 +41,16 @@ serve(async (req) => {
 
     console.log(`[backfill-odds] Starting bulk odds backfill${user ? ` for user ${user.id}` : ' (service role)'}`);
 
-    // Get 7-day window
+    // Parse window_hours from request body (default 48h)
+    const { window_hours = 48 } = await req.json().catch(() => ({}));
+    
+    // Get window (default 48h, can be 6h or 1h from cron)
     const now = new Date();
     const nowTimestamp = Math.floor(now.getTime() / 1000);
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 7);
+    const endDate = new Date(now.getTime() + (window_hours * 60 * 60 * 1000));
     const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
-    console.log(`[backfill-odds] Window: ${now.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`[backfill-odds] Window: ${now.toISOString()} to ${endDate.toISOString()} (${window_hours}h)`);
 
     // Fetch upcoming fixtures
     const { data: fixtures, error: fixturesError } = await supabaseClient
@@ -80,14 +82,17 @@ serve(async (req) => {
     let failed = 0;
     let skipped = 0;
 
-    // Rate limiting: 30 requests per minute
-    const RATE_LIMIT_DELAY = 2100; // ms between requests (slightly over 2s for safety)
+    // Adaptive rate limiting with exponential backoff
+    const MAX_RPM = Math.floor((Deno.env.get("API_RATE_LIMIT_RPM") || "30") as any * 0.8);
+    const BASE_DELAY = Math.ceil(60000 / MAX_RPM);
+    let currentDelay = BASE_DELAY;
+    const MAX_BACKOFF_DELAY = 10000;
 
     for (const fixture of fixtures) {
       scanned++;
       
       try {
-        // Check if we already have recent odds (within last hour)
+        // Check if we already have recent odds (within last 90 minutes)
         const { data: existingOdds } = await supabaseClient
           .from("odds_cache")
           .select("captured_at")
@@ -98,9 +103,9 @@ serve(async (req) => {
 
         if (existingOdds) {
           const capturedAt = new Date(existingOdds.captured_at);
-          const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          if (capturedAt > hourAgo) {
-            console.log(`[backfill-odds] Fixture ${fixture.id} has recent odds, skipping`);
+          const ninetyMinAgo = new Date(Date.now() - 90 * 60 * 1000);
+          if (capturedAt > ninetyMinAgo) {
+            console.log(`[backfill-odds] Fixture ${fixture.id} has recent odds (within 90min), skipping`);
             skipped++;
             continue;
           }
@@ -114,11 +119,23 @@ serve(async (req) => {
           headers: apiHeaders(),
         });
 
+        // Handle 429 rate limit with exponential backoff
+        if (response.status === 429) {
+          console.warn(`[backfill-odds] Rate limit hit (429) for fixture ${fixture.id}, backing off...`);
+          currentDelay = Math.min(currentDelay * 2, MAX_BACKOFF_DELAY);
+          await new Promise(resolve => setTimeout(resolve, currentDelay));
+          failed++;
+          continue;
+        }
+
         if (!response.ok) {
           console.error(`[backfill-odds] API error for fixture ${fixture.id}: ${response.status}`);
           failed++;
           continue;
         }
+
+        // Reset delay on success
+        currentDelay = BASE_DELAY;
 
         const data = await response.json();
 
@@ -154,9 +171,9 @@ serve(async (req) => {
           fetched++;
         }
 
-        // Rate limit delay
+        // Adaptive rate limit delay
         if (scanned < fixtures.length) {
-          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+          await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
 
       } catch (error) {
