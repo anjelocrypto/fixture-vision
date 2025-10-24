@@ -28,10 +28,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.optimize-selections-refresh]
-verify_jwt = true
+verify_jwt = false
 
 [functions.backfill-odds]
-verify_jwt = true
+verify_jwt = false
 
 [functions.warmup-odds]
 verify_jwt = true
