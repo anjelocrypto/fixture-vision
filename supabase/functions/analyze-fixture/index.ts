@@ -1,7 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { API_BASE, apiHeaders } from "../_shared/api.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+
+// Inlined API utilities (moved here to avoid cross-file import boot issues)
+function apiHeaders(): Record<string, string> {
+  const key = Deno.env.get("API_FOOTBALL_KEY") ?? "";
+  if (!key) {
+    throw new Error("[api] Missing API_FOOTBALL_KEY environment variable");
+  }
+  console.log("[api] Using API-Sports direct endpoint with x-apisports-key");
+  return {
+    "x-apisports-key": key
+  };
+}
+
+const API_BASE = "https://v3.football.api-sports.io";
 
 // Inlined stats utilities (moved here to avoid cross-file import boot issues)
 // Computes last-5 finished fixtures averages for a team using API-Football
