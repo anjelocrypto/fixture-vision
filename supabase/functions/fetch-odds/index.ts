@@ -87,9 +87,20 @@ serve(async (req) => {
 
         if (cacheAge < ONE_HOUR) {
           console.log(`[fetch-odds] Cache hit for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
+          
+          // Flatten cached odds to selections format
+          const cachedFixtureOdds = {
+            fixture: cachedOdds.payload.fixture,
+            bookmakers: cachedOdds.payload.bookmakers || [],
+          };
+          const selections = flattenOddsToSelections(cachedFixtureOdds);
+          
+          console.log(`[fetch-odds] Returning ${selections.length} cached selections for fixture ${fixtureId}`);
+          
           return new Response(
             JSON.stringify({
-              ...cachedOdds.payload,
+              fixture: cachedFixtureOdds.fixture,
+              selections,
               source: live ? "live" : "prematch",
               cached: true,
             }),
