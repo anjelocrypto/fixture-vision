@@ -91,10 +91,18 @@ serve(async (req) => {
 
     console.log(`[filterizer-query] Window: ${queryStart.toISOString()} to ${endDate.toISOString()}`);
 
-    // Build query
+    // Build query with fixture join to get team names
     let query = supabaseClient
       .from("optimized_selections")
-      .select("*")
+      .select(`
+        *,
+        fixtures:fixture_id (
+          id,
+          teams_home,
+          teams_away,
+          league_id
+        )
+      `)
       .eq("market", market)
       .eq("side", side)
       .gte("odds", minOdds)
@@ -127,6 +135,12 @@ serve(async (req) => {
 
     // Post-filter: drop obviously wrong odds for common lines
     const rows = (selections || []).filter((row: any) => {
+      // Skip if fixture join failed
+      if (!row.fixtures) {
+        console.warn(`[filterizer-query] Skipping row with missing fixture data: ${row.fixture_id}`);
+        return false;
+      }
+      
       if (market === "goals" && Math.abs(Number(row.line) - 2.5) <= 0.01 && Number(row.odds) >= 5.0) {
         console.warn(`[filterizer-query] Dropping suspicious odds for goals 2.5: ${row.odds} (fixture ${row.fixture_id}, ${row.bookmaker})`);
         return false;
@@ -144,10 +158,37 @@ serve(async (req) => {
     }
     const deduped = Array.from(bestByFixture.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
 
+    // Enrich with fixture metadata
+    const enriched = deduped.map((row: any) => {
+      const fixture = row.fixtures;
+      return {
+        id: row.id,
+        fixture_id: row.fixture_id,
+        league_id: row.league_id,
+        country_code: row.country_code,
+        utc_kickoff: row.utc_kickoff,
+        market: row.market,
+        side: row.side,
+        line: row.line,
+        bookmaker: row.bookmaker,
+        odds: row.odds,
+        is_live: row.is_live,
+        edge_pct: row.edge_pct,
+        model_prob: row.model_prob,
+        sample_size: row.sample_size,
+        combined_snapshot: row.combined_snapshot,
+        // Fixture metadata
+        home_team: fixture?.teams_home?.name || 'Unknown',
+        away_team: fixture?.teams_away?.name || 'Unknown',
+        home_team_logo: fixture?.teams_home?.logo,
+        away_team_logo: fixture?.teams_away?.logo,
+      };
+    });
+
     return new Response(
       JSON.stringify({
-        selections: deduped,
-        count: deduped.length,
+        selections: enriched,
+        count: enriched.length,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
         filters: { market, side, line, minOdds },
       }),

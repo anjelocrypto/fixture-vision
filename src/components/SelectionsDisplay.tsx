@@ -25,6 +25,11 @@ interface Selection {
     fouls: number;
     offsides: number;
   };
+  // Fixture metadata
+  home_team?: string;
+  away_team?: string;
+  home_team_logo?: string;
+  away_team_logo?: string;
 }
 
 interface SelectionsDisplayProps {
@@ -65,8 +70,17 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
             onClick={() => onSelectionClick?.(selection)}
           >
             <div className="flex items-start justify-between gap-4">
-              {/* Left: Market Info */}
+              {/* Left: Fixture & Market Info */}
               <div className="flex-1 min-w-0">
+                {/* Team names */}
+                {selection.home_team && selection.away_team && (
+                  <div className="mb-2">
+                    <h3 className="font-semibold text-base leading-tight">
+                      {selection.home_team} <span className="text-muted-foreground">vs</span> {selection.away_team}
+                    </h3>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2 mb-2">
                   <Badge variant="default" className="font-semibold">
                     {selection.market.toUpperCase()}
@@ -120,7 +134,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                 {selection.sample_size && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Users className="h-3 w-3" />
-                    <span>{selection.sample_size} games</span>
+                    <span>Sample: {selection.sample_size}</span>
                   </div>
                 )}
               </div>

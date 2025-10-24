@@ -431,6 +431,7 @@ const Index = () => {
         body: {
           date: format(selectedDate, "yyyy-MM-dd"),
           market: filters.market,
+          side: filters.side,
           line: filters.line,
           minOdds: filters.minOdds,
           countryCode,
