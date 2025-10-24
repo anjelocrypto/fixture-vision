@@ -340,7 +340,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         details: { found: candidatePool.length, required: legsMin },
         logs,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   }
 
@@ -362,7 +362,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         details: { pool_size: candidatePool.length, target: { min: minOdds, max: maxOdds } },
         logs,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   }
 

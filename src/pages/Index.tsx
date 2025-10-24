@@ -359,13 +359,16 @@ const Index = () => {
       });
 
       if (error) {
-        const errorMsg = error.message || "Failed to generate ticket";
-        throw new Error(errorMsg);
+        // If the function returned a non-2xx status, try to surface a friendly message if available
+        const friendly = (error as any)?.message || "Failed to generate ticket";
+        toast({ title: "Could not generate ticket", description: friendly, variant: "destructive" });
+        return;
       }
 
-      // Check for error response
+      // Business outcome without ticket
       if (data.code) {
-        throw new Error(data.message || "Failed to generate ticket");
+        toast({ title: "No ticket generated", description: data.message || "Not enough valid selections. Try widening markets or disabling live odds.", });
+        return;
       }
 
       const ticketData = {
