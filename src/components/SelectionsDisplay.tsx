@@ -1,7 +1,10 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { TrendingUp, Users, Trophy } from "lucide-react";
+import { TrendingUp, Users, Trophy, Bug } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useState } from "react";
 
 interface Selection {
   id: string;
@@ -38,6 +41,8 @@ interface SelectionsDisplayProps {
 }
 
 export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDisplayProps) {
+  const [showDebug, setShowDebug] = useState(false);
+  
   if (!selections || selections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -53,8 +58,28 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
   }
 
   return (
-    <div className="space-y-3">
-      {selections.map((selection) => {
+    <div className="space-y-4">
+      {/* Debug Toggle */}
+      <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+        <Bug className="h-4 w-4 text-muted-foreground" />
+        <Label htmlFor="debug-mode" className="text-sm cursor-pointer">
+          Debug Mode
+        </Label>
+        <Switch
+          id="debug-mode"
+          checked={showDebug}
+          onCheckedChange={setShowDebug}
+        />
+        {showDebug && (
+          <span className="text-xs text-muted-foreground ml-2">
+            (Showing technical details)
+          </span>
+        )}
+      </div>
+
+      {/* Selections List */}
+      <div className="space-y-3">
+        {selections.map((selection) => {
         const kickoff = new Date(selection.utc_kickoff);
         const hasEdge = selection.edge_pct !== null && selection.edge_pct > 0;
         
@@ -140,8 +165,52 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
               </div>
             </div>
 
+            {/* Debug Info Panel */}
+            {showDebug && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <div className="space-y-2 text-xs font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Fixture ID:</span>
+                    <span className="font-medium">{selection.fixture_id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Market/Side/Line:</span>
+                    <span className="font-medium">
+                      {selection.market}/{selection.side}/{selection.line}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bookmaker:</span>
+                    <span className="font-medium">{selection.bookmaker}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Odds:</span>
+                    <span className="font-medium">{selection.odds}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Selection ID:</span>
+                    <span className="font-medium text-xs truncate max-w-[200px]">
+                      {selection.id}
+                    </span>
+                  </div>
+                  {selection.combined_snapshot && (
+                    <div className="mt-2 pt-2 border-t border-border/30">
+                      <div className="text-muted-foreground mb-1">Combined snapshot:</div>
+                      <div className="grid grid-cols-2 gap-1 text-[10px]">
+                        <span>Goals: {selection.combined_snapshot.goals.toFixed(2)}</span>
+                        <span>Corners: {selection.combined_snapshot.corners.toFixed(2)}</span>
+                        <span>Cards: {selection.combined_snapshot.cards.toFixed(2)}</span>
+                        <span>Fouls: {selection.combined_snapshot.fouls.toFixed(2)}</span>
+                        <span>Offsides: {selection.combined_snapshot.offsides.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Optional: Show model probability */}
-            {selection.model_prob !== null && (
+            {!showDebug && selection.model_prob !== null && (
               <div className="mt-3 pt-3 border-t border-border/50">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Model probability</span>
@@ -152,6 +221,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
           </Card>
         );
       })}
+      </div>
     </div>
   );
 }
