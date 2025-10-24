@@ -36,7 +36,7 @@ interface TicketLeg {
 
 // Validation schemas
 const AITicketSchema = z.object({
-  fixtureIds: z.array(z.number().int().positive()).max(50).optional(), // Now optional for global mode
+  fixtureIds: z.array(z.number().int().positive()).max(50).optional(), // optional for global mode
   minOdds: z.number().positive().min(1.01).max(1000),
   maxOdds: z.number().positive().min(1.01).max(1000),
   legsMin: z.number().int().min(1).max(50),
@@ -46,6 +46,7 @@ const AITicketSchema = z.object({
   useLiveOdds: z.boolean().optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
+  debug: z.boolean().optional(),
 });
 
 const BetOptimizerSchema = z.object({
@@ -801,67 +802,78 @@ function generateOptimizedTicket(
   maxLegs: number,
   preferredOdds: number
 ): { total_odds: number; legs: TicketLeg[]; attempts: number } | null {
-  const MAX_ATTEMPTS = 200;
-  let bestTicket: { total_odds: number; legs: TicketLeg[] } | null = null;
-  let bestDistance = Infinity;
+  // Deterministic beam-search in log space
+  const logMin = Math.log(targetMin);
+  const logMax = Math.log(targetMax);
+  const logMid = (logMin + logMax) / 2;
 
-  // Sort pool by distance from preferred odds
+  // Stable sort by distance to preferred odds, then by odds asc, then fixture/market for determinism
   const sortedPool = [...pool].sort((a, b) => {
-    const distA = Math.abs(a.odds - preferredOdds);
-    const distB = Math.abs(b.odds - preferredOdds);
-    return distA - distB;
+    const da = Math.abs(a.odds - preferredOdds) - Math.abs(b.odds - preferredOdds);
+    if (da !== 0) return da;
+    if (a.odds !== b.odds) return a.odds - b.odds;
+    if (a.fixtureId !== b.fixtureId) return a.fixtureId - b.fixtureId;
+    return a.market.localeCompare(b.market);
   });
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const legs: TicketLeg[] = [];
-    const usedFixtures = new Set<number>();
-    const usedMarkets = new Map<number, Set<string>>(); // fixtureId -> markets
-    let product = 1;
+  type State = { legs: TicketLeg[]; product: number; used: Map<number, Set<string>> };
+  let beam: State[] = [{ legs: [], product: 1, used: new Map() }];
+  const WIDTH = 50;
+  let expansions = 0;
 
-    // Shuffle for randomization
-    const shuffled = [...sortedPool].sort(() => Math.random() - 0.5);
+  const score = (prod: number, len: number) => {
+    const lp = Math.log(prod);
+    // Penalize being under minLegs a bit so we add enough legs
+    const legPenalty = len < minLegs ? (minLegs - len) * 0.05 : 0;
+    return Math.abs(lp - logMid) + legPenalty;
+  };
 
-    for (const candidate of shuffled) {
-      if (legs.length >= maxLegs) break;
+  let best: { legs: TicketLeg[]; product: number } | null = null;
 
-      // Check diversity constraints
-      if (usedMarkets.has(candidate.fixtureId)) {
-        if (usedMarkets.get(candidate.fixtureId)!.has(candidate.market)) {
-          continue; // Skip duplicate market for same fixture
+  for (let depth = 0; depth < maxLegs; depth++) {
+    const next: State[] = [];
+
+    for (const state of beam) {
+      for (const cand of sortedPool) {
+        // Constraint: only one leg per (fixtureId, market)
+        const set = state.used.get(cand.fixtureId);
+        if (set && set.has(cand.market)) continue;
+
+        const newProduct = state.product * cand.odds;
+        // Prune states that already exceed target by too much
+        if (newProduct > targetMax * 1.05) continue;
+
+        const newLegs = [...state.legs, cand];
+        const newUsed = new Map(state.used);
+        const mset = newUsed.get(cand.fixtureId) || new Set<string>();
+        mset.add(cand.market);
+        newUsed.set(cand.fixtureId, mset);
+
+        expansions++;
+
+        // Check in-range
+        if (newLegs.length >= minLegs && newProduct >= targetMin && newProduct <= targetMax) {
+          return { total_odds: Math.round(newProduct * 100) / 100, legs: newLegs, attempts: expansions };
         }
-      }
 
-      const newProduct = product * candidate.odds;
+        next.push({ legs: newLegs, product: newProduct, used: newUsed });
 
-      // Accept if within or approaching target
-      if (newProduct <= targetMax * 1.25) {
-        legs.push(candidate);
-        product = newProduct;
-        usedFixtures.add(candidate.fixtureId);
-        
-        if (!usedMarkets.has(candidate.fixtureId)) {
-          usedMarkets.set(candidate.fixtureId, new Set());
-        }
-        usedMarkets.get(candidate.fixtureId)!.add(candidate.market);
-
-        // Check if we hit target
-        if (product >= targetMin && product <= targetMax && legs.length >= minLegs) {
-          return { total_odds: Math.round(product * 100) / 100, legs, attempts: attempt + 1 };
+        // Track best close match with enough legs
+        if (newLegs.length >= minLegs) {
+          if (!best || Math.abs(Math.log(newProduct) - logMid) < Math.abs(Math.log(best.product) - logMid)) {
+            best = { legs: newLegs, product: newProduct };
+          }
         }
       }
     }
 
-    // Track best attempt
-    if (legs.length >= minLegs) {
-      const distance = Math.abs(product - (targetMin + targetMax) / 2);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestTicket = { total_odds: Math.round(product * 100) / 100, legs };
-      }
-    }
+    // Beam prune deterministically by score
+    next.sort((a, b) => score(a.product, a.legs.length) - score(b.product, b.legs.length));
+    beam = next.slice(0, WIDTH);
+    if (beam.length === 0) break;
   }
 
-  return bestTicket ? { ...bestTicket, attempts: MAX_ATTEMPTS } : null;
+  return best ? { total_odds: Math.round(best.product * 100) / 100, legs: best.legs, attempts: expansions } : null;
 }
 
 function getMarketName(market: Market): string {
