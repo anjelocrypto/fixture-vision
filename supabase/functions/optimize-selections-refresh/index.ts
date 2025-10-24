@@ -202,29 +202,29 @@ serve(async (req) => {
         let bestBookmaker = "";
 
         for (const bookmaker of bookmakers) {
-          const marketData = bookmaker.markets || [];
+          const betsData = bookmaker.bets || [];
           
-          // Match market type by market ID (from _shared/market_map.ts)
-          let targetMarket = null;
+          // Match market type by bet ID (API-Football uses bets[].id)
+          let targetBet = null;
           if (market === "goals") {
-            // Market ID 5 = Goals Over/Under
-            targetMarket = marketData.find((m: any) => m.id === 5 || m.name?.toLowerCase().includes("goals over/under"));
+            // Bet ID 5 = Goals Over/Under
+            targetBet = betsData.find((b: any) => b.id === 5 || b.name?.toLowerCase().includes("goals over/under"));
           } else if (market === "corners") {
-            // Market ID 12 = Corners Over/Under
-            targetMarket = marketData.find((m: any) => m.id === 12 || m.name?.toLowerCase().includes("corners"));
+            // Bet ID 12 = Corners
+            targetBet = betsData.find((b: any) => b.id === 12 || b.name?.toLowerCase().includes("corners"));
           } else if (market === "cards") {
-            // Market ID 14 = Cards Over/Under
-            targetMarket = marketData.find((m: any) => m.id === 14 || m.name?.toLowerCase().includes("cards") || m.name?.toLowerCase().includes("bookings"));
+            // Bet ID 14 = Cards
+            targetBet = betsData.find((b: any) => b.id === 14 || b.name?.toLowerCase().includes("cards") || b.name?.toLowerCase().includes("bookings"));
           } else if (market === "fouls") {
-            targetMarket = marketData.find((m: any) => m.name?.toLowerCase().includes("fouls"));
+            targetBet = betsData.find((b: any) => b.name?.toLowerCase().includes("fouls"));
           } else if (market === "offsides") {
-            targetMarket = marketData.find((m: any) => m.name?.toLowerCase().includes("offsides"));
+            targetBet = betsData.find((b: any) => b.name?.toLowerCase().includes("offsides"));
           }
 
-          if (!targetMarket?.values) continue;
+          if (!targetBet?.values) continue;
 
-          // Find the specific line
-          const selection = targetMarket.values.find((v: any) => {
+          // Find the specific line in values array
+          const selection = targetBet.values.find((v: any) => {
             const value = v.value?.toLowerCase() || "";
             const lineMatch = value.match(/(\d+\.?\d*)/);
             if (!lineMatch) return false;
