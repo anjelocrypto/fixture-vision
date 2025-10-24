@@ -7,6 +7,45 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
+// Helper to call edge functions with service role key
+async function callEdgeFunction(name: string, body: unknown) {
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  if (!baseUrl || !serviceRoleKey) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  console.log(`[warmup-odds] Calling ${name} with service role auth`);
+  
+  const url = `${baseUrl}/functions/v1/${name}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text.substring(0, 200) };
+  }
+
+  console.log(`[warmup-odds] ${name} responded with status ${res.status}`);
+  
+  if (!res.ok) {
+    console.error(`[warmup-odds] ${name} error body:`, JSON.stringify(json).substring(0, 200));
+    return { ok: false, status: res.status, data: json };
+  }
+
+  return { ok: true, status: res.status, data: json };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -15,8 +54,12 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
+      console.log("[warmup-odds] No auth header provided");
       return new Response(
-        JSON.stringify({ error: "Authentication required" }),
+        JSON.stringify({ 
+          success: false,
+          error: "Authentication required" 
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
@@ -31,8 +74,12 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError || !user) {
+      console.log("[warmup-odds] Invalid token:", authError?.message);
       return new Response(
-        JSON.stringify({ error: "Invalid authentication token" }),
+        JSON.stringify({ 
+          success: false,
+          error: "Invalid authentication token" 
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
@@ -46,58 +93,64 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!roleData) {
+      console.log(`[warmup-odds] User ${user.id} is not an admin`);
       return new Response(
-        JSON.stringify({ error: "Admin access required" }),
+        JSON.stringify({ 
+          success: false,
+          error: "Admin access required" 
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 }
       );
     }
 
-    console.log(`[warmup-odds] Admin ${user.id} initiated 48h warmup`);
-
     const { window_hours = 48 } = await req.json().catch(() => ({}));
+    
+    console.log(`[warmup-odds] Admin ${user.id} initiated ${window_hours}h warmup`);
 
-    // Step 1: Backfill odds
+    // Step 1: Backfill odds with service role auth
     console.log(`[warmup-odds] Step 1/2: Calling backfill-odds (${window_hours}h)`);
     
-    const backfillResponse = await supabaseClient.functions.invoke("backfill-odds", {
-      body: { window_hours },
-    });
+    const backfillResponse = await callEdgeFunction("backfill-odds", { window_hours });
 
-    if (backfillResponse.error) {
-      console.error("[warmup-odds] Backfill failed:", backfillResponse.error);
+    if (!backfillResponse.ok) {
+      console.error(`[warmup-odds] Backfill failed with status ${backfillResponse.status}`);
       return new Response(
         JSON.stringify({ 
+          success: false,
           error: "Backfill failed", 
-          details: backfillResponse.error 
+          status: backfillResponse.status,
+          details: backfillResponse.data,
+          backfill: backfillResponse.data
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
     const backfillData = backfillResponse.data || {};
-    console.log("[warmup-odds] Backfill complete:", backfillData);
+    console.log("[warmup-odds] Backfill complete:", JSON.stringify(backfillData).substring(0, 200));
 
-    // Step 2: Optimize selections
+    // Step 2: Optimize selections with service role auth
     console.log(`[warmup-odds] Step 2/2: Calling optimize-selections-refresh (${window_hours}h)`);
     
-    const optimizeResponse = await supabaseClient.functions.invoke("optimize-selections-refresh", {
-      body: { window_hours },
-    });
+    const optimizeResponse = await callEdgeFunction("optimize-selections-refresh", { window_hours });
 
-    if (optimizeResponse.error) {
-      console.error("[warmup-odds] Optimize failed:", optimizeResponse.error);
+    if (!optimizeResponse.ok) {
+      console.error(`[warmup-odds] Optimize failed with status ${optimizeResponse.status}`);
       return new Response(
         JSON.stringify({ 
+          success: false,
           error: "Optimize failed", 
-          details: optimizeResponse.error,
-          backfill: backfillData 
+          status: optimizeResponse.status,
+          details: optimizeResponse.data,
+          backfill: backfillData,
+          optimize: optimizeResponse.data
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
     const optimizeData = optimizeResponse.data || {};
-    console.log("[warmup-odds] Optimize complete:", optimizeData);
+    console.log("[warmup-odds] Optimize complete:", JSON.stringify(optimizeData).substring(0, 200));
 
     // Return combined results
     return new Response(
@@ -117,7 +170,11 @@ serve(async (req) => {
       stack: error instanceof Error ? error.stack : undefined,
     });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ 
+        success: false,
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error"
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

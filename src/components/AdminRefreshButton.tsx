@@ -19,21 +19,38 @@ export const AdminRefreshButton = () => {
       );
 
       if (error) {
+        console.error("Function invocation error:", error);
         throw error;
       }
 
       const result = data as { 
         success: boolean;
-        backfill: { scanned: number; fetched: number; skipped: number; failed: number };
-        optimize: { scanned: number; with_odds: number; inserted: number; skipped: number; duration_ms: number };
-        message: string;
+        error?: string;
+        status?: number;
+        details?: any;
+        backfill?: { scanned: number; fetched: number; skipped: number; failed: number };
+        optimize?: { scanned: number; with_odds: number; inserted: number; skipped: number; duration_ms: number };
+        message?: string;
       };
 
-      toast.success(result.message);
+      console.log("Warmup result:", result);
+
+      if (!result.success) {
+        const errorMsg = result.error || "Unknown error";
+        const statusInfo = result.status ? ` (status: ${result.status})` : "";
+        const detailsInfo = result.details ? `\nDetails: ${JSON.stringify(result.details).substring(0, 100)}` : "";
+        
+        console.error("Warmup failed:", { error: errorMsg, status: result.status, details: result.details });
+        toast.error(`Warmup failed: ${errorMsg}${statusInfo}${detailsInfo}`);
+        return;
+      }
+
+      toast.success(result.message || "Warmup completed successfully");
 
     } catch (error) {
       console.error("Refresh error:", error);
-      toast.error(`Refresh failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Refresh failed: ${errorMessage}`);
     } finally {
       setIsRefreshing(false);
     }
