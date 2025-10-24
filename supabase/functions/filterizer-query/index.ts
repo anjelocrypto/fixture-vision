@@ -91,18 +91,10 @@ serve(async (req) => {
 
     console.log(`[filterizer-query] Window: ${queryStart.toISOString()} to ${endDate.toISOString()}`);
 
-    // Build query with fixture join to get team names
+    // Build query for selections
     let query = supabaseClient
       .from("optimized_selections")
-      .select(`
-        *,
-        fixtures:fixture_id (
-          id,
-          teams_home,
-          teams_away,
-          league_id
-        )
-      `)
+      .select("*")
       .eq("market", market)
       .eq("side", side)
       .gte("odds", minOdds)
@@ -135,12 +127,6 @@ serve(async (req) => {
 
     // Post-filter: drop obviously wrong odds for common lines
     const rows = (selections || []).filter((row: any) => {
-      // Skip if fixture join failed
-      if (!row.fixtures) {
-        console.warn(`[filterizer-query] Skipping row with missing fixture data: ${row.fixture_id}`);
-        return false;
-      }
-      
       if (market === "goals" && Math.abs(Number(row.line) - 2.5) <= 0.01 && Number(row.odds) >= 5.0) {
         console.warn(`[filterizer-query] Dropping suspicious odds for goals 2.5: ${row.odds} (fixture ${row.fixture_id}, ${row.bookmaker})`);
         return false;
@@ -158,9 +144,29 @@ serve(async (req) => {
     }
     const deduped = Array.from(bestByFixture.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
 
+    // Fetch fixture metadata for enrichment
+    const fixtureIds = deduped.map((row: any) => row.fixture_id);
+    const { data: fixtures, error: fixturesError } = await supabaseClient
+      .from("fixtures")
+      .select("id, teams_home, teams_away, league_id")
+      .in("id", fixtureIds);
+
+    if (fixturesError) {
+      console.error("[filterizer-query] Error fetching fixtures:", fixturesError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch fixture metadata" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
+    }
+
+    // Create fixture lookup map
+    const fixtureMap = new Map(
+      (fixtures || []).map((f: any) => [f.id, f])
+    );
+
     // Enrich with fixture metadata
     const enriched = deduped.map((row: any) => {
-      const fixture = row.fixtures;
+      const fixture = fixtureMap.get(row.fixture_id);
       return {
         id: row.id,
         fixture_id: row.fixture_id,
