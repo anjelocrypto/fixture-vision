@@ -341,12 +341,6 @@ const Index = () => {
         return;
       }
 
-      // Build includeMarkets object from array
-      const includeMarketsObj = params.includeMarkets.reduce((acc: any, market: string) => {
-        acc[market] = true;
-        return acc;
-      }, {});
-
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
 
@@ -357,7 +351,7 @@ const Index = () => {
           minOdds: params.targetMin,
           maxOdds: params.targetMax,
           risk: params.risk,
-          includeMarkets: includeMarketsObj,
+          includeMarkets: params.includeMarkets, // Send array directly
           legsMin: params.minLegs,
           legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,

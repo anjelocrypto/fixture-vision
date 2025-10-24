@@ -64,8 +64,34 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
     );
   };
 
+  const validateInputs = () => {
+    const errors: string[] = [];
+    
+    if (fixturesCount === 0) {
+      errors.push("No fixtures available");
+    }
+    if (includeMarkets.length === 0) {
+      errors.push("Select at least one market");
+    }
+    if (targetMin >= targetMax) {
+      errors.push("Min odds must be less than max odds");
+    }
+    if (minLegs > maxLegs) {
+      errors.push("Min legs must be less than or equal to max legs");
+    }
+    if (targetMin < 1.01) {
+      errors.push("Min odds must be at least 1.01");
+    }
+    
+    return errors;
+  };
+
   const handleGenerate = async () => {
-    if (includeMarkets.length === 0) return;
+    const validationErrors = validateInputs();
+    if (validationErrors.length > 0) {
+      setErrorMessage(validationErrors.join(". "));
+      return;
+    }
     
     setGenerating(true);
     setErrorMessage(null);
@@ -85,6 +111,9 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
       setGenerating(false);
     }
   };
+
+  const validationErrors = validateInputs();
+  const hasValidationErrors = validationErrors.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -259,7 +288,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
           <Button
             className="w-full"
             onClick={handleGenerate}
-            disabled={generating || includeMarkets.length === 0 || fixturesCount === 0}
+            disabled={generating || hasValidationErrors}
           >
             {generating ? (
               <>
@@ -273,6 +302,13 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
               </>
             )}
           </Button>
+
+          {/* Validation Hints */}
+          {hasValidationErrors && !generating && (
+            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md border">
+              {validationErrors.join(" • ")}
+            </div>
+          )}
 
           {/* Error Message */}
           {errorMessage && (

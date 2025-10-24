@@ -96,13 +96,26 @@ serve(async (req) => {
       );
     }
 
+    // Transform legacy includeMarkets object to array if needed
+    if (bodyRaw.includeMarkets && typeof bodyRaw.includeMarkets === 'object' && !Array.isArray(bodyRaw.includeMarkets)) {
+      console.log("[generate-ticket] Converting legacy includeMarkets object to array");
+      bodyRaw.includeMarkets = Object.keys(bodyRaw.includeMarkets).filter(k => bodyRaw.includeMarkets[k]);
+    }
+
     // Detect request type and validate
     if (bodyRaw.fixtureIds && Array.isArray(bodyRaw.fixtureIds)) {
       const validation = AITicketSchema.safeParse(bodyRaw);
       if (!validation.success) {
         console.error("[generate-ticket] Validation error:", validation.error.format());
+        const fieldErrors = Object.entries(validation.error.flatten().fieldErrors)
+          .map(([field, errors]) => `${field}: ${errors?.join(", ")}`)
+          .join("; ");
         return new Response(
-          JSON.stringify({ error: "Invalid request parameters" }),
+          JSON.stringify({ 
+            error: "Invalid request parameters", 
+            fields: validation.error.flatten().fieldErrors,
+            details: fieldErrors 
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
@@ -111,8 +124,15 @@ serve(async (req) => {
       const validation = BetOptimizerSchema.safeParse(bodyRaw);
       if (!validation.success) {
         console.error("[generate-ticket] Validation error:", validation.error.format());
+        const fieldErrors = Object.entries(validation.error.flatten().fieldErrors)
+          .map(([field, errors]) => `${field}: ${errors?.join(", ")}`)
+          .join("; ");
         return new Response(
-          JSON.stringify({ error: "Invalid request parameters" }),
+          JSON.stringify({ 
+            error: "Invalid request parameters", 
+            fields: validation.error.flatten().fieldErrors,
+            details: fieldErrors 
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
