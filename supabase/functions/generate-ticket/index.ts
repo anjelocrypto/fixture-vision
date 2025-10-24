@@ -1064,13 +1064,15 @@ function flattenOddsPayloadToSelections(payload: any) {
   for (const bookmaker of bookmakers) {
     const bookmakerName = bookmaker.name || `Bookmaker ${bookmaker.id}`;
     for (const bet of bookmaker.bets || []) {
+      // Use EXACT bet ID matching (API-Football standard IDs)
+      // - ID 5: "Goals Over/Under" (full match)
+      // - ID 45: "Corners Over Under" (full match)  
+      // - ID 80: "Cards Over/Under" (full match)
       const normalizedMarket = (() => {
-        const lower = String(bet?.name || "").toLowerCase();
-        if (lower.includes("goal")) return "goals";
-        if (lower.includes("card")) return "cards";
-        if (lower.includes("corner")) return "corners";
-        if (lower.includes("foul")) return "fouls";
-        if (lower.includes("offside")) return "offsides";
+        const betId = bet?.id;
+        if (betId === 5) return "goals";
+        if (betId === 45) return "corners";
+        if (betId === 80) return "cards";
         return "unknown";
       })();
       if (normalizedMarket === "unknown") continue;

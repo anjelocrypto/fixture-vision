@@ -205,22 +205,23 @@ serve(async (req) => {
           const betsData = bookmaker.bets || [];
           
           // Match market type by EXACT bet ID only (API-Football uses bets[].id)
-          // CRITICAL: We must use exact ID matching to avoid matching wrong bet types like "First Half" or "Second Half"
+          // CRITICAL: We must use exact ID matching to avoid matching wrong bet types
+          // API-Football Official Bet IDs:
+          // - ID 5: "Goals Over/Under" (full match)
+          // - ID 45: "Corners Over Under" (full match)
+          // - ID 80: "Cards Over/Under" (full match)
           let targetBet = null;
           if (market === "goals") {
-            // Bet ID 5 = Goals Over/Under (FULL MATCH ONLY)
             targetBet = betsData.find((b: any) => b.id === 5);
           } else if (market === "corners") {
-            // Bet ID 12 = Corners (FULL MATCH ONLY)
-            targetBet = betsData.find((b: any) => b.id === 12);
+            targetBet = betsData.find((b: any) => b.id === 45);
           } else if (market === "cards") {
-            // Bet ID 14 = Cards/Bookings (FULL MATCH ONLY)
-            targetBet = betsData.find((b: any) => b.id === 14);
+            targetBet = betsData.find((b: any) => b.id === 80);
           } else if (market === "fouls") {
-            // No standard bet ID for fouls, skip for now
+            // API-Football does not provide fouls betting markets
             continue;
           } else if (market === "offsides") {
-            // No standard bet ID for offsides, skip for now
+            // API-Football does not provide offsides betting markets
             continue;
           }
 
