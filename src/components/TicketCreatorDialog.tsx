@@ -11,7 +11,6 @@ interface TicketCreatorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGenerate: (params: GenerateParams) => Promise<void>;
-  fixturesCount: number;
 }
 
 export interface GenerateParams {
@@ -40,7 +39,7 @@ const MARKETS = [
   { id: "offsides", label: "Offsides" },
 ];
 
-export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCount }: TicketCreatorDialogProps) {
+export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
   const [targetMin, setTargetMin] = useState(18);
   const [targetMax, setTargetMax] = useState(20);
   const [risk, setRisk] = useState<"safe" | "standard" | "risky">("standard");
@@ -67,9 +66,6 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
   const validateInputs = () => {
     const errors: string[] = [];
     
-    if (fixturesCount === 0) {
-      errors.push("No fixtures available");
-    }
     if (includeMarkets.length === 0) {
       errors.push("Select at least one market");
     }
@@ -124,8 +120,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate, fixturesCo
             AI Ticket Creator
           </DialogTitle>
           <DialogDescription>
-            Create an optimized betting ticket based on statistical analysis and available odds.
-            {fixturesCount > 0 && ` ${fixturesCount} fixtures available.`}
+            Create an optimized betting ticket mixing fixtures and markets from all leagues in the next 48 hours based on statistical analysis and real-time odds.
           </DialogDescription>
         </DialogHeader>
 

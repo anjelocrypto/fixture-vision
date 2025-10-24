@@ -36,7 +36,7 @@ interface TicketLeg {
 
 // Validation schemas
 const AITicketSchema = z.object({
-  fixtureIds: z.array(z.number().int().positive()).min(1).max(50),
+  fixtureIds: z.array(z.number().int().positive()).max(50).optional(), // Now optional for global mode
   minOdds: z.number().positive().min(1.01).max(1000),
   maxOdds: z.number().positive().min(1.01).max(1000),
   legsMin: z.number().int().min(1).max(50),
@@ -44,6 +44,8 @@ const AITicketSchema = z.object({
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
   risk: z.enum(["safe", "standard", "risky"]).optional(),
   useLiveOdds: z.boolean().optional(),
+  countryCode: z.string().optional(),
+  leagueIds: z.array(z.number()).optional(),
 });
 
 const BetOptimizerSchema = z.object({
@@ -103,7 +105,8 @@ serve(async (req) => {
     }
 
     // Detect request type and validate
-    if (bodyRaw.fixtureIds && Array.isArray(bodyRaw.fixtureIds)) {
+    // Check for AI Ticket Creator params (has minOdds/maxOdds/legsMin/legsMax)
+    if (bodyRaw.minOdds !== undefined && bodyRaw.maxOdds !== undefined) {
       const validation = AITicketSchema.safeParse(bodyRaw);
       if (!validation.success) {
         console.error("[generate-ticket] Validation error:", validation.error.format());
@@ -151,9 +154,147 @@ serve(async (req) => {
   }
 });
 
+// Helper function to process a single fixture into candidate pool
+async function processFixtureToPool(
+  fixtureId: number,
+  supabase: any,
+  token: string,
+  markets: string[],
+  useLiveOdds: boolean,
+  riskProfile: any
+): Promise<{ legs: TicketLeg[]; logs: string[]; usedLive: boolean; fallback: boolean }> {
+  const legs: TicketLeg[] = [];
+  const logs: string[] = [];
+  let usedLive = false;
+  let fallback = false;
+
+  const { data: fixture } = await supabase
+    .from("fixtures")
+    .select("*")
+    .eq("id", fixtureId)
+    .single();
+
+  if (!fixture) {
+    logs.push(`[fixture:${fixtureId}] Not found in DB`);
+    return { legs, logs, usedLive, fallback };
+  }
+
+  const homeTeam = fixture.teams_home?.name || "Home";
+  const awayTeam = fixture.teams_away?.name || "Away";
+  const start = fixture.date || "";
+
+  const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
+    headers: { Authorization: `Bearer ${token}` },
+    body: {
+      fixtureId,
+      homeTeamId: fixture.teams_home?.id,
+      awayTeamId: fixture.teams_away?.id,
+    },
+  });
+
+  if (analysisError || !analysisData?.combined) {
+    logs.push(`[fixture:${fixtureId}] No combined stats`);
+    return { legs, logs, usedLive, fallback };
+  }
+
+  const combined = analysisData.combined;
+
+  let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
+    headers: { Authorization: `Bearer ${token}` },
+    body: { fixtureId, live: useLiveOdds },
+  });
+
+  if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
+    if (useLiveOdds) {
+      logs.push(`[fixture:${fixtureId}] Live odds unavailable, trying pre-match...`);
+      const { data: prematchData } = await supabase.functions.invoke("fetch-odds", {
+        headers: { Authorization: `Bearer ${token}` },
+        body: { fixtureId, live: false, forceRefresh: true },
+      });
+      if (prematchData && prematchData.selections && prematchData.selections.length > 0) {
+        oddsData = prematchData;
+        fallback = true;
+      } else {
+        const { data: cached } = await supabase
+          .from("odds_cache")
+          .select("payload")
+          .eq("fixture_id", fixtureId)
+          .maybeSingle();
+        if (cached?.payload?.bookmakers?.length) {
+          const selectionsViaCache = flattenOddsPayloadToSelections(cached.payload);
+          if (selectionsViaCache.length > 0) {
+            oddsData = { fixture: cached.payload.fixture, selections: selectionsViaCache, source: "prematch", cached: true };
+            logs.push(`[fixture:${fixtureId}] Using DB cache fallback with ${selectionsViaCache.length} selections`);
+          } else {
+            logs.push(`[fixture:${fixtureId}] No odds available (cache flatten yielded 0)`);
+            return { legs, logs, usedLive, fallback };
+          }
+        } else {
+          logs.push(`[fixture:${fixtureId}] No odds available`);
+          return { legs, logs, usedLive, fallback };
+        }
+      }
+    } else {
+      logs.push(`[fixture:${fixtureId}] No odds available`);
+      return { legs, logs, usedLive, fallback };
+    }
+  }
+
+  usedLive = oddsData.source === "live";
+  const selections = oddsData.selections || [];
+
+  for (const market of markets) {
+    const avgValue = combined[market];
+    if (avgValue === undefined || avgValue === null) continue;
+
+    const rulePick = pickFromCombined(market as any, avgValue);
+    if (!rulePick) continue;
+
+    const { side, line } = rulePick;
+    const exactMatch = selections.find((s: any) => s.market === market && s.kind === side && s.line === line);
+
+    if (exactMatch) {
+      legs.push({
+        fixtureId,
+        homeTeam,
+        awayTeam,
+        start,
+        market: market as Market,
+        selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${line}`,
+        odds: exactMatch.odds,
+        bookmaker: exactMatch.bookmaker,
+        combinedAvg: avgValue,
+        source: oddsData.source,
+      });
+      logs.push(`[fixture:${fixtureId}] ${market}: exact ${side} ${line} @ ${exactMatch.odds}`);
+    } else {
+      const nearest = selections
+        .filter((s: any) => s.market === market && s.kind === side && s.line && Math.abs(s.line - line) <= 0.5)
+        .sort((a: any, b: any) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
+
+      if (nearest) {
+        legs.push({
+          fixtureId,
+          homeTeam,
+          awayTeam,
+          start,
+          market: market as Market,
+          selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${nearest.line}`,
+          odds: nearest.odds,
+          bookmaker: nearest.bookmaker,
+          combinedAvg: avgValue,
+          source: oddsData.source,
+        });
+        logs.push(`[fixture:${fixtureId}] ${market}: nearest ${side} ${nearest.line} @ ${nearest.odds}`);
+      }
+    }
+  }
+
+  return { legs, logs, usedLive, fallback };
+}
+
 // NEW: AI Ticket Creator with custom parameters
 async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supabase: any, userId: string, token: string) {
-  // 1. VALIDATE INPUT
   const {
     fixtureIds,
     minOdds,
@@ -163,198 +304,121 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     includeMarkets,
     risk = "standard",
     useLiveOdds = false,
+    countryCode,
+    leagueIds,
   } = body;
 
-  console.log(`[AI-ticket] Input:`, JSON.stringify({
-    fixtureIds,
-    fixtureCount: fixtureIds?.length,
-    minOdds,
-    maxOdds,
-    legsMin,
-    legsMax,
-    includeMarkets,
-    risk,
-    useLiveOdds
-  }));
-
+  const globalMode = !fixtureIds || fixtureIds.length === 0;
   const markets = includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"];
-  
   const riskProfile = getRiskProfile(risk);
   const candidatePool: TicketLeg[] = [];
   const logs: string[] = [];
   let usedLive = false;
   let fallbackToPrematch = false;
 
-  // 2. BUILD CANDIDATE POOL
-  for (const fixtureId of fixtureIds) {
-    const { data: fixture } = await supabase
-      .from("fixtures")
-      .select("*")
-      .eq("id", fixtureId)
-      .single();
+  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, risk: ${risk}, useLive: ${useLiveOdds}`);
 
-    if (!fixture) {
-      logs.push(`[fixture:${fixtureId}] Not found in DB`);
-      continue;
-    }
-
-    const homeTeam = fixture.teams_home?.name || "Home";
-    const awayTeam = fixture.teams_away?.name || "Away";
-    const start = fixture.date || "";
-
-    // Fetch analysis (combined stats)
-    const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-fixture", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: {
-        fixtureId,
-        homeTeamId: fixture.teams_home?.id,
-        awayTeamId: fixture.teams_away?.id,
-      },
-    });
-
-    if (analysisError || !analysisData?.combined) {
-      logs.push(`[fixture:${fixtureId}] No combined stats`);
-      continue;
-    }
-
-    const combined = analysisData.combined;
-
-    // Fetch odds (live with fallback)
-    let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: { 
-        fixtureId,
-        live: useLiveOdds,
-      },
-    });
-
-    if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
-      if (useLiveOdds) {
-        logs.push(`[fixture:${fixtureId}] Live odds unavailable, trying pre-match...`);
-        const { data: prematchData } = await supabase.functions.invoke("fetch-odds", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: { fixtureId, live: false, forceRefresh: true },
-        });
-        if (prematchData && prematchData.selections && prematchData.selections.length > 0) {
-          oddsData = prematchData;
-          fallbackToPrematch = true;
-        } else {
-          // FINAL FALLBACK: read cached payload from DB and flatten here
-          const { data: cached } = await supabase
-            .from("odds_cache")
-            .select("payload")
-            .eq("fixture_id", fixtureId)
-            .maybeSingle();
-          if (cached?.payload?.bookmakers?.length) {
-            const selectionsViaCache = flattenOddsPayloadToSelections(cached.payload);
-            if (selectionsViaCache.length > 0) {
-              oddsData = {
-                fixture: cached.payload.fixture,
-                selections: selectionsViaCache,
-                source: "prematch",
-                cached: true,
-              };
-              logs.push(`[fixture:${fixtureId}] Using DB cache fallback with ${selectionsViaCache.length} selections`);
-            } else {
-              logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty, cache flatten yielded 0)`);
-              continue;
-            }
-          } else {
-            logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty)`);
-            continue;
+  // GLOBAL MODE: Query optimized_selections for next 48h
+  if (globalMode) {
+    logs.push("[Global Mode] Building candidate pool from next 48 hours...");
+    
+    const now = new Date();
+    const end48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    
+    let query = supabase
+      .from("optimized_selections")
+      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size`)
+      .gte("utc_kickoff", now.toISOString())
+      .lte("utc_kickoff", end48h.toISOString())
+      .in("market", markets);
+    
+    if (!useLiveOdds) query = query.eq("is_live", false);
+    if (countryCode) query = query.eq("country_code", countryCode);
+    if (leagueIds && leagueIds.length > 0) query = query.in("league_id", leagueIds);
+    if (riskProfile.minOdds) query = query.gte("odds", riskProfile.minOdds);
+    
+    const { data: selections, error: selectionsError } = await query.limit(500);
+    
+    if (selectionsError) {
+      console.error("[Global Mode] Error fetching selections:", selectionsError);
+      logs.push(`[Global Mode] Error: ${selectionsError.message}`);
+    } else if (!selections || selections.length === 0) {
+      logs.push("[Global Mode] No optimized selections found. Computing on-the-fly from fixtures...");
+      
+      const { data: fixtures } = await supabase
+        .from("fixtures")
+        .select("id")
+        .gte("timestamp", Math.floor(now.getTime() / 1000))
+        .lte("timestamp", Math.floor(end48h.getTime() / 1000))
+        .limit(50);
+      
+      if (fixtures && fixtures.length > 0) {
+        logs.push(`[Global Mode] Processing ${fixtures.length} fixtures...`);
+        for (const f of fixtures) {
+          const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds, riskProfile);
+          if (result.legs.length > 0) {
+            candidatePool.push(...result.legs);
+            if (result.usedLive) usedLive = true;
+            if (result.fallback) fallbackToPrematch = true;
           }
+          logs.push(...result.logs);
         }
       } else {
-        logs.push(`[fixture:${fixtureId}] No odds available`);
-        continue;
+        logs.push("[Global Mode] No fixtures found for next 48h");
       }
-    }
-
-    usedLive = oddsData.source === "live";
-
-    const selections = oddsData.selections || [];
-    const marketCoverage: string[] = [];
-
-    // For each enabled market, use rules to pick line
-    for (const market of markets) {
-      const avgValue = combined[market];
-      if (avgValue === undefined || avgValue === null) {
-        logs.push(`[fixture:${fixtureId}] No combined stat for ${market}`);
-        continue;
-      }
-
-      // USE RULES TO PICK LINE
-      const rulePick = pickFromCombined(market as any, avgValue);
-      if (!rulePick) {
-        logs.push(`[fixture:${fixtureId}] ${market}: ${avgValue} → no rule match`);
-        continue;
-      }
-
-      const { side, line } = rulePick;
-      logs.push(`[fixture:${fixtureId}] ${market}: ${avgValue} → ${side} ${line}`);
-
-      // Find matching selection (exact or nearest within ±0.5)
-      const exactMatch = selections.find((s: any) =>
-        s.market === market && s.kind === side && s.line === line
-      );
-
-      if (exactMatch) {
-        marketCoverage.push(`${market}:exact`);
+    } else {
+      logs.push(`[Global Mode] Found ${selections.length} pre-optimized selections`);
+      
+      const fixtureIdsSet = [...new Set(selections.map((s: any) => s.fixture_id))];
+      const { data: fixtures } = await supabase
+        .from("fixtures")
+        .select("id, teams_home, teams_away, date")
+        .in("id", fixtureIdsSet);
+      
+      const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
+      
+      for (const sel of selections) {
+        const fixture: any = fixtureMap.get((sel as any).fixture_id);
+        if (!fixture) continue;
+        
         candidatePool.push({
-          fixtureId,
-          homeTeam,
-          awayTeam,
-          start,
-          market: market as Market,
-          selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${line}`,
-          odds: exactMatch.odds,
-          bookmaker: exactMatch.bookmaker,
-          combinedAvg: avgValue,
-          source: oddsData.source,
+          fixtureId: (sel as any).fixture_id,
+          homeTeam: fixture.teams_home?.name || "Home",
+          awayTeam: fixture.teams_away?.name || "Away",
+          start: fixture.date || "",
+          market: (sel as any).market as Market,
+          selection: `${(sel as any).side} ${(sel as any).line}`,
+          odds: (sel as any).odds,
+          bookmaker: (sel as any).bookmaker || "Unknown",
+          combinedAvg: (sel as any).combined_snapshot?.[(sel as any).market],
+          source: (sel as any).is_live ? "live" : "prematch",
         });
-        logs.push(`[fixture:${fixtureId}] ${market}: exact match ${side} ${line} @ ${exactMatch.odds} (${exactMatch.bookmaker})`);
-      } else {
-        // Find nearest within ±0.5
-        const nearest = selections
-          .filter((s: any) => s.market === market && s.kind === side && s.line && Math.abs(s.line - line) <= 0.5)
-          .sort((a: any, b: any) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
-
-        if (nearest) {
-          marketCoverage.push(`${market}:nearest`);
-          candidatePool.push({
-            fixtureId,
-            homeTeam,
-            awayTeam,
-            start,
-            market: market as Market,
-            selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${nearest.line}`,
-            odds: nearest.odds,
-            bookmaker: nearest.bookmaker,
-            combinedAvg: avgValue,
-            source: oddsData.source,
-          });
-          logs.push(`[fixture:${fixtureId}] ${market}: nearest match ${side} ${nearest.line} @ ${nearest.odds} (${nearest.bookmaker})`);
-        } else {
-          logs.push(`[fixture:${fixtureId}] ${market}: no odds within ±0.5 of ${line}`);
-        }
       }
+      
+      usedLive = selections.some((s: any) => s.is_live);
+      logs.push(`[Global Mode] Built pool of ${candidatePool.length} candidates from ${fixtureIdsSet.length} fixtures`);
     }
-
-    if (marketCoverage.length > 0) {
-      logs.push(`[fixture:${fixtureId}] Market coverage: ${marketCoverage.join(", ")}`);
+  } else {
+    // SPECIFIC FIXTURES MODE
+    logs.push(`[Specific Mode] Processing ${fixtureIds!.length} fixtures...`);
+    for (const fid of fixtureIds!) {
+      const result = await processFixtureToPool(fid, supabase, token, markets, useLiveOdds, riskProfile);
+      if (result.legs.length > 0) {
+        candidatePool.push(...result.legs);
+        if (result.usedLive) usedLive = true;
+        if (result.fallback) fallbackToPrematch = true;
+      }
+      logs.push(...result.logs);
     }
   }
 
-  logs.push(`[AI-ticket] Candidate pool size: ${candidatePool.length}`);
+  const poolByMarket: Record<string, number> = {};
+  for (const leg of candidatePool) poolByMarket[leg.market] = (poolByMarket[leg.market] || 0) + 1;
+  logs.push(`[Pool Summary] Total: ${candidatePool.length} | By market: ${JSON.stringify(poolByMarket)}`);
   console.log(logs.join("\n"));
 
-  // 3. CHECK MINIMUM CANDIDATES
+  console.log(logs.join("\n"));
+
   if (candidatePool.length < legsMin) {
     return new Response(
       JSON.stringify({

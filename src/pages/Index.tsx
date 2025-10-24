@@ -326,32 +326,21 @@ const Index = () => {
     }
   };
 
-  // NEW AI Ticket Creator (with custom parameters)
+  // NEW AI Ticket Creator (with custom parameters) - GLOBAL MODE
   const generateAITicket = async (params: any) => {
     setGeneratingTicket(true);
     try {
-      const fixtureIds = displayFixtures.map((f: any) => f.id);
-
-      if (fixtureIds.length === 0) {
-        toast({
-          title: "No Fixtures",
-          description: "No fixtures available to create a ticket.",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
 
       const { data, error } = await supabase.functions.invoke("generate-ticket", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
-          fixtureIds,
+          // Global mode - no fixtureIds required
           minOdds: params.targetMin,
           maxOdds: params.targetMax,
           risk: params.risk,
-          includeMarkets: params.includeMarkets, // Send array directly
+          includeMarkets: params.includeMarkets,
           legsMin: params.minLegs,
           legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,
@@ -614,7 +603,6 @@ const Index = () => {
               className="w-full gap-2"
               variant="default"
               onClick={() => setTicketCreatorOpen(true)}
-              disabled={displayFixtures.length === 0}
             >
               <Sparkles className="h-4 w-4" />
               AI Ticket Creator
@@ -695,7 +683,6 @@ const Index = () => {
                     setTicketCreatorOpen(true);
                     setRightSheetOpen(false);
                   }}
-                  disabled={displayFixtures.length === 0}
                 >
                   <Sparkles className="h-4 w-4" />
                   AI Ticket Creator
@@ -733,7 +720,6 @@ const Index = () => {
         <Button
           className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
           onClick={() => setTicketCreatorOpen(true)}
-          disabled={displayFixtures.length === 0}
         >
           <Sparkles className="h-5 w-5" />
           <span className="text-sm font-semibold">AI Ticket</span>
@@ -744,7 +730,6 @@ const Index = () => {
         open={ticketCreatorOpen}
         onOpenChange={setTicketCreatorOpen}
         onGenerate={generateAITicket}
-        fixturesCount={displayFixtures.length}
       />
 
       <TicketDrawer
