@@ -20,6 +20,7 @@ export interface FilterCriteria {
 }
 
 // Rules-based lines from _shared/rules.ts
+// NOTE: Fouls and Offsides are DISABLED in odds-based flows (API-Football doesn't provide odds)
 const MARKET_OPTIONS = [
   { 
     id: "goals", 
@@ -29,23 +30,15 @@ const MARKET_OPTIONS = [
   { 
     id: "corners", 
     label: "Corners", 
-    lines: [7.5, 8.5, 9.5, 10.5, 12.0, 12.5, 13.5] 
+    lines: [7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5] // FIXED: 12.0 → 11.5 per sheet
   },
   { 
     id: "cards", 
     label: "Cards", 
     lines: [1.5, 2.5, 3.5, 4.5, 5.5] 
   },
-  { 
-    id: "fouls", 
-    label: "Fouls", 
-    lines: [16.5, 19.5, 20.5, 23.5, 24.5] 
-  },
-  { 
-    id: "offsides", 
-    label: "Offsides", 
-    lines: [1.5, 2.5, 3.5, 4.5] 
-  },
+  // Fouls and Offsides are DISABLED (no odds available in API-Football)
+  // They can remain in stats panels but should not appear in Filterizer/Ticket Creator
 ];
 
 export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: FilterizerPanelProps) {

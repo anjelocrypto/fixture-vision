@@ -159,7 +159,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                 {selection.sample_size && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Users className="h-3 w-3" />
-                    <span>Sample: {selection.sample_size}</span>
+                    <span>Sample size: {selection.sample_size} matches</span>
                   </div>
                 )}
               </div>

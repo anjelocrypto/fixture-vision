@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -125,12 +126,19 @@ serve(async (req) => {
       );
     }
 
-    // Post-filter: drop obviously wrong odds for common lines
+    // Post-filter: drop suspicious odds using comprehensive guards
     const rows = (selections || []).filter((row: any) => {
-      if (market === "goals" && Math.abs(Number(row.line) - 2.5) <= 0.01 && Number(row.odds) >= 5.0) {
-        console.warn(`[filterizer-query] Dropping suspicious odds for goals 2.5: ${row.odds} (fixture ${row.fixture_id}, ${row.bookmaker})`);
+      const suspiciousWarning = checkSuspiciousOdds(
+        market as any,
+        Number(row.line),
+        Number(row.odds)
+      );
+      
+      if (suspiciousWarning) {
+        console.warn(`[filterizer-query] ${suspiciousWarning} (fixture ${row.fixture_id}, ${row.bookmaker}) - DROPPED`);
         return false;
       }
+      
       return true;
     });
 

@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickFromCombined, RULES, StatMarket } from "../_shared/rules.ts";
+import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
+import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -229,23 +231,23 @@ serve(async (req) => {
 
           if (!targetBet?.values) continue;
 
-          // Find the specific line in values array with STRICT format matching
+          // Find the specific line in values array with STRICT format matching + normalization
           const selection = targetBet.values.find((v: any) => {
             const value = v.value || "";
-            // Normalize: lowercase, trim, collapse multiple spaces
-            const valueLower = value.toLowerCase().trim().replace(/\s+/g, ' ');
             
-            // Build exact target string: "over 2.5" or "under 2.5"
-            const targetString = `${pick.side.toLowerCase()} ${pick.line}`;
+            // Normalize bookmaker string: handles "Over 2.5", "O 2.5", "Total Over (2.5)", "Over 2,5", etc.
+            const normalizedValue = normalizeOddsValue(value);
             
-            // STRICT match - must be exactly "over 2.5" format
-            if (valueLower !== targetString) return false;
+            // Check if normalized value matches target
+            if (!matchesTarget(normalizedValue, pick.side, pick.line)) {
+              return false;
+            }
             
-            // ADDITIONAL VALIDATION: odds must be reasonable for this line
-            // Over 2.5 should be 1.4-3.5 range, never 5.0+
+            // SUSPICIOUS ODDS GUARD: reject obviously wrong odds
             const odds = parseFloat(v.odd);
-            if (pick.line === 2.5 && odds >= 5.0) {
-              console.warn(`[optimize] Rejected suspicious odds for ${targetString}: ${odds} (bookmaker may have wrong data)`);
+            const suspiciousWarning = checkSuspiciousOdds(market, pick.line, odds);
+            if (suspiciousWarning) {
+              console.warn(`[optimize] ${suspiciousWarning} - REJECTED (fixture ${fixture.id}, bookmaker ${bookmaker.name})`);
               return false;
             }
             
