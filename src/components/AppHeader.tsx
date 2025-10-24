@@ -1,6 +1,5 @@
 import { Search, Twitter, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -61,18 +60,17 @@ export function AppHeader() {
               key={sport.name}
               variant={sport.active ? "default" : "ghost"}
               size="sm"
-              disabled={!sport.active}
-              className={sport.active ? "rounded-full" : "rounded-full text-muted-foreground relative"}
+              onClick={() => {
+                if (!sport.active) {
+                  toast({
+                    title: "Coming Soon",
+                    description: `${sport.name} predictions will be available soon!`,
+                  });
+                }
+              }}
+              className={sport.active ? "rounded-full" : "rounded-full text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"}
             >
-              <span className={!sport.active ? "opacity-50" : ""}>{sport.name}</span>
-              {!sport.active && (
-                <Badge 
-                  variant="secondary" 
-                  className="ml-2 text-[10px] px-1.5 py-0 h-4 bg-muted text-muted-foreground"
-                >
-                  Soon
-                </Badge>
-              )}
+              {sport.name}
             </Button>
           ))}
         </div>
