@@ -32,6 +32,8 @@ interface TicketLeg {
   bookmaker: string;
   combinedAvg?: number;
   source?: "prematch" | "live";
+  line?: number; // Actual line from odds (for consistency checking)
+  side?: "over" | "under"; // Actual side from odds (for consistency checking)
 }
 
 // Validation schemas
@@ -268,43 +270,44 @@ async function processFixtureToPool(
     const rulePick = pickFromCombined(market as any, avgValue);
     if (!rulePick) continue;
 
-    const { side, line } = rulePick;
-    const exactMatch = selections.find((s: any) => s.market === market && s.kind === side && s.line === line);
+    const { side, line: requestedLine } = rulePick;
+    
+    // STRICT MATCHING: Require exact line match (tolerance ≤ 0.01 for floating point)
+    const exactMatch = selections.find((s: any) => 
+      s.market === market && 
+      s.kind === side && 
+      Math.abs(s.line - requestedLine) <= 0.01
+    );
 
     if (exactMatch) {
+      // Sanity check: Warn if odds seem implausible for this market/line combo
+      if (exactMatch.odds >= 4.5 && market === "goals" && exactMatch.line <= 2.5 && exactMatch.kind === "over") {
+        logs.push(`[PRICE_SANITY_WARN] fixture:${fixtureId} Goals Over ${exactMatch.line} @ ${exactMatch.odds} looks implausibly high`);
+      }
+      
       legs.push({
         fixtureId,
         homeTeam,
         awayTeam,
         start,
         market: market as Market,
-        selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${line}`,
+        selection: `${exactMatch.kind.charAt(0).toUpperCase() + exactMatch.kind.slice(1)} ${exactMatch.line}`,
         odds: exactMatch.odds,
         bookmaker: exactMatch.bookmaker,
         combinedAvg: avgValue,
         source: oddsData.source,
+        line: exactMatch.line,
+        side: exactMatch.kind,
       });
-      logs.push(`[fixture:${fixtureId}] ${market}: exact ${side} ${line} @ ${exactMatch.odds}`);
+      logs.push(`[fixture:${fixtureId}] ${market}: EXACT ${exactMatch.kind} ${exactMatch.line} @ ${exactMatch.odds}`);
     } else {
-      const nearest = selections
-        .filter((s: any) => s.market === market && s.kind === side && s.line && Math.abs(s.line - line) <= 0.5)
-        .sort((a: any, b: any) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
-
-      if (nearest) {
-        legs.push({
-          fixtureId,
-          homeTeam,
-          awayTeam,
-          start,
-          market: market as Market,
-          selection: `${side.charAt(0).toUpperCase() + side.slice(1)} ${nearest.line}`,
-          odds: nearest.odds,
-          bookmaker: nearest.bookmaker,
-          combinedAvg: avgValue,
-          source: oddsData.source,
-        });
-        logs.push(`[fixture:${fixtureId}] ${market}: nearest ${side} ${nearest.line} @ ${nearest.odds}`);
-      }
+      // NO FALLBACK: Log the mismatch and drop this candidate
+      const availableLines = selections
+        .filter((s: any) => s.market === market && s.kind === side)
+        .map((s: any) => s.line)
+        .sort((a: number, b: number) => a - b);
+      
+      logs.push(`[NO_EXACT_MATCH] fixture:${fixtureId} market:${market} requested:${side} ${requestedLine} | available: [${availableLines.join(", ")}]`);
     }
   }
 
@@ -581,6 +584,38 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   }
 
   logs.push(`[AI-ticket] Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}, expansions ${ticket.attempts}`);
+
+  // CONSISTENCY CHECK: Validate all legs match their source data
+  let consistencyFailures = 0;
+  for (const leg of ticket.legs) {
+    // Extract line from selection string
+    const lineMatch = leg.selection.match(/([\d.]+)/);
+    const legLine = lineMatch ? parseFloat(lineMatch[1]) : null;
+    const legSide = leg.selection.toLowerCase().includes("over") ? "over" : "under";
+    
+    if (!legLine || !Number.isFinite(legLine)) {
+      logs.push(`[CONSISTENCY_FAIL] fixture:${leg.fixtureId} market:${leg.market} - invalid line in selection "${leg.selection}"`);
+      consistencyFailures++;
+      continue;
+    }
+    
+    // Validate that the leg's displayed line matches what we should have for these odds
+    if (leg.line && Math.abs(leg.line - legLine) > 0.01) {
+      logs.push(`[CONSISTENCY_FAIL] fixture:${leg.fixtureId} market:${leg.market} requested:${legSide} ${leg.line} got:${legSide} ${legLine}`);
+      consistencyFailures++;
+    }
+    
+    if (leg.side && leg.side !== legSide) {
+      logs.push(`[CONSISTENCY_FAIL] fixture:${leg.fixtureId} market:${leg.market} side mismatch: leg.side=${leg.side} selection=${legSide}`);
+      consistencyFailures++;
+    }
+  }
+  
+  if (consistencyFailures > 0) {
+    logs.push(`[CONSISTENCY_CHECK] Found ${consistencyFailures} mismatches in ${ticket.legs.length} legs`);
+  } else {
+    logs.push(`[CONSISTENCY_CHECK] All ${ticket.legs.length} legs validated successfully`);
+  }
 
   // Calculate win probability (simple implied probability product)
   const winProb = ticket.legs.reduce((acc, leg) => acc * (1 / leg.odds), 1);
@@ -1052,65 +1087,113 @@ function normalizeSelection(value: string): string {
 function flattenOddsPayloadToSelections(payload: any) {
   const selections: any[] = [];
   const bookmakers = payload?.bookmakers || [];
+  let skippedInvalidBets = 0;
+  let skippedInvalidValues = 0;
+  let skippedInvalidOdds = 0;
+  
+  // Official API-Football bet IDs for full match totals only
+  const OFFICIAL_BET_IDS: Record<number, string> = {
+    5: "goals",    // Goals Over/Under (full match)
+    45: "corners", // Corners Over/Under (full match)
+    80: "cards",   // Cards Over/Under (full match)
+  };
+  
   for (const bookmaker of bookmakers) {
     const bookmakerName = bookmaker.name || `Bookmaker ${bookmaker.id}`;
     for (const bet of bookmaker.bets || []) {
-      // Use EXACT bet ID matching (API-Football standard IDs)
-      // - ID 5: "Goals Over/Under" (full match)
-      // - ID 45: "Corners Over Under" (full match)  
-      // - ID 80: "Cards Over/Under" (full match)
-      const normalizedMarket = (() => {
-        const betId = bet?.id;
-        if (betId === 5) return "goals";
-        if (betId === 45) return "corners";
-        if (betId === 80) return "cards";
-        return "unknown";
-      })();
-      if (normalizedMarket === "unknown") continue;
+      const betId = bet?.id;
+      const market = OFFICIAL_BET_IDS[betId];
+      
+      // STRICT: Only accept official bet IDs
+      if (!market) {
+        skippedInvalidBets++;
+        continue;
+      }
+      
       for (const value of bet.values || []) {
-        const parsed = parseValueString(String(value.value || ""));
-        if (!parsed) continue;
+        const valueStr = String(value.value || "").trim();
+        
+        // STRICT: Use strict parsing that rejects 1H/2H/team/Asian variants
+        const parsed = parseValueStringStrict(valueStr);
+        if (!parsed) {
+          skippedInvalidValues++;
+          continue;
+        }
+        
+        const odds = Number(value.odd);
+        
+        // STRICT: Validate odds are finite and > 1.0
+        if (!Number.isFinite(odds) || odds <= 1.01) {
+          skippedInvalidOdds++;
+          continue;
+        }
+        
+        // STRICT: Validate line is finite
+        if (!Number.isFinite(parsed.line)) {
+          skippedInvalidValues++;
+          continue;
+        }
+        
         selections.push({
           bookmaker: bookmakerName,
-          market: normalizedMarket,
+          market: market,
           kind: parsed.side,
-          odds: Number(value.odd),
+          odds: odds,
           line: parsed.line,
+          scope: "full",
         });
       }
     }
   }
+  
+  if (skippedInvalidBets > 0 || skippedInvalidValues > 0 || skippedInvalidOdds > 0) {
+    console.log(`[flattenOddsPayload] Skipped: ${skippedInvalidBets} invalid bet IDs, ${skippedInvalidValues} invalid values, ${skippedInvalidOdds} invalid odds`);
+  }
+  
   return selections;
 }
 
+// STRICT parser for full match totals only
+function parseValueStringStrict(valueStr: string): { side: "over" | "under"; line: number } | null {
+  const lower = valueStr.toLowerCase().trim();
+  
+  // Reject anything that looks like 1st half, 2nd half, team-specific, or Asian variants
+  if (
+    lower.includes("1st half") ||
+    lower.includes("2nd half") ||
+    lower.includes("1h") ||
+    lower.includes("2h") ||
+    lower.includes("home") ||
+    lower.includes("away") ||
+    lower.includes("asian") ||
+    lower.includes("team")
+  ) {
+    return null;
+  }
+  
+  // Accept only "Over X.Y" or "Under X.Y" where X.Y is a decimal number
+  const overMatch = lower.match(/^over\s+([\d.]+)$/);
+  const underMatch = lower.match(/^under\s+([\d.]+)$/);
+  
+  if (overMatch) {
+    const line = parseFloat(overMatch[1]);
+    return Number.isFinite(line) ? { side: "over", line } : null;
+  }
+  if (underMatch) {
+    const line = parseFloat(underMatch[1]);
+    return Number.isFinite(line) ? { side: "under", line } : null;
+  }
+  
+  return null;
+}
+
+// DEPRECATED: Nearest-line fallback removed to ensure correctness
+// If you need this functionality, require explicit user opt-in and display actual line used
 function findNearestLine(
   bookmakers: any[],
   marketName: string,
   targetLine: number
 ): { odds: number; bookmaker: string } | null {
-  let best: { odds: number; bookmaker: string; distance: number } | null = null;
-
-  for (const bookmaker of bookmakers) {
-    const marketData = bookmaker.markets.find((m: any) => 
-      normalizeMarketName(m.name) === marketName
-    );
-    if (!marketData) continue;
-
-    for (const v of marketData.values) {
-      const match = v.value.match(/Over\s+([\d.]+)/i);
-      if (match) {
-        const line = parseFloat(match[1]);
-        const distance = Math.abs(line - targetLine);
-        
-        if (distance <= 0.5) { // Within ±0.5 threshold
-          const odds = parseFloat(v.odd);
-          if (!best || distance < best.distance) {
-            best = { odds, bookmaker: bookmaker.name, distance };
-          }
-        }
-      }
-    }
-  }
-
-  return best ? { odds: best.odds, bookmaker: best.bookmaker } : null;
+  console.warn("[findNearestLine] DEPRECATED: Nearest-line matching disabled for correctness");
+  return null;
 }

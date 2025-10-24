@@ -234,37 +234,108 @@ serve(async (req) => {
 
 function flattenOddsToSelections(fixtureOdds: any) {
   const selections: any[] = [];
+  let skippedInvalidBets = 0;
+  let skippedInvalidValues = 0;
+  let skippedInvalidOdds = 0;
+
+  // Official API-Football bet IDs for full match totals only
+  const OFFICIAL_BET_IDS: Record<number, string> = {
+    5: "goals",    // Goals Over/Under (full match)
+    45: "corners", // Corners Over/Under (full match)
+    80: "cards",   // Cards Over/Under (full match)
+  };
 
   for (const bookmaker of fixtureOdds.bookmakers || []) {
     const bookmakerName = bookmaker.name || `Bookmaker ${bookmaker.id}`;
     
-    // API-Football uses "bets" not "markets"
     for (const bet of bookmaker.bets || bookmaker.markets || []) {
-      const betName = bet.name;
-      const normalizedMarket = normalizeMarketNameOld(betName);
+      const betId = bet?.id;
+      const market = OFFICIAL_BET_IDS[betId];
       
-      // Skip non-relevant markets
-      if (normalizedMarket === "unknown") continue;
+      // STRICT: Only accept official bet IDs
+      if (!market) {
+        skippedInvalidBets++;
+        continue;
+      }
       
       for (const value of bet.values || []) {
-        const parsed = parseValueString(value.value);
-        if (!parsed) continue;
+        const valueStr = String(value.value || "").trim();
+        
+        // STRICT: Parse only "Over X.Y" or "Under X.Y" format (case insensitive)
+        const parsed = parseValueStringStrict(valueStr);
+        if (!parsed) {
+          skippedInvalidValues++;
+          continue;
+        }
+        
+        const odds = Number(value.odd);
+        
+        // STRICT: Validate odds are finite and > 1.0
+        if (!Number.isFinite(odds) || odds <= 1.01) {
+          skippedInvalidOdds++;
+          continue;
+        }
+        
+        // STRICT: Validate line is finite
+        if (!Number.isFinite(parsed.line)) {
+          skippedInvalidValues++;
+          continue;
+        }
         
         selections.push({
           bookmaker: bookmakerName,
-          market: normalizedMarket,
+          market: market,
           kind: parsed.side,
-          odds: parseFloat(value.odd),
+          odds: odds,
           line: parsed.line,
+          scope: "full", // Explicit scope marker
         });
       }
     }
   }
 
-  console.log(`[fetch-odds] Flattened ${selections.length} selections from ${fixtureOdds.bookmakers?.length || 0} bookmakers`);
+  console.log(`[fetch-odds] Flattened ${selections.length} valid selections from ${fixtureOdds.bookmakers?.length || 0} bookmakers`);
+  if (skippedInvalidBets > 0 || skippedInvalidValues > 0 || skippedInvalidOdds > 0) {
+    console.log(`[fetch-odds] Skipped: ${skippedInvalidBets} invalid bet IDs, ${skippedInvalidValues} invalid values, ${skippedInvalidOdds} invalid odds`);
+  }
   return selections;
 }
 
+// STRICT parser: Only accept "Over X.Y" or "Under X.Y" (full match only)
+function parseValueStringStrict(valueStr: string): { side: "over" | "under"; line: number } | null {
+  const lower = valueStr.toLowerCase().trim();
+  
+  // Reject anything that looks like 1st half, 2nd half, team-specific, or Asian variants
+  if (
+    lower.includes("1st half") ||
+    lower.includes("2nd half") ||
+    lower.includes("1h") ||
+    lower.includes("2h") ||
+    lower.includes("home") ||
+    lower.includes("away") ||
+    lower.includes("asian") ||
+    lower.includes("team")
+  ) {
+    return null;
+  }
+  
+  // Accept only "Over X.Y" or "Under X.Y" where X.Y is a decimal number
+  const overMatch = lower.match(/^over\s+([\d.]+)$/);
+  const underMatch = lower.match(/^under\s+([\d.]+)$/);
+  
+  if (overMatch) {
+    const line = parseFloat(overMatch[1]);
+    return Number.isFinite(line) ? { side: "over", line } : null;
+  }
+  if (underMatch) {
+    const line = parseFloat(underMatch[1]);
+    return Number.isFinite(line) ? { side: "under", line } : null;
+  }
+  
+  return null;
+}
+
+// Legacy parser (kept for backward compatibility in other functions)
 function parseValueString(valueStr: string): { side: "over" | "under"; line: number } | null {
   const lower = valueStr.toLowerCase().trim();
   const overMatch = lower.match(/(?:over|o)\s*([\d.]+)/);
