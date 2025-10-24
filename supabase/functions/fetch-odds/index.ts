@@ -83,9 +83,9 @@ serve(async (req) => {
 
       if (cachedOdds) {
         const cacheAge = Date.now() - new Date(cachedOdds.captured_at).getTime();
-        const ONE_HOUR = 60 * 60 * 1000;
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
 
-        if (cacheAge < ONE_HOUR) {
+        if (cacheAge < SIX_HOURS) {
           console.log(`[fetch-odds] Cache hit for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
           
           // Flatten cached odds to selections format
@@ -103,11 +103,12 @@ serve(async (req) => {
               selections,
               source: live ? "live" : "prematch",
               cached: true,
+              stale: cacheAge >= 60 * 60 * 1000, // mark stale if older than 1h
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         } else {
-          console.log(`[fetch-odds] Cache stale for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
+          console.log(`[fetch-odds] Cache stale (>6h) for fixture ${fixtureId} (age: ${Math.round(cacheAge / 1000 / 60)}min)`);
         }
       } else {
         console.log(`[fetch-odds] Cache miss for fixture ${fixtureId}`);
@@ -131,6 +132,30 @@ serve(async (req) => {
 
     if (!res.ok) {
       console.error(`[fetch-odds] API error: ${res.status} ${res.statusText}`);
+      // Fallback to any cached odds (even stale)
+      const { data: cachedOdds } = await supabaseClient
+        .from("odds_cache")
+        .select("*")
+        .eq("fixture_id", fixtureId)
+        .maybeSingle();
+      if (cachedOdds) {
+        const cachedFixtureOdds = {
+          fixture: cachedOdds.payload.fixture,
+          bookmakers: cachedOdds.payload.bookmakers || [],
+        };
+        const selections = flattenOddsToSelections(cachedFixtureOdds);
+        console.warn(`[fetch-odds] Using cached (fallback) ${selections.length} selections for fixture ${fixtureId}`);
+        return new Response(
+          JSON.stringify({
+            fixture: cachedFixtureOdds.fixture,
+            selections,
+            source: live ? "live" : "prematch",
+            cached: true,
+            fallback: true,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(JSON.stringify({ error: "API error" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
@@ -139,7 +164,30 @@ serve(async (req) => {
 
     const json = await res.json();
     if (!json.response || json.response.length === 0) {
-      console.warn(`[fetch-odds] No odds found for fixture ${fixtureId}`);
+      console.warn(`[fetch-odds] No odds found for fixture ${fixtureId} from API, attempting cache fallback`);
+      const { data: cachedOdds } = await supabaseClient
+        .from("odds_cache")
+        .select("*")
+        .eq("fixture_id", fixtureId)
+        .maybeSingle();
+      if (cachedOdds) {
+        const cachedFixtureOdds = {
+          fixture: cachedOdds.payload.fixture,
+          bookmakers: cachedOdds.payload.bookmakers || [],
+        };
+        const selections = flattenOddsToSelections(cachedFixtureOdds);
+        console.warn(`[fetch-odds] Using cached (fallback) ${selections.length} selections for fixture ${fixtureId}`);
+        return new Response(
+          JSON.stringify({
+            fixture: cachedFixtureOdds.fixture,
+            selections,
+            source: live ? "live" : "prematch",
+            cached: true,
+            fallback: true,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: "No odds found", fixtureId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

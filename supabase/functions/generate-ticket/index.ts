@@ -166,7 +166,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   } = body;
 
   console.log(`[AI-ticket] Input:`, JSON.stringify({
-    fixtureIds: fixtureIds?.length,
+    fixtureIds,
+    fixtureCount: fixtureIds?.length,
     minOdds,
     maxOdds,
     legsMin,
