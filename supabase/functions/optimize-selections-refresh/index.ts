@@ -223,19 +223,17 @@ serve(async (req) => {
 
           if (!targetBet?.values) continue;
 
-          // Find the specific line in values array with exact matching
+          // Find the specific line in values array with EXACT format matching
           const selection = targetBet.values.find((v: any) => {
             const value = v.value || "";
-            const valueLower = value.toLowerCase();
+            const valueLower = value.toLowerCase().trim();
             
-            // Extract the line number from the value string
-            const lineMatch = valueLower.match(/(\d+\.?\d*)/);
-            if (!lineMatch) return false;
-            const oddsLine = parseFloat(lineMatch[1]);
+            // Build exact target string: "over 2.5" or "under 2.5"
+            const targetString = `${pick.side.toLowerCase()} ${pick.line}`;
             
-            // Check exact match: side must be at start and line must match exactly
-            const targetString = `${pick.side} ${pick.line}`;
-            return valueLower.startsWith(pick.side) && Math.abs(oddsLine - pick.line) < 0.01;
+            // EXACT match only - must be exactly "over 2.5" format
+            // This prevents matching "Over 1.5" when looking for "over 2.5"
+            return valueLower === targetString;
           });
 
           if (selection?.odd) {
