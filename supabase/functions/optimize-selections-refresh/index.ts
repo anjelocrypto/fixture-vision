@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickFromCombined, RULES, StatMarket } from "../_shared/rules.ts";
 import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
+import { computeCombinedMetrics } from "../_shared/stats.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +11,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const RULES_VERSION = "v1.0-sheet";
+const RULES_VERSION = "v2_combined_scaled";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -172,16 +173,9 @@ serve(async (req) => {
         continue;
       }
 
-      // Compute combined totals (SUM, not average)
-      const combined = {
-        goals: Number(homeStats.goals) + Number(awayStats.goals),
-        corners: Number(homeStats.corners) + Number(awayStats.corners),
-        cards: Number(homeStats.cards) + Number(awayStats.cards),
-        fouls: Number(homeStats.fouls) + Number(awayStats.fouls),
-        offsides: Number(homeStats.offsides) + Number(awayStats.offsides),
-      };
-
-      const sampleSize = Math.min(homeStats.sample_size || 0, awayStats.sample_size || 0);
+      // Compute combined metrics using v2 formula
+      const combined = computeCombinedMetrics(homeStats, awayStats);
+      const sampleSize = combined.sample_size;
 
       // Get odds
       const oddsData = oddsMap.get(fixture.id);
@@ -197,6 +191,13 @@ serve(async (req) => {
 
       for (const market of markets) {
         const combinedValue = combined[market];
+        
+        // Skip if metric has insufficient data
+        if (combinedValue === null) {
+          console.log(`[optimize] skip market=${market} fixture=${fixture.id} reason=insufficient_combined`);
+          continue;
+        }
+        
         const pick = pickFromCombined(market, combinedValue);
 
         if (!pick) continue;

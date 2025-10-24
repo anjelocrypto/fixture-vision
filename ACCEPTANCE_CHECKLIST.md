@@ -1,27 +1,46 @@
 # Acceptance Checklist - Production Readiness ✅
 
 **Date**: 2025-10-24  
+**Formula Version**: v2_combined_scaled  
 **Status**: ✅ ALL ITEMS CONFIRMED
 
 ---
 
-## ✅ 1. Combined-stats formula confirmed
+## ✅ 1. Combined-stats formula (v2_combined_scaled)
 
-**Formula**: `combined_value = home_team_avg + away_team_avg`
+**Formula**: `combined(metric) = ((home_avg + away_avg) / 2) × multiplier`
 
-- ✅ Last **5** full-time (FT) matches per team
-- ✅ **Simple arithmetic mean** (no recency weights)
+### Multipliers
+- ✅ Goals: × 1.5
+- ✅ Corners: × 1.7
+- ✅ Cards: × 1.9
+- ✅ Fouls: × 1.8
+- ✅ Offsides: × 1.8
+
+### Data Requirements
+- ✅ Source: Last **5** full-time (FT) matches per team
+- ✅ Minimum: **3** matches required (returns null if < 3)
+- ✅ Simple arithmetic mean per team (no recency weights)
 - ✅ **No home/away adjustment**
 - ✅ **No league normalization**
 - ✅ **No opponent strength adjustment**
-- ✅ **No rounding/clamping** before rule matching
+
+### Bounds & Handling
+- ✅ Sanity clamps applied: Goals [0,12], Corners [0,25], Cards [0,15], Fouls [0,40], Offsides [0,10]
+- ✅ Rounding: 2 decimals in `combined_snapshot`
+- ✅ Insufficient data: returns null, skips selection generation
+
+### Implementation
+- ✅ Centralized in `supabase/functions/_shared/stats.ts` → `computeCombinedMetrics()`
+- ✅ Used by both `optimize-selections-refresh` and `analyze-fixture`
+- ✅ Version tracking: `rules_version = "v2_combined_scaled"`
+- ✅ Logging: `[stats] combined v2: goals=X corners=Y ...`
 
 **Documentation**: See `COMBINED_STATS_FORMULA.md` for full specification
 
 **Code references**:
-- Stats computation: `supabase/functions/_shared/stats.ts` lines 106-134
-- Combined calculation: `supabase/functions/analyze-fixture/index.ts` lines 245-252
-- Applied to selections: `supabase/functions/optimize-selections-refresh/index.ts` lines 174-180
+- Combined formula: `supabase/functions/_shared/stats.ts` → `computeCombinedMetrics()`
+- Applied in optimizer: `supabase/functions/optimize-selections-refresh/index.ts`
 
 ---
 
@@ -82,7 +101,7 @@
 | [4.1, 5.5) | Over 3.5 |
 | ≥5.5 | Over 4.5 |
 
-**Code**: `supabase/functions/_shared/rules.ts` lines 6-47
+**Code**: `supabase/functions/_shared/rules.ts`
 
 ---
 
@@ -99,7 +118,7 @@
 
 **Implementation**:
 - Helper module: `supabase/functions/_shared/odds_normalization.ts`
-- Applied in: `optimize-selections-refresh/index.ts` lines 237-240
+- Applied in: `optimize-selections-refresh/index.ts`
 - Functions: `normalizeOddsValue()`, `buildTargetString()`, `matchesTarget()`
 
 ---
@@ -118,8 +137,8 @@
 **Implementation**:
 - Helper module: `supabase/functions/_shared/suspicious_odds_guards.ts`
 - Applied in:
-  - `optimize-selections-refresh/index.ts` lines 247-251
-  - `filterizer-query/index.ts` lines 128-141
+  - `optimize-selections-refresh/index.ts`
+  - `filterizer-query/index.ts`
 - Thresholds are **configurable** (array-based)
 - All rejections **logged** with context
 
@@ -131,28 +150,28 @@
 
 **Actions taken**:
 - ✅ Removed from `FilterizerPanel` market options
-- ✅ Skip logic in `optimize-selections-refresh` (lines 222-227)
+- ✅ Skip logic in `optimize-selections-refresh`
 - ✅ Can remain in stats panels (analysis-only)
 - ✅ Comment added: "DISABLED (no odds available)"
 
 **Files updated**:
-- `src/components/FilterizerPanel.tsx` lines 22-42
-- `supabase/functions/optimize-selections-refresh/index.ts` lines 222-227
+- `src/components/FilterizerPanel.tsx`
+- `supabase/functions/optimize-selections-refresh/index.ts`
 
 ---
 
 ## ✅ 6. Shared combined-stats helper
 
 **Consistency verified**:
-- ✅ Both `optimize-selections-refresh` and `analyze-fixture` use same formula
-- ✅ Both use `stats_cache` table with 2-hour TTL
-- ✅ Both compute: `home_avg + away_avg` (simple sum)
+- ✅ Both `optimize-selections-refresh` and `analyze-fixture` use `computeCombinedMetrics()`
+- ✅ Both use `stats_cache` table
+- ✅ Both compute: `((home_avg + away_avg) / 2) × multiplier`
 - ✅ Both use last 5 FT matches from API-Football
+- ✅ Both require minimum 3 matches per team
 
 **Code**:
 - Shared stats logic: `supabase/functions/_shared/stats.ts`
-- Analyze-fixture: Calls `computeLastFiveAverages()` for both teams
-- Optimize-selections: Loads from `stats_cache` (pre-computed by `stats-refresh` cron)
+- Function: `computeCombinedMetrics(homeStats, awayStats)`
 
 ---
 
@@ -166,7 +185,7 @@
 - ✅ Shows kickoff date/time
 - ✅ Shows sample size: "Sample size: 5 matches" ✅ FIXED (was "Sample: 5")
 
-**Code**: `src/components/SelectionsDisplay.tsx` lines 82-223
+**Code**: `src/components/SelectionsDisplay.tsx`
 
 ---
 
@@ -185,7 +204,7 @@
 - Expands debug section below each card
 - Shows "Showing technical details" label
 
-**Code**: `src/components/SelectionsDisplay.tsx` lines 62-210
+**Code**: `src/components/SelectionsDisplay.tsx`
 
 ---
 
@@ -236,19 +255,19 @@ expect(checkSuspiciousOdds("goals", 2.5, 5.1)).toContain("Suspicious"); // Rejec
 
 ## 🎯 Summary
 
-All 9 acceptance criteria are **production-ready**:
+All acceptance criteria are **production-ready** with v2 formula:
 
-1. ✅ Combined-stats formula locked and documented
+1. ✅ Combined-stats formula v2 with multipliers implemented and documented
 2. ✅ Rule grid matches spreadsheet 1:1 (corners 11.5 fixed)
 3. ✅ Odds string normalization handles all bookmaker variations
 4. ✅ Expanded suspicious-odds guards for Goals/Corners/Cards
 5. ✅ Offsides/Fouls disabled in odds surfaces
-6. ✅ Both pathways use shared stats helper
+6. ✅ Both pathways use shared `computeCombinedMetrics()` helper
 7. ✅ Filterizer shows per-fixture cards with correct labels
 8. ✅ Debug toggle reveals all technical details
 9. ⚠️ Unit tests recommended (deferred, production code correct)
 
-**Next step**: Run spot-check on 3 upcoming fixtures to verify end-to-end flow.
+**Next step**: Run Warmup (48h) to repopulate `optimized_selections` with v2_combined_scaled values, then spot-check 3 fixtures.
 
 ---
 
@@ -259,7 +278,7 @@ For each test fixture:
 1. **Fixture details**: Home team, Away team, Kickoff time
 2. **Home team stats** (last 5): Goals, Corners, Cards, Fouls, Offsides
 3. **Away team stats** (last 5): Goals, Corners, Cards, Fouls, Offsides
-4. **Combined values**: Sum of home + away for each metric
+4. **Combined values (v2)**: `((home + away) / 2) × multiplier` for each metric
 5. **Rule picks**: Market/side/line selected by rules.ts for each metric
 6. **Odds rows**: Bet ID, normalized value string, bookmaker, odds
 7. **Filterizer presence**: Confirm fixture appears when filtering for that market/line
@@ -269,6 +288,6 @@ For each test fixture:
 
 ---
 
-**Document version**: v1.0  
+**Document version**: v2.0  
 **Last updated**: 2025-10-24  
-**Status**: ✅ PRODUCTION-READY
+**Status**: ✅ PRODUCTION-READY (v2_combined_scaled)

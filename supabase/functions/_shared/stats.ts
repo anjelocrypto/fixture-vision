@@ -155,3 +155,85 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   
   return result;
 }
+
+// Multipliers for combined stats (v2 formula)
+const METRIC_MULTIPLIERS = {
+  goals: 1.5,
+  corners: 1.7,
+  offsides: 1.8,
+  fouls: 1.8,
+  cards: 1.9,
+} as const;
+
+// Sanity clamps
+const METRIC_BOUNDS = {
+  goals: { min: 0, max: 12 },
+  corners: { min: 0, max: 25 },
+  offsides: { min: 0, max: 10 },
+  fouls: { min: 0, max: 40 },
+  cards: { min: 0, max: 15 },
+} as const;
+
+type MetricKey = 'goals' | 'corners' | 'offsides' | 'fouls' | 'cards';
+
+export type CombinedMetrics = {
+  goals: number | null;
+  corners: number | null;
+  offsides: number | null;
+  fouls: number | null;
+  cards: number | null;
+  sample_size: number;
+};
+
+/**
+ * Compute combined metrics using v2 formula:
+ * combined(metric) = ((home_avg + away_avg) / 2) × multiplier
+ * 
+ * Requires minimum 3 matches per team for each metric.
+ * Returns null for metrics with insufficient data.
+ */
+export function computeCombinedMetrics(
+  homeStats: Last5Result,
+  awayStats: Last5Result
+): CombinedMetrics {
+  const minSampleSize = Math.min(homeStats.sample_size, awayStats.sample_size);
+  
+  const combined: CombinedMetrics = {
+    goals: null,
+    corners: null,
+    offsides: null,
+    fouls: null,
+    cards: null,
+    sample_size: minSampleSize,
+  };
+
+  // Only compute if we have at least 3 matches for both teams
+  if (homeStats.sample_size < 3 || awayStats.sample_size < 3) {
+    console.log(`[stats] Insufficient sample size: home=${homeStats.sample_size}, away=${awayStats.sample_size} (min 3 required)`);
+    return combined;
+  }
+
+  const metrics: MetricKey[] = ['goals', 'corners', 'offsides', 'fouls', 'cards'];
+  
+  for (const metric of metrics) {
+    const homeAvg = Number(homeStats[metric]) || 0;
+    const awayAvg = Number(awayStats[metric]) || 0;
+    const multiplier = METRIC_MULTIPLIERS[metric];
+    const bounds = METRIC_BOUNDS[metric];
+    
+    // Formula: ((home_avg + away_avg) / 2) × multiplier
+    let value = ((homeAvg + awayAvg) / 2) * multiplier;
+    
+    // Apply bounds
+    value = Math.max(bounds.min, Math.min(bounds.max, value));
+    
+    // Round to 2 decimals
+    combined[metric] = Math.round(value * 100) / 100;
+  }
+
+  console.log(
+    `[stats] combined v2: goals=${combined.goals} corners=${combined.corners} offsides=${combined.offsides} fouls=${combined.fouls} cards=${combined.cards} (samples: H=${homeStats.sample_size}/A=${awayStats.sample_size})`
+  );
+
+  return combined;
+}
