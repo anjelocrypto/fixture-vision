@@ -11,48 +11,25 @@ export const AdminRefreshButton = () => {
     setIsRefreshing(true);
     
     try {
-      // Step 1: Backfill odds
-      toast.info("Fetching odds for upcoming fixtures...");
+      toast.info("Warming 48h odds pipeline...");
       
-      const { data: oddsData, error: oddsError } = await supabase.functions.invoke(
-        "backfill-odds",
-        { body: {} }
+      const { data, error } = await supabase.functions.invoke(
+        "warmup-odds",
+        { body: { window_hours: 48 } }
       );
 
-      if (oddsError) {
-        throw oddsError;
+      if (error) {
+        throw error;
       }
 
-      const oddsResult = oddsData as { scanned: number; fetched: number; skipped: number; failed: number };
-      
-      toast.success(
-        `Odds (48h): ${oddsResult.scanned} scanned, ${oddsResult.fetched} fetched, ${oddsResult.skipped} skipped (90min cache), ${oddsResult.failed} failed`
-      );
-
-      // Step 2: Optimize selections
-      toast.info("Optimizing selections...");
-
-      const { data: selectionsData, error: selectionsError } = await supabase.functions.invoke(
-        "optimize-selections-refresh",
-        { body: {} }
-      );
-
-      if (selectionsError) {
-        throw selectionsError;
-      }
-
-      const selectionsResult = selectionsData as { 
-        scanned: number; 
-        with_odds: number;
-        inserted: number; 
-        skipped: number;
-        failed: number;
-        duration_ms: number;
+      const result = data as { 
+        success: boolean;
+        backfill: { scanned: number; fetched: number; skipped: number; failed: number };
+        optimize: { scanned: number; with_odds: number; inserted: number; skipped: number; duration_ms: number };
+        message: string;
       };
 
-      toast.success(
-        `Selections (48h): ${selectionsResult.inserted} upserted from ${selectionsResult.scanned} fixtures (${selectionsResult.with_odds} with odds) in ${(selectionsResult.duration_ms / 1000).toFixed(1)}s`
-      );
+      toast.success(result.message);
 
     } catch (error) {
       console.error("Refresh error:", error);
@@ -71,7 +48,7 @@ export const AdminRefreshButton = () => {
       className="gap-2"
     >
       <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-      {isRefreshing ? "Refreshing..." : "Refresh Selections"}
+      {isRefreshing ? "Warming..." : "Warmup (48h)"}
     </Button>
   );
 };

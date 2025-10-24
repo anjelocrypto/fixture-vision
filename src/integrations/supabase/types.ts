@@ -294,6 +294,57 @@ export type Database = {
         }
         Relationships: []
       }
+      optimizer_run_logs: {
+        Row: {
+          duration_ms: number | null
+          failed: number | null
+          finished_at: string | null
+          id: string
+          notes: string | null
+          run_type: string
+          scanned: number | null
+          scope: Json | null
+          skipped: number | null
+          started_at: string
+          upserted: number | null
+          window_end: string
+          window_start: string
+          with_odds: number | null
+        }
+        Insert: {
+          duration_ms?: number | null
+          failed?: number | null
+          finished_at?: string | null
+          id?: string
+          notes?: string | null
+          run_type: string
+          scanned?: number | null
+          scope?: Json | null
+          skipped?: number | null
+          started_at?: string
+          upserted?: number | null
+          window_end: string
+          window_start: string
+          with_odds?: number | null
+        }
+        Update: {
+          duration_ms?: number | null
+          failed?: number | null
+          finished_at?: string | null
+          id?: string
+          notes?: string | null
+          run_type?: string
+          scanned?: number | null
+          scope?: Json | null
+          skipped?: number | null
+          started_at?: string
+          upserted?: number | null
+          window_end?: string
+          window_start?: string
+          with_odds?: number | null
+        }
+        Relationships: []
+      }
       stats_cache: {
         Row: {
           cards: number

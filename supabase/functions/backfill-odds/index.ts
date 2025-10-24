@@ -46,6 +46,7 @@ serve(async (req) => {
     
     // Get window (default 48h, can be 6h or 1h from cron)
     const now = new Date();
+    const startedAt = now;
     const nowTimestamp = Math.floor(now.getTime() / 1000);
     const endDate = new Date(now.getTime() + (window_hours * 60 * 60 * 1000));
     const endTimestamp = Math.floor(endDate.getTime() / 1000);
@@ -184,6 +185,26 @@ serve(async (req) => {
 
     console.log(`[backfill-odds] Complete: scanned=${scanned}, fetched=${fetched}, skipped=${skipped}, failed=${failed}`);
 
+    // Log run to optimizer_run_logs
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    
+    await supabaseClient.from("optimizer_run_logs").insert({
+      id: crypto.randomUUID(),
+      run_type: `backfill-odds-${window_hours}h`,
+      window_start: now.toISOString(),
+      window_end: endDate.toISOString(),
+      scope: {},
+      scanned,
+      with_odds: fetched,
+      upserted: fetched,
+      skipped,
+      failed,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: durationMs,
+    });
+
     return new Response(
       JSON.stringify({
         scanned,
@@ -191,6 +212,7 @@ serve(async (req) => {
         skipped,
         failed,
         window: { start: now.toISOString(), end: endDate.toISOString() },
+        duration_ms: durationMs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

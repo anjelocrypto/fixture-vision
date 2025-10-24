@@ -90,17 +90,3 @@ export function pickLine(market: Market, combinedAvg: number): Line | null {
   
   return rule.line;
 }
-
-/**
- * Get risk-adjusted odds preferences
- */
-export function getRiskProfile(risk: "safe" | "standard" | "risky") {
-  switch (risk) {
-    case "safe":
-      return { minOdds: 1.2, maxOdds: 1.6, preferredOdds: 1.4 };
-    case "standard":
-      return { minOdds: 1.4, maxOdds: 2.0, preferredOdds: 1.7 };
-    case "risky":
-      return { minOdds: 1.8, maxOdds: 3.0, preferredOdds: 2.2 };
-  }
-}

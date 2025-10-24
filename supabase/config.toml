@@ -32,3 +32,6 @@ verify_jwt = true
 
 [functions.backfill-odds]
 verify_jwt = true
+
+[functions.warmup-odds]
+verify_jwt = true

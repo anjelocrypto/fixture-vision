@@ -28,6 +28,7 @@ Deno.serve(async (req) => {
 
     // Get upcoming fixtures (next 72 hours)
     const now = new Date();
+    const startedAt = now;
     const next72h = new Date(now.getTime() + 72 * 60 * 60 * 1000);
 
     const { data: upcomingFixtures, error: fixturesError } = await supabase
@@ -117,6 +118,26 @@ Deno.serve(async (req) => {
       failures,
     });
 
+    // Log run to optimizer_run_logs
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    
+    await supabase.from("optimizer_run_logs").insert({
+      id: crypto.randomUUID(),
+      run_type: "stats-refresh",
+      window_start: now.toISOString(),
+      window_end: next72h.toISOString(),
+      scope: { teams: teamIds.size },
+      scanned: teamsScanned,
+      with_odds: 0,
+      upserted: teamsRefreshed,
+      skipped: teamsScanned - teamsRefreshed - failures,
+      failed: failures,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: durationMs,
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -124,6 +145,7 @@ Deno.serve(async (req) => {
         teamsRefreshed,
         apiCalls,
         failures,
+        duration_ms: durationMs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
