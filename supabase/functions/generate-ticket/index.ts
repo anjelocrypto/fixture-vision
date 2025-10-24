@@ -245,8 +245,30 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           oddsData = prematchData;
           fallbackToPrematch = true;
         } else {
-          logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty)`);
-          continue;
+          // FINAL FALLBACK: read cached payload from DB and flatten here
+          const { data: cached } = await supabase
+            .from("odds_cache")
+            .select("payload")
+            .eq("fixture_id", fixtureId)
+            .maybeSingle();
+          if (cached?.payload?.bookmakers?.length) {
+            const selectionsViaCache = flattenOddsPayloadToSelections(cached.payload);
+            if (selectionsViaCache.length > 0) {
+              oddsData = {
+                fixture: cached.payload.fixture,
+                selections: selectionsViaCache,
+                source: "prematch",
+                cached: true,
+              };
+              logs.push(`[fixture:${fixtureId}] Using DB cache fallback with ${selectionsViaCache.length} selections`);
+            } else {
+              logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty, cache flatten yielded 0)`);
+              continue;
+            }
+          } else {
+            logs.push(`[fixture:${fixtureId}] No odds available (pre-match also empty)`);
+            continue;
+          }
         }
       } else {
         logs.push(`[fixture:${fixtureId}] No odds available`);
@@ -800,6 +822,39 @@ function normalizeMarketName(name: string): string {
 
 function normalizeSelection(value: string): string {
   return value.trim();
+}
+
+// Helper: flatten DB odds payload to selections (same shape as fetch-odds)
+function flattenOddsPayloadToSelections(payload: any) {
+  const selections: any[] = [];
+  const bookmakers = payload?.bookmakers || [];
+  for (const bookmaker of bookmakers) {
+    const bookmakerName = bookmaker.name || `Bookmaker ${bookmaker.id}`;
+    for (const bet of bookmaker.bets || []) {
+      const normalizedMarket = (() => {
+        const lower = String(bet?.name || "").toLowerCase();
+        if (lower.includes("goal")) return "goals";
+        if (lower.includes("card")) return "cards";
+        if (lower.includes("corner")) return "corners";
+        if (lower.includes("foul")) return "fouls";
+        if (lower.includes("offside")) return "offsides";
+        return "unknown";
+      })();
+      if (normalizedMarket === "unknown") continue;
+      for (const value of bet.values || []) {
+        const parsed = parseValueString(String(value.value || ""));
+        if (!parsed) continue;
+        selections.push({
+          bookmaker: bookmakerName,
+          market: normalizedMarket,
+          kind: parsed.side,
+          odds: Number(value.odd),
+          line: parsed.line,
+        });
+      }
+    }
+  }
+  return selections;
 }
 
 function findNearestLine(
