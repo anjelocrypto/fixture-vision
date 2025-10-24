@@ -204,21 +204,24 @@ serve(async (req) => {
         for (const bookmaker of bookmakers) {
           const betsData = bookmaker.bets || [];
           
-          // Match market type by bet ID (API-Football uses bets[].id)
+          // Match market type by EXACT bet ID only (API-Football uses bets[].id)
+          // CRITICAL: We must use exact ID matching to avoid matching wrong bet types like "First Half" or "Second Half"
           let targetBet = null;
           if (market === "goals") {
-            // Bet ID 5 = Goals Over/Under
-            targetBet = betsData.find((b: any) => b.id === 5 || b.name?.toLowerCase().includes("goals over/under"));
+            // Bet ID 5 = Goals Over/Under (FULL MATCH ONLY)
+            targetBet = betsData.find((b: any) => b.id === 5);
           } else if (market === "corners") {
-            // Bet ID 12 = Corners
-            targetBet = betsData.find((b: any) => b.id === 12 || b.name?.toLowerCase().includes("corners"));
+            // Bet ID 12 = Corners (FULL MATCH ONLY)
+            targetBet = betsData.find((b: any) => b.id === 12);
           } else if (market === "cards") {
-            // Bet ID 14 = Cards
-            targetBet = betsData.find((b: any) => b.id === 14 || b.name?.toLowerCase().includes("cards") || b.name?.toLowerCase().includes("bookings"));
+            // Bet ID 14 = Cards/Bookings (FULL MATCH ONLY)
+            targetBet = betsData.find((b: any) => b.id === 14);
           } else if (market === "fouls") {
-            targetBet = betsData.find((b: any) => b.name?.toLowerCase().includes("fouls"));
+            // No standard bet ID for fouls, skip for now
+            continue;
           } else if (market === "offsides") {
-            targetBet = betsData.find((b: any) => b.name?.toLowerCase().includes("offsides"));
+            // No standard bet ID for offsides, skip for now
+            continue;
           }
 
           if (!targetBet?.values) continue;
