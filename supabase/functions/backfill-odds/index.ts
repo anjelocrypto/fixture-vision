@@ -14,32 +14,13 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
-      );
-    }
-
-    const token = authHeader.replace("Bearer ", "");
+    // No JWT verification - this function is called internally by warmup-odds (admin-gated)
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Allow both authenticated users and service role calls (from cron)
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    const isServiceRole = token === Deno.env.get("SUPABASE_ANON_KEY");
-    
-    if (authError && !isServiceRole) {
-      return new Response(
-        JSON.stringify({ error: "Invalid authentication token" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
-      );
-    }
-
-    console.log(`[backfill-odds] Starting bulk odds backfill${user ? ` for user ${user.id}` : ' (service role)'}`);
+    console.log(`[backfill-odds] Starting bulk odds backfill (internal call)`);
 
     // Parse window_hours from request body (default 48h)
     const { window_hours = 48 } = await req.json().catch(() => ({}));
