@@ -238,7 +238,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           headers: {
             Authorization: `Bearer ${token}`,
           },
-          body: { fixtureId, live: false },
+          body: { fixtureId, live: false, forceRefresh: true },
         });
         if (prematchData && prematchData.selections && prematchData.selections.length > 0) {
           oddsData = prematchData;
