@@ -16,7 +16,6 @@ interface TicketCreatorDialogProps {
 export interface GenerateParams {
   targetMin: number;
   targetMax: number;
-  risk: "safe" | "standard" | "risky";
   includeMarkets: string[];
   minLegs: number;
   maxLegs: number;
@@ -42,7 +41,6 @@ const MARKETS = [
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
   const [targetMin, setTargetMin] = useState(18);
   const [targetMax, setTargetMax] = useState(20);
-  const [risk, setRisk] = useState<"safe" | "standard" | "risky">("standard");
   const [includeMarkets, setIncludeMarkets] = useState(["goals", "corners", "cards"]);
   const [minLegs, setMinLegs] = useState(3);
   const [maxLegs, setMaxLegs] = useState(8);
@@ -95,7 +93,6 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
       await onGenerate({
         targetMin,
         targetMax,
-        risk,
         includeMarkets,
         minLegs,
         maxLegs,
@@ -169,39 +166,6 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
                 />
               </div>
             </div>
-          </div>
-
-          {/* Risk Profile */}
-          <div>
-            <Label className="mb-3 block">Risk Profile</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant={risk === "safe" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRisk("safe")}
-              >
-                Safe
-              </Button>
-              <Button
-                variant={risk === "standard" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRisk("standard")}
-              >
-                Standard
-              </Button>
-              <Button
-                variant={risk === "risky" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRisk("risky")}
-              >
-                Risky
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {risk === "safe" && "Prefer odds 1.2-1.6 (lower variance)"}
-              {risk === "standard" && "Prefer odds 1.4-2.0 (balanced)"}
-              {risk === "risky" && "Prefer odds 1.8-3.0 (higher variance)"}
-            </p>
           </div>
 
           {/* Markets */}

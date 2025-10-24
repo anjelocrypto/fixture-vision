@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { pickLine, getRiskProfile, Market } from "../_shared/ticket_rules.ts";
+import { pickLine, Market } from "../_shared/ticket_rules.ts";
 import { pickFromCombined } from "../_shared/rules.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
@@ -42,7 +42,6 @@ const AITicketSchema = z.object({
   legsMin: z.number().int().min(1).max(50),
   legsMax: z.number().int().min(1).max(50),
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
-  risk: z.enum(["safe", "standard", "risky"]).optional(),
   useLiveOdds: z.boolean().optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
@@ -161,8 +160,7 @@ async function processFixtureToPool(
   supabase: any,
   token: string,
   markets: string[],
-  useLiveOdds: boolean,
-  riskProfile: any
+  useLiveOdds: boolean
 ): Promise<{ legs: TicketLeg[]; logs: string[]; usedLive: boolean; fallback: boolean }> {
   const legs: TicketLeg[] = [];
   const logs: string[] = [];
@@ -323,7 +321,6 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     legsMin,
     legsMax,
     includeMarkets,
-    risk = "standard",
     useLiveOdds = false,
     countryCode,
     leagueIds,
@@ -332,13 +329,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   const globalMode = !fixtureIds || fixtureIds.length === 0;
   const markets = includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"];
-  const riskProfile = getRiskProfile(risk);
   const candidatePool: TicketLeg[] = [];
   const logs: string[] = [];
   let usedLive = false;
   let fallbackToPrematch = false;
 
-  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, risk: ${risk}, useLive: ${useLiveOdds}`);
+  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}`);
 
   // GLOBAL MODE: Query optimized_selections for next 48h
   if (globalMode) {
@@ -357,7 +353,6 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
     if (leagueIds && leagueIds.length > 0) query = query.in("league_id", leagueIds);
-    if (riskProfile.minOdds) query = query.gte("odds", riskProfile.minOdds);
     
     const { data: selections, error: selectionsError } = await query.limit(500);
     
@@ -377,7 +372,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (fixtures && fixtures.length > 0) {
         logs.push(`[Global Mode] Processing ${fixtures.length} fixtures...`);
         for (const f of fixtures) {
-          const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds, riskProfile);
+          const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds);
           if (result.legs.length > 0) {
             candidatePool.push(...result.legs);
             if (result.usedLive) usedLive = true;
@@ -424,7 +419,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     // SPECIFIC FIXTURES MODE
     logs.push(`[Specific Mode] Processing ${fixtureIds!.length} fixtures...`);
     for (const fid of fixtureIds!) {
-      const result = await processFixtureToPool(fid, supabase, token, markets, useLiveOdds, riskProfile);
+      const result = await processFixtureToPool(fid, supabase, token, markets, useLiveOdds);
       if (result.legs.length > 0) {
         candidatePool.push(...result.legs);
         if (result.usedLive) usedLive = true;
@@ -552,8 +547,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     minOdds,
     maxOdds,
     legsMin,
-    legsMax,
-    riskProfile.preferredOdds
+    legsMax
   );
 
   if (!ticket) {
@@ -588,9 +582,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   logs.push(`[AI-ticket] Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}, expansions ${ticket.attempts}`);
 
-  // Calculate win probability (implied probability product with risk calibration)
-  const riskCalibration = { safe: 0.9, standard: 1.0, risky: 1.1 }[risk];
-  const winProb = ticket.legs.reduce((acc, leg) => acc * (1 / leg.odds), 1) * riskCalibration;
+  // Calculate win probability (simple implied probability product)
+  const winProb = ticket.legs.reduce((acc, leg) => acc * (1 / leg.odds), 1);
   const winProbPct = Math.round(winProb * 10000) / 100;
 
   // 5. PERSIST TO DB
@@ -956,18 +949,16 @@ function generateOptimizedTicket(
   targetMin: number,
   targetMax: number,
   minLegs: number,
-  maxLegs: number,
-  preferredOdds: number
+  maxLegs: number
 ): { total_odds: number; legs: TicketLeg[]; attempts: number } | null {
   // Deterministic beam-search in log space
   const logMin = Math.log(targetMin);
   const logMax = Math.log(targetMax);
   const logMid = (logMin + logMax) / 2;
 
-  // Stable sort by distance to preferred odds, then by odds asc, then fixture/market for determinism
+  // Deterministic sort: by odds ascending, then fixture ID, then market name
+  // No per-leg odds preference - just deterministic ordering
   const sortedPool = [...pool].sort((a, b) => {
-    const da = Math.abs(a.odds - preferredOdds) - Math.abs(b.odds - preferredOdds);
-    if (da !== 0) return da;
     if (a.odds !== b.odds) return a.odds - b.odds;
     if (a.fixtureId !== b.fixtureId) return a.fixtureId - b.fixtureId;
     return a.market.localeCompare(b.market);
