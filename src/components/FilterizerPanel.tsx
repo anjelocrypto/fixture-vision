@@ -14,6 +14,7 @@ interface FilterizerPanelProps {
 
 export interface FilterCriteria {
   market: string;
+  side: "over" | "under"; // currently fixed to 'over' in UI
   line: number;
   minOdds: number;
 }
@@ -65,6 +66,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const handleApply = () => {
     const filters: FilterCriteria = {
       market: selectedMarket,
+      side: "over",
       line: selectedLine,
       minOdds,
     };

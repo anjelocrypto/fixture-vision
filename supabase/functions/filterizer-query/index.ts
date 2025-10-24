@@ -12,6 +12,7 @@ const RequestSchema = z.object({
   date: z.string(),
   market: z.enum(["goals", "cards", "corners", "fouls", "offsides"]),
   line: z.number(),
+  side: z.enum(["over", "under"]).default("over").optional(),
   minOdds: z.number().min(1.0).optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number().int().positive()).optional(),
@@ -69,13 +70,14 @@ serve(async (req) => {
       date, 
       market, 
       line, 
+      side = "over",
       minOdds = 1.0, 
       countryCode, 
       leagueIds, 
       live = false 
     } = validation.data;
 
-    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, line=${line}, minOdds=${minOdds}`);
+    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, side=${side}, line=${line}, minOdds=${minOdds}`);
 
     // Calculate 7-day window from date
     const startDate = new Date(date);
@@ -94,6 +96,7 @@ serve(async (req) => {
       .from("optimized_selections")
       .select("*")
       .eq("market", market)
+      .eq("side", side)
       .gte("odds", minOdds)
       .eq("is_live", live)
       .gte("utc_kickoff", queryStart.toISOString())
@@ -109,8 +112,8 @@ serve(async (req) => {
       query = query.eq("country_code", countryCode);
     }
 
-    // Sort by kickoff time (earliest first)
-    query = query.order("utc_kickoff", { ascending: true });
+    // Sort by odds DESC so best per fixture is first, then kickoff
+    query = query.order("odds", { ascending: false }).order("utc_kickoff", { ascending: true });
 
     const { data: selections, error: selectionsError } = await query;
 
@@ -122,14 +125,31 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[filterizer-query] Found ${selections?.length || 0} selections matching criteria`);
+    // Post-filter: drop obviously wrong odds for common lines
+    const rows = (selections || []).filter((row: any) => {
+      if (market === "goals" && Math.abs(Number(row.line) - 2.5) <= 0.01 && Number(row.odds) >= 5.0) {
+        console.warn(`[filterizer-query] Dropping suspicious odds for goals 2.5: ${row.odds} (fixture ${row.fixture_id}, ${row.bookmaker})`);
+        return false;
+      }
+      return true;
+    });
+
+    // Dedupe: keep best bookmaker per fixture (max odds)
+    const bestByFixture = new Map<number, any>();
+    for (const row of rows) {
+      const prev = bestByFixture.get(row.fixture_id);
+      if (!prev || Number(row.odds) > Number(prev.odds)) {
+        bestByFixture.set(row.fixture_id, row);
+      }
+    }
+    const deduped = Array.from(bestByFixture.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
 
     return new Response(
       JSON.stringify({
-        selections: selections || [],
-        count: selections?.length || 0,
+        selections: deduped,
+        count: deduped.length,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
-        filters: { market, line, minOdds },
+        filters: { market, side, line, minOdds },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

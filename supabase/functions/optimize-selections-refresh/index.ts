@@ -310,6 +310,19 @@ serve(async (req) => {
 
     // Upsert selections (batch)
     if (selections.length > 0) {
+      // Cleanup: remove stale rows for this window to avoid persisting bad/outdated odds
+      const { error: cleanupError } = await supabaseClient
+        .from("optimized_selections")
+        .delete()
+        .in("fixture_id", fixtureIds)
+        .eq("is_live", false)
+        .gte("utc_kickoff", now.toISOString())
+        .lte("utc_kickoff", endDate.toISOString());
+
+      if (cleanupError) {
+        console.warn("[optimize-selections-refresh] Cleanup warning:", cleanupError.message);
+      }
+
       const { error: upsertError } = await supabaseClient
         .from("optimized_selections")
         .upsert(selections, {
