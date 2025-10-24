@@ -6,29 +6,31 @@ import { useToast } from "@/hooks/use-toast";
 
 interface TicketLeg {
   fixture_id: number;
-  league: string;
-  kickoff: string;
+  league?: string;
+  kickoff?: string;
   home_team: string;
   away_team: string;
   pick: string;
   market: string;
-  line: number;
-  side: string;
+  line?: number;
+  side?: string;
   bookmaker: string;
   odds: number;
-  model_prob: number;
-  book_prob: number;
-  edge: number;
-  reason: string;
+  model_prob?: number;
+  book_prob?: number;
+  edge?: number;
+  reason?: string;
 }
 
 interface TicketData {
   mode: string;
   legs: TicketLeg[];
   total_odds: number;
-  estimated_win_prob: number;
-  notes: string;
-  generated_at: string;
+  estimated_win_prob?: number | null;
+  notes?: string;
+  generated_at?: string;
+  used_live?: boolean;
+  fallback_to_prematch?: boolean;
 }
 
 interface TicketDrawerProps {
@@ -45,12 +47,17 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
     if (!ticket) return;
 
     const text = ticket.legs
-      .map((leg, i) => 
-        `${i + 1}. ${leg.home_team} vs ${leg.away_team}\n   ${leg.pick} @ ${leg.odds.toFixed(2)} (${leg.bookmaker})\n   Edge: +${(leg.edge * 100).toFixed(1)}%`
-      )
+      .map((leg, i) => {
+        const edgeText = leg.edge ? `\n   Edge: +${(leg.edge * 100).toFixed(1)}%` : "";
+        return `${i + 1}. ${leg.home_team} vs ${leg.away_team}\n   ${leg.pick} @ ${leg.odds.toFixed(2)} (${leg.bookmaker})${edgeText}`;
+      })
       .join("\n\n");
 
-    const fullText = `TICKET AI ${ticket.mode.toUpperCase()} TICKET\n\n${text}\n\nTotal Odds: ${ticket.total_odds.toFixed(2)}\nEst. Win Probability: ${(ticket.estimated_win_prob * 100).toFixed(1)}%`;
+    const winProbText = ticket.estimated_win_prob 
+      ? `\nEst. Win Probability: ${ticket.estimated_win_prob.toFixed(1)}%` 
+      : "";
+
+    const fullText = `TICKET AI ${ticket.mode.toUpperCase()} TICKET\n\n${text}\n\nTotal Odds: ${ticket.total_odds.toFixed(2)}${winProbText}`;
 
     navigator.clipboard.writeText(fullText);
     toast({
@@ -95,7 +102,9 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Win Prob</div>
                 <div className="text-lg font-bold text-green-600">
-                  {(ticket.estimated_win_prob * 100).toFixed(0)}%
+                  {ticket.estimated_win_prob 
+                    ? `${ticket.estimated_win_prob.toFixed(1)}%`
+                    : "—"}
                 </div>
               </div>
             </div>
@@ -129,17 +138,21 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-bold">@{leg.odds.toFixed(2)}</div>
-                      <div className="flex items-center gap-1 text-xs text-green-600">
-                        <TrendingUp className="h-3 w-3" />
-                        +{(leg.edge * 100).toFixed(1)}% edge
-                      </div>
+                      {leg.edge && (
+                        <div className="flex items-center gap-1 text-xs text-green-600">
+                          <TrendingUp className="h-3 w-3" />
+                          +{(leg.edge * 100).toFixed(1)}% edge
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-                    <Target className="h-3 w-3" />
-                    {leg.reason}
-                  </div>
+                  {leg.reason && (
+                    <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                      <Target className="h-3 w-3" />
+                      {leg.reason}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

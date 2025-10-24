@@ -356,7 +356,25 @@ const Index = () => {
 
       // Business outcome without ticket
       if (data.code) {
-        toast({ title: "No ticket generated", description: data.message || "Not enough valid selections. Try widening markets or disabling live odds.", });
+        let friendlyMessage = data.message || "Not enough valid selections.";
+        
+        // Add context-specific suggestions based on diagnostic reason
+        if (data.code === "IMPOSSIBLE_TARGET" && data.diagnostic) {
+          const d = data.diagnostic;
+          friendlyMessage += ` Try: 1) Widen odds range (current: ${d.target.min}–${d.target.max}), 2) Adjust legs (${d.legs.min}–${d.legs.max}), or 3) Include more markets.`;
+        } else if (data.code === "POOL_EMPTY") {
+          friendlyMessage += " Try selecting different markets or enabling live odds.";
+        } else if (data.code === "INSUFFICIENT_CANDIDATES") {
+          friendlyMessage += " Try widening the target range or including more markets.";
+        } else {
+          friendlyMessage += " Try widening markets or adjusting the target range.";
+        }
+        
+        toast({ 
+          title: "No ticket generated", 
+          description: friendlyMessage,
+          variant: "destructive",
+        });
         return;
       }
 
@@ -372,6 +390,7 @@ const Index = () => {
           bookmaker: leg.bookmaker,
         })),
         total_odds: data.ticket.total_odds,
+        estimated_win_prob: data.ticket.estimated_win_prob || null,
         used_live: data.used_live,
         fallback_to_prematch: data.fallback_to_prematch,
       };
@@ -382,10 +401,11 @@ const Index = () => {
 
       const oddsSource = data.used_live ? "Live" : "Pre-match";
       const fallbackNote = data.fallback_to_prematch ? " (fallback from live)" : "";
+      const winProbNote = data.ticket.estimated_win_prob ? ` • Win: ${data.ticket.estimated_win_prob.toFixed(1)}%` : "";
 
       toast({
         title: "AI Ticket created!",
-        description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds • ${oddsSource}${fallbackNote}`,
+        description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds • ${oddsSource}${fallbackNote}${winProbNote}`,
       });
     } catch (error: any) {
       console.error("Error generating AI ticket:", error);

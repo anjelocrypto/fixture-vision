@@ -206,7 +206,29 @@ async function processFixtureToPool(
   });
 
   if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
-    if (useLiveOdds) {
+    // CRITICAL: if useLiveOdds=false, never try live endpoint - go straight to cache
+    if (!useLiveOdds) {
+      logs.push(`[fixture:${fixtureId}] No odds from prematch API, trying cache...`);
+      const { data: cached } = await supabase
+        .from("odds_cache")
+        .select("payload")
+        .eq("fixture_id", fixtureId)
+        .maybeSingle();
+      if (cached?.payload?.bookmakers?.length) {
+        const selectionsViaCache = flattenOddsPayloadToSelections(cached.payload);
+        if (selectionsViaCache.length > 0) {
+          oddsData = { fixture: cached.payload.fixture, selections: selectionsViaCache, source: "prematch", cached: true };
+          logs.push(`[fixture:${fixtureId}] Using DB cache with ${selectionsViaCache.length} selections`);
+        } else {
+          logs.push(`[fixture:${fixtureId}] No odds available (cache flatten yielded 0)`);
+          return { legs, logs, usedLive, fallback };
+        }
+      } else {
+        logs.push(`[fixture:${fixtureId}] No odds available`);
+        return { legs, logs, usedLive, fallback };
+      }
+    } else {
+      // useLiveOdds=true: fallback to prematch then cache
       logs.push(`[fixture:${fixtureId}] Live odds unavailable, trying pre-match...`);
       const { data: prematchData } = await supabase.functions.invoke("fetch-odds", {
         headers: { Authorization: `Bearer ${token}` },
@@ -235,9 +257,6 @@ async function processFixtureToPool(
           return { legs, logs, usedLive, fallback };
         }
       }
-    } else {
-      logs.push(`[fixture:${fixtureId}] No odds available`);
-      return { legs, logs, usedLive, fallback };
     }
   }
 
@@ -296,6 +315,7 @@ async function processFixtureToPool(
 
 // NEW: AI Ticket Creator with custom parameters
 async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supabase: any, userId: string, token: string) {
+  const startTime = Date.now();
   const {
     fixtureIds,
     minOdds,
@@ -307,6 +327,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     useLiveOdds = false,
     countryCode,
     leagueIds,
+    debug = false,
   } = body;
 
   const globalMode = !fixtureIds || fixtureIds.length === 0;
@@ -418,19 +439,112 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   logs.push(`[Pool Summary] Total: ${candidatePool.length} | By market: ${JSON.stringify(poolByMarket)}`);
   console.log(logs.join("\n"));
 
-  console.log(logs.join("\n"));
+  // Calculate odds distribution for diagnostics
+  const oddsArray = candidatePool.map(l => l.odds).sort((a, b) => a - b);
+  const percentile = (arr: number[], p: number) => {
+    if (arr.length === 0) return 0;
+    const idx = Math.floor(arr.length * p);
+    return arr[Math.min(idx, arr.length - 1)];
+  };
+  const oddsStats = {
+    minOdd: oddsArray.length > 0 ? oddsArray[0] : 0,
+    p25: percentile(oddsArray, 0.25),
+    median: percentile(oddsArray, 0.50),
+    p75: percentile(oddsArray, 0.75),
+    maxOdd: oddsArray.length > 0 ? oddsArray[oddsArray.length - 1] : 0,
+  };
 
-  if (candidatePool.length < legsMin) {
+  // POOL_EMPTY check
+  if (candidatePool.length === 0) {
+    const diagnostic = {
+      reason: "POOL_EMPTY",
+      target: { min: minOdds, max: maxOdds, logMin: Math.log(minOdds), logMax: Math.log(maxOdds) },
+      legs: { min: legsMin, max: legsMax },
+      pool: {
+        total: 0,
+        byMarket: poolByMarket,
+        ...oddsStats,
+      },
+      feasibility: { minPowMinLegs: 0, maxPowMaxLegs: 0, impossible: true },
+      attempts: { beamExpansions: 0, timeMs: Date.now() - startTime },
+      constraints: { noDuplicateFixtureMarket: true },
+    };
     return new Response(
       JSON.stringify({
-        code: "INSUFFICIENT_CANDIDATES",
-        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin})`,
-        details: { found: candidatePool.length, required: legsMin },
+        code: "POOL_EMPTY",
+        message: "No valid candidates found for the selected criteria",
+        diagnostic: debug ? diagnostic : undefined,
         logs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   }
+
+  if (candidatePool.length < legsMin) {
+    const diagnostic = {
+      reason: "INSUFFICIENT_CANDIDATES",
+      target: { min: minOdds, max: maxOdds, logMin: Math.log(minOdds), logMax: Math.log(maxOdds) },
+      legs: { min: legsMin, max: legsMax },
+      pool: {
+        total: candidatePool.length,
+        byMarket: poolByMarket,
+        ...oddsStats,
+      },
+      feasibility: { minPowMinLegs: 0, maxPowMaxLegs: 0, impossible: false },
+      attempts: { beamExpansions: 0, timeMs: Date.now() - startTime },
+      constraints: { noDuplicateFixtureMarket: true },
+    };
+    return new Response(
+      JSON.stringify({
+        code: "INSUFFICIENT_CANDIDATES",
+        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin})`,
+        details: { found: candidatePool.length, required: legsMin },
+        diagnostic: debug ? diagnostic : undefined,
+        logs,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    );
+  }
+
+  // FEASIBILITY CHECK (log-space bounds)
+  const logMin = Math.log(minOdds);
+  const logMax = Math.log(maxOdds);
+  const minPowMinLegs = Math.pow(oddsStats.minOdd, legsMin);
+  const maxPowMaxLegs = Math.pow(oddsStats.maxOdd, legsMax);
+  
+  const feasible = !(minPowMinLegs > maxOdds || maxPowMaxLegs < minOdds);
+  
+  if (!feasible) {
+    const diagnostic = {
+      reason: "IMPOSSIBLE_TARGET",
+      target: { min: minOdds, max: maxOdds, logMin, logMax },
+      legs: { min: legsMin, max: legsMax },
+      pool: {
+        total: candidatePool.length,
+        byMarket: poolByMarket,
+        ...oddsStats,
+      },
+      feasibility: {
+        minPowMinLegs: Math.round(minPowMinLegs * 100) / 100,
+        maxPowMaxLegs: Math.round(maxPowMaxLegs * 100) / 100,
+        impossible: true,
+      },
+      attempts: { beamExpansions: 0, timeMs: Date.now() - startTime },
+      constraints: { noDuplicateFixtureMarket: true },
+    };
+    logs.push(`[Feasibility] IMPOSSIBLE: minOdd^${legsMin}=${minPowMinLegs.toFixed(2)} > targetMax=${maxOdds} OR maxOdd^${legsMax}=${maxPowMaxLegs.toFixed(2)} < targetMin=${minOdds}`);
+    return new Response(
+      JSON.stringify({
+        code: "IMPOSSIBLE_TARGET",
+        message: `Target range ${minOdds}–${maxOdds} is impossible with ${legsMin}–${legsMax} legs and current pool odds (${oddsStats.minOdd.toFixed(2)}–${oddsStats.maxOdd.toFixed(2)})`,
+        diagnostic: debug ? diagnostic : undefined,
+        logs,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    );
+  }
+
+  logs.push(`[Feasibility] OK: minPow=${minPowMinLegs.toFixed(2)}, maxPow=${maxPowMaxLegs.toFixed(2)}, target=[${minOdds}, ${maxOdds}]`);
 
   // 4. COMPOSE TICKET
   const ticket = generateOptimizedTicket(
@@ -443,18 +557,41 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   );
 
   if (!ticket) {
+    const diagnostic = {
+      reason: "NO_IN_RANGE_COMBINATION",
+      target: { min: minOdds, max: maxOdds, logMin, logMax },
+      legs: { min: legsMin, max: legsMax },
+      pool: {
+        total: candidatePool.length,
+        byMarket: poolByMarket,
+        ...oddsStats,
+      },
+      feasibility: {
+        minPowMinLegs: Math.round(minPowMinLegs * 100) / 100,
+        maxPowMaxLegs: Math.round(maxPowMaxLegs * 100) / 100,
+        impossible: false,
+      },
+      attempts: { beamExpansions: 0, timeMs: Date.now() - startTime },
+      constraints: { noDuplicateFixtureMarket: true },
+    };
     return new Response(
       JSON.stringify({
         code: "OPTIMIZATION_FAILED",
-        message: "Could not generate ticket within target range after multiple attempts",
+        message: "Could not generate ticket within target range after beam search",
         details: { pool_size: candidatePool.length, target: { min: minOdds, max: maxOdds } },
+        diagnostic: debug ? diagnostic : undefined,
         logs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   }
 
-  logs.push(`[AI-ticket] Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}`);
+  logs.push(`[AI-ticket] Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}, expansions ${ticket.attempts}`);
+
+  // Calculate win probability (implied probability product with risk calibration)
+  const riskCalibration = { safe: 0.9, standard: 1.0, risky: 1.1 }[risk];
+  const winProb = ticket.legs.reduce((acc, leg) => acc * (1 / leg.odds), 1) * riskCalibration;
+  const winProbPct = Math.round(winProb * 10000) / 100;
 
   // 5. PERSIST TO DB
   try {
@@ -490,11 +627,31 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   return new Response(
     JSON.stringify({
-      ticket,
+      ticket: {
+        ...ticket,
+        estimated_win_prob: winProbPct,
+      },
       pool_size: candidatePool.length,
       target: { min: minOdds, max: maxOdds },
       used_live: usedLive && !fallbackToPrematch,
       fallback_to_prematch: fallbackToPrematch,
+      diagnostic: debug ? {
+        reason: "SUCCESS",
+        target: { min: minOdds, max: maxOdds, logMin, logMax },
+        legs: { min: legsMin, max: legsMax },
+        pool: {
+          total: candidatePool.length,
+          byMarket: poolByMarket,
+          ...oddsStats,
+        },
+        feasibility: {
+          minPowMinLegs: Math.round(minPowMinLegs * 100) / 100,
+          maxPowMaxLegs: Math.round(maxPowMaxLegs * 100) / 100,
+          impossible: false,
+        },
+        attempts: { beamExpansions: ticket.attempts, timeMs: Date.now() - startTime },
+        constraints: { noDuplicateFixtureMarket: true },
+      } : undefined,
       logs,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
