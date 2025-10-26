@@ -359,7 +359,39 @@ const Index = () => {
         let friendlyMessage = data.message || "Not enough valid selections.";
         
         // Add context-specific suggestions based on diagnostic reason
-        if (data.code === "IMPOSSIBLE_TARGET" && data.diagnostic) {
+        if (data.code === "NO_SOLUTION_IN_BAND") {
+          // Show near-miss ticket in drawer with suggestions
+          if (data.best_nearby) {
+            const nearMissTicket = {
+              mode: "near-miss",
+              legs: data.best_nearby.legs.map((leg: any) => ({
+                fixture_id: leg.fixtureId,
+                home_team: leg.homeTeam,
+                away_team: leg.awayTeam,
+                pick: leg.selection,
+                market: leg.market,
+                odds: leg.odds,
+                bookmaker: leg.bookmaker,
+              })),
+              total_odds: data.best_nearby.total_odds,
+              target_min: params.targetMin,
+              target_max: params.targetMax,
+              within_band: false,
+              suggestions: data.suggestions,
+            };
+            
+            setCurrentTicket(nearMissTicket);
+            setTicketDrawerOpen(true);
+            setTicketCreatorOpen(false);
+            
+            toast({
+              title: "No exact match found",
+              description: `Best nearby: ${data.best_nearby.total_odds.toFixed(2)}x (target: ${params.targetMin}–${params.targetMax}x). Check suggestions.`,
+              variant: "destructive",
+            });
+            return;
+          }
+        } else if (data.code === "IMPOSSIBLE_TARGET" && data.diagnostic) {
           const d = data.diagnostic;
           friendlyMessage += ` Try: 1) Widen odds range (current: ${d.target.min}–${d.target.max}), 2) Adjust legs (${d.legs.min}–${d.legs.max}), or 3) Include more markets.`;
         } else if (data.code === "POOL_EMPTY") {
@@ -379,7 +411,7 @@ const Index = () => {
       }
 
       const ticketData = {
-        mode: params.risk,
+        mode: params.risk || "ai",
         legs: data.ticket.legs.map((leg: any) => ({
           fixture_id: leg.fixtureId,
           home_team: leg.homeTeam,
@@ -391,6 +423,9 @@ const Index = () => {
         })),
         total_odds: data.ticket.total_odds,
         estimated_win_prob: data.ticket.estimated_win_prob || null,
+        target_min: params.targetMin,
+        target_max: params.targetMax,
+        within_band: data.within_band !== false,
         used_live: data.used_live,
         fallback_to_prematch: data.fallback_to_prematch,
       };

@@ -31,6 +31,10 @@ interface TicketData {
   generated_at?: string;
   used_live?: boolean;
   fallback_to_prematch?: boolean;
+  target_min?: number;
+  target_max?: number;
+  within_band?: boolean;
+  suggestions?: string[];
 }
 
 interface TicketDrawerProps {
@@ -89,6 +93,40 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
 
         {!loading && ticket && (
           <div className="mt-6 space-y-6">
+            {/* Target vs Result (if target specified) */}
+            {ticket.target_min !== undefined && ticket.target_max !== undefined && (
+              <div className={`rounded-lg border p-4 ${ticket.within_band === false ? 'bg-destructive/5 border-destructive/30' : 'bg-primary/5 border-primary/30'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-medium">Target Range</div>
+                  <div className="text-sm font-bold">{ticket.target_min}–{ticket.target_max}x</div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Result</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-bold">{ticket.total_odds.toFixed(2)}x</div>
+                    {ticket.within_band === false ? (
+                      <Badge variant="destructive" className="text-xs">❌ Outside</Badge>
+                    ) : (
+                      <Badge variant="default" className="text-xs bg-green-600">✅ Within</Badge>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Suggestions for near-miss */}
+                {ticket.within_band === false && ticket.suggestions && (
+                  <div className="mt-3 pt-3 border-t space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">Suggestions:</div>
+                    {ticket.suggestions.map((suggestion, idx) => (
+                      <div key={idx} className="text-xs text-muted-foreground flex gap-1">
+                        <span className="text-primary">•</span>
+                        <span>{suggestion}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Header Stats */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-card border rounded-lg p-3">
@@ -97,7 +135,9 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
               </div>
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Total Odds</div>
-                <div className="text-lg font-bold text-primary">{ticket.total_odds.toFixed(2)}</div>
+                <div className={`text-lg font-bold ${ticket.within_band === false ? 'text-destructive' : 'text-primary'}`}>
+                  {ticket.total_odds.toFixed(2)}
+                </div>
               </div>
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Win Prob</div>
