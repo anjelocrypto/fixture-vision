@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, Market } from "../_shared/ticket_rules.ts";
 import { pickFromCombined } from "../_shared/rules.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -280,6 +281,12 @@ async function processFixtureToPool(
     );
 
     if (exactMatch) {
+      // Enforce global odds band [ODDS_MIN, ODDS_MAX]
+      if (exactMatch.odds < ODDS_MIN || exactMatch.odds > ODDS_MAX) {
+        logs.push(`[OUT_OF_BAND] fixture:${fixtureId} ${market} ${exactMatch.kind} ${exactMatch.line} @ ${exactMatch.odds} outside [${ODDS_MIN}, ${ODDS_MAX}] - DROPPED`);
+        continue;
+      }
+      
       // Sanity check: Warn if odds seem implausible for this market/line combo
       if (exactMatch.odds >= 4.5 && market === "goals" && exactMatch.line <= 2.5 && exactMatch.kind === "over") {
         logs.push(`[PRICE_SANITY_WARN] fixture:${fixtureId} Goals Over ${exactMatch.line} @ ${exactMatch.odds} looks implausibly high`);
@@ -397,9 +404,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       
       const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
       
+      let droppedOutOfBand = 0;
       for (const sel of selections) {
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
+        
+        // Enforce global odds band [ODDS_MIN, ODDS_MAX]
+        if ((sel as any).odds < ODDS_MIN || (sel as any).odds > ODDS_MAX) {
+          droppedOutOfBand++;
+          continue;
+        }
         
         candidatePool.push({
           fixtureId: (sel as any).fixture_id,
@@ -413,6 +427,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           combinedAvg: (sel as any).combined_snapshot?.[(sel as any).market],
           source: (sel as any).is_live ? "live" : "prematch",
         });
+      }
+      if (droppedOutOfBand > 0) {
+        logs.push(`[Global Mode] Dropped ${droppedOutOfBand} selections outside [${ODDS_MIN}, ${ODDS_MAX}] band`);
       }
       
       usedLive = selections.some((s: any) => s.is_live);
@@ -465,12 +482,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       },
       feasibility: { minPowMinLegs: 0, maxPowMaxLegs: 0, impossible: true },
       attempts: { beamExpansions: 0, timeMs: Date.now() - startTime },
-      constraints: { noDuplicateFixtureMarket: true },
+      constraints: { noDuplicateFixtureMarket: true, oddsBand: [ODDS_MIN, ODDS_MAX] },
     };
     return new Response(
       JSON.stringify({
-        code: "POOL_EMPTY",
-        message: "No valid candidates found for the selected criteria",
+        code: "INSUFFICIENT_CANDIDATES",
+        message: `No selections within ${ODDS_MIN}–${ODDS_MAX} odds for current settings`,
         diagnostic: debug ? diagnostic : undefined,
         logs,
       }),
@@ -1018,6 +1035,9 @@ function generateOptimizedTicket(
 
     for (const state of beam) {
       for (const cand of sortedPool) {
+        // Fast prune: reject out-of-band candidates
+        if (cand.odds < ODDS_MIN || cand.odds > ODDS_MAX) continue;
+        
         // Constraint: only one leg per (fixtureId, market)
         const set = state.used.get(cand.fixtureId);
         if (set && set.has(cand.market)) continue;

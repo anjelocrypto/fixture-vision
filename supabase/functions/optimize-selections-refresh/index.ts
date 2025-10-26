@@ -4,6 +4,7 @@ import { pickFromCombined, RULES, StatMarket } from "../_shared/rules.ts";
 import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
+import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -152,6 +153,9 @@ serve(async (req) => {
     let scanned = 0;
     let inserted = 0;
     let skipped = 0;
+    let droppedOutOfBand = 0;
+    let droppedSuspicious = 0;
+    let droppedNoLine = 0;
     const selections: any[] = [];
     const started_at = new Date();
 
@@ -244,11 +248,19 @@ serve(async (req) => {
               return false;
             }
             
-            // SUSPICIOUS ODDS GUARD: reject obviously wrong odds
             const odds = parseFloat(v.odd);
+            
+            // ODDS BAND CHECK: enforce global [ODDS_MIN, ODDS_MAX] constraint
+            if (odds < ODDS_MIN || odds > ODDS_MAX) {
+              droppedOutOfBand++;
+              return false;
+            }
+            
+            // SUSPICIOUS ODDS GUARD: reject obviously wrong odds
             const suspiciousWarning = checkSuspiciousOdds(market, pick.line, odds);
             if (suspiciousWarning) {
               console.warn(`[optimize] ${suspiciousWarning} - REJECTED (fixture ${fixture.id}, bookmaker ${bookmaker.name})`);
+              droppedSuspicious++;
               return false;
             }
             
@@ -264,7 +276,10 @@ serve(async (req) => {
           }
         }
 
-        if (bestOdds === 0) continue;
+        if (bestOdds === 0) {
+          droppedNoLine++;
+          continue;
+        }
 
         // Calculate edge
         const impliedProb = 1 / bestOdds;
@@ -302,6 +317,8 @@ serve(async (req) => {
     const with_odds = fixtures.filter(f => oddsMap.has(f.id)).length;
     const coveragePct = fixtures.length > 0 ? Math.round((with_odds / fixtures.length) * 100) : 0;
     console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (with_odds: ${with_odds}/${fixtures.length} = ${coveragePct}%, skipped: ${skipped})`);
+    console.log(`[optimize-selections-refresh] Filtering: dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}`);
+    console.log(`[optimize-selections-refresh] Odds band enforced: [${ODDS_MIN}, ${ODDS_MAX}]`);
 
     // Alert on low coverage
     if (coveragePct < 90 && fixtures.length >= 5) {
@@ -356,7 +373,13 @@ serve(async (req) => {
       run_type: `optimize-selections-${window_hours}h`,
       window_start: now.toISOString(),
       window_end: endDate.toISOString(),
-      scope: {},
+      scope: {
+        dropped_out_of_band: droppedOutOfBand,
+        dropped_suspicious: droppedSuspicious,
+        dropped_no_line: droppedNoLine,
+        odds_band: [ODDS_MIN, ODDS_MAX],
+        coverage_pct: coveragePct,
+      },
       scanned,
       with_odds,
       upserted: inserted,

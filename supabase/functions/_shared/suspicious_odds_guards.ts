@@ -3,6 +3,8 @@
  * These thresholds are configurable and conservative (err on keeping borderline cases)
  */
 
+import { ODDS_MIN, ODDS_MAX } from "./config.ts";
+
 export type Market = "goals" | "corners" | "cards" | "fouls" | "offsides";
 
 interface GuardConfig {
@@ -38,6 +40,15 @@ export function checkSuspiciousOdds(
   line: number,
   odds: number
 ): string | null {
+  // First check global odds band
+  if (odds < ODDS_MIN) {
+    return `Out of band: ${market} Over ${line} @ ${odds.toFixed(2)} below minimum ${ODDS_MIN}`;
+  }
+  if (odds > ODDS_MAX) {
+    return `Out of band: ${market} Over ${line} @ ${odds.toFixed(2)} above maximum ${ODDS_MAX}`;
+  }
+  
+  // Then check market-specific guards
   const guard = GUARDS.find(
     g => g.market === market && Math.abs(g.line - line) < 0.01
   );

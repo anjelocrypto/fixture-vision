@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
+import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,12 +94,17 @@ serve(async (req) => {
     console.log(`[filterizer-query] Window: ${queryStart.toISOString()} to ${endDate.toISOString()}`);
 
     // Build query for selections
+    // Enforce global odds band regardless of user input
+    const effectiveMinOdds = Math.max(minOdds, ODDS_MIN);
+    const effectiveMaxOdds = ODDS_MAX;
+    
     let query = supabaseClient
       .from("optimized_selections")
       .select("*")
       .eq("market", market)
       .eq("side", side)
-      .gte("odds", minOdds)
+      .gte("odds", effectiveMinOdds)
+      .lte("odds", effectiveMaxOdds)
       .eq("is_live", live)
       .gte("utc_kickoff", queryStart.toISOString())
       .lte("utc_kickoff", endDate.toISOString());

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
+import { DAILY_CALL_BUDGET, RPM_LIMIT, PREMATCH_TTL_MINUTES } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,13 +86,13 @@ serve(async (req) => {
     let failed = 0;
     let skipped = 0;
 
-    // ULTRA plan: 50 RPM soft target (75k/day = ~52 RPM, so 50 is safe)
-    const MAX_RPM = parseInt(Deno.env.get("API_RATE_LIMIT_RPM") || "50");
-    const BASE_DELAY = Math.ceil(60000 / MAX_RPM); // ~1200ms for 50 RPM
+    // ULTRA plan: RPM limit and daily budget from config
+    const MAX_RPM = RPM_LIMIT;
+    const BASE_DELAY = Math.ceil(60000 / MAX_RPM);
     let currentDelay = BASE_DELAY;
     const MAX_BACKOFF_DELAY = 10000;
-    const DAILY_BUDGET = parseInt(Deno.env.get("API_DAILY_BUDGET") || "65000");
-    const PREMATCH_TTL_MIN = parseInt(Deno.env.get("PREMATCH_TTL_MIN") || "45");
+    const DAILY_BUDGET_LIMIT = DAILY_CALL_BUDGET;
+    const PREMATCH_TTL_MIN = PREMATCH_TTL_MINUTES;
 
     // Daily budget guard: count today's backfill calls
     const todayStart = new Date();
@@ -102,8 +103,8 @@ serve(async (req) => {
       .gte("started_at", todayStart.toISOString())
       .like("run_type", "backfill-odds-%");
 
-    if (todayCallCount && todayCallCount >= DAILY_BUDGET) {
-      console.warn(`[backfill-odds] DAILY BUDGET EXCEEDED: ${todayCallCount}/${DAILY_BUDGET} calls today. Halting to protect quota.`);
+    if (todayCallCount && todayCallCount >= DAILY_BUDGET_LIMIT) {
+      console.warn(`[backfill-odds] DAILY BUDGET EXCEEDED: ${todayCallCount}/${DAILY_BUDGET_LIMIT} calls today. Halting to protect quota.`);
       return new Response(
         JSON.stringify({ 
           scanned: 0, 
@@ -111,13 +112,13 @@ serve(async (req) => {
           failed: 0, 
           budget_exceeded: true,
           daily_calls: todayCallCount,
-          budget: DAILY_BUDGET 
+          budget: DAILY_BUDGET_LIMIT 
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[backfill-odds] Daily budget check: ${todayCallCount || 0}/${DAILY_BUDGET} calls used today (${MAX_RPM} RPM, ${PREMATCH_TTL_MIN}min TTL)`);
+    console.log(`[backfill-odds] Daily budget check: ${todayCallCount || 0}/${DAILY_BUDGET_LIMIT} calls used today (${MAX_RPM} RPM, ${PREMATCH_TTL_MIN}min TTL)`);
 
     for (const fixture of fixtures) {
       scanned++;

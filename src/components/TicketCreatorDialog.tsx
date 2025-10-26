@@ -119,6 +119,9 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
           <DialogDescription>
             Create an optimized betting ticket mixing fixtures and markets from all leagues in the next 48 hours based on statistical analysis and real-time odds.
           </DialogDescription>
+          <p className="text-xs text-muted-foreground mt-2 border-l-2 border-primary/30 pl-2">
+            Leg odds constrained to 1.25–5.00 by design
+          </p>
         </DialogHeader>
 
         <div className="space-y-6">
