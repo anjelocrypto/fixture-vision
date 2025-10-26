@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, Market } from "../_shared/ticket_rules.ts";
-import { pickFromCombined, RULES, type StatMarket } from "../_shared/rules.ts";
+import { pickFromCombined, RULES, RULES_VERSION, type StatMarket } from "../_shared/rules.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 
@@ -269,7 +269,10 @@ async function processFixtureToPool(
     if (avgValue === undefined || avgValue === null) continue;
 
     const rulePick = pickFromCombined(market as any, avgValue);
-    if (!rulePick) continue;
+    if (!rulePick) {
+      logs.push(`[${fixtureId}] ${market}=${avgValue.toFixed(2)} → no qualifying range (not eligible) - SKIPPED`);
+      continue;
+    }
 
     const { side, line: requestedLine } = rulePick;
     
@@ -356,7 +359,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     let query = supabase
       .from("optimized_selections")
       .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version`)
-      .eq("rules_version", "v2_combined_scaled") // Only v2 qualified selections
+      .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
       .gte("utc_kickoff", now.toISOString())
       .lte("utc_kickoff", end48h.toISOString())
       .in("market", markets);
@@ -428,17 +431,22 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           const combinedValue = Number(combinedSnapshot[market]);
           const rules = RULES[market as StatMarket];
           const matchingRule = rules?.find(r => {
-            if (r.range === "gte") return r.pick.side === side && r.pick.line === line;
-            return r.pick.side === side && r.pick.line === line;
+            if (r.range === "gte") return r.pick && r.pick.side === side && r.pick.line === line;
+            return r.pick && r.pick.side === side && r.pick.line === line;
           });
           
           if (matchingRule && matchingRule.range !== "gte") {
             const [rangeMin, rangeMax] = matchingRule.range;
+            // Ranges are INCLUSIVE on both ends: rangeMin ≤ x ≤ rangeMax
             if (combinedValue < rangeMin || combinedValue > rangeMax) {
               droppedNotQualified++;
-              logs.push(`[NOT_QUALIFIED] fixture:${(sel as any).fixture_id} ${market} ${side} ${line}: combined=${combinedValue} outside [${rangeMin}, ${rangeMax}] - DROPPED`);
+              logs.push(`[NOT_QUALIFIED] ${market}=${combinedValue.toFixed(2)} outside [${rangeMin}, ${rangeMax}] for ${side} ${line} (fixture ${(sel as any).fixture_id}) - DROPPED`);
               continue;
             }
+          }
+          // For "gte" rules, no upper bound check needed
+          if (matchingRule && matchingRule.range === "gte") {
+            logs.push(`[QUALIFIED] ${market}=${combinedValue.toFixed(2)} qualifies for ${side} ${line} (gte rule, fixture ${(sel as any).fixture_id}) - KEPT`);
           }
         }
         

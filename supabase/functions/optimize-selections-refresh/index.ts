@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { pickFromCombined, RULES, StatMarket } from "../_shared/rules.ts";
+import { pickFromCombined, RULES, RULES_VERSION, StatMarket } from "../_shared/rules.ts";
 import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
@@ -11,8 +11,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
-
-const RULES_VERSION = "v2_combined_scaled";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

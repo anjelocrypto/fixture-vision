@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
-import { RULES, type StatMarket } from "../_shared/rules.ts";
+import { RULES, RULES_VERSION, type StatMarket } from "../_shared/rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,11 +83,12 @@ serve(async (req) => {
     // Get the qualification range for this market/line combination
     const rules = RULES[market as StatMarket];
     const matchingRule = rules?.find(r => {
+      if (!r.pick) return false; // Skip "none" rules
       if (r.range === "gte") return r.pick.side === side && r.pick.line === line;
       return r.pick.side === side && r.pick.line === line;
     });
 
-    if (!matchingRule) {
+    if (!matchingRule || !matchingRule.pick) {
       console.warn(`[filterizer-query] No qualification rule found for ${market} ${side} ${line}`);
       return new Response(
         JSON.stringify({ 
@@ -127,7 +128,7 @@ serve(async (req) => {
       .select("*")
       .eq("market", market)
       .eq("side", side)
-      .eq("rules_version", "v2_combined_scaled") // Only v2 qualified selections
+      .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
       .gte("odds", effectiveMinOdds)
       .lte("odds", effectiveMaxOdds)
       .eq("is_live", live)
@@ -159,14 +160,18 @@ serve(async (req) => {
 
     // Post-filter: check combined_snapshot qualification range and suspicious odds
     const rows = (selections || []).filter((row: any) => {
-      // Check combined value qualification (must be within the rule's range)
+      // Check combined value qualification (must be within the rule's range, INCLUSIVE bounds)
       if (row.combined_snapshot && matchingRule.range !== "gte") {
         const combinedValue = Number(row.combined_snapshot[market]);
         const [min, max] = matchingRule.range;
+        // Ranges are INCLUSIVE on both ends: min ≤ x ≤ max
         if (combinedValue < min || combinedValue > max) {
-          console.warn(`[filterizer-query] Combined ${market}=${combinedValue} outside range [${min}, ${max}] (fixture ${row.fixture_id}) - DROPPED`);
+          console.warn(`[filterizer-query] ${market}=${combinedValue.toFixed(2)} outside range [${min}, ${max}] for ${side} ${line} (fixture ${row.fixture_id}) - DROPPED`);
           return false;
         }
+      } else if (row.combined_snapshot && matchingRule.range === "gte") {
+        // "gte" rules have no upper bound validation
+        console.log(`[filterizer-query] ${market}=${Number(row.combined_snapshot[market]).toFixed(2)} qualifies for ${side} ${line} (gte rule) - KEPT`);
       }
       
       // Check suspicious odds
