@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
+import { RULES, type StatMarket } from "../_shared/rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,7 +80,30 @@ serve(async (req) => {
       live = false 
     } = validation.data;
 
-    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, side=${side}, line=${line}, minOdds=${minOdds}`);
+    // Get the qualification range for this market/line combination
+    const rules = RULES[market as StatMarket];
+    const matchingRule = rules?.find(r => {
+      if (r.range === "gte") return r.pick.side === side && r.pick.line === line;
+      return r.pick.side === side && r.pick.line === line;
+    });
+
+    if (!matchingRule) {
+      console.warn(`[filterizer-query] No qualification rule found for ${market} ${side} ${line}`);
+      return new Response(
+        JSON.stringify({ 
+          selections: [], 
+          count: 0, 
+          window: { start: new Date(date).toISOString(), end: new Date(date).toISOString() },
+          filters: { market, side, line, minOdds },
+          warning: `No qualification rule found for ${market} ${side} ${line}`
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const [rangeMin, rangeMax] = matchingRule.range === "gte" ? [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER] : matchingRule.range;
+    
+    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, side=${side}, line=${line}, minOdds=${minOdds}, qualification_range=[${rangeMin}, ${rangeMax}]`);
 
     // Calculate 7-day window from date (query from selected date, not from "now")
     const startDate = new Date(date);
@@ -103,6 +127,7 @@ serve(async (req) => {
       .select("*")
       .eq("market", market)
       .eq("side", side)
+      .eq("rules_version", "v2_combined_scaled") // Only v2 qualified selections
       .gte("odds", effectiveMinOdds)
       .lte("odds", effectiveMaxOdds)
       .eq("is_live", live)
@@ -132,8 +157,19 @@ serve(async (req) => {
       );
     }
 
-    // Post-filter: drop suspicious odds using comprehensive guards
+    // Post-filter: check combined_snapshot qualification range and suspicious odds
     const rows = (selections || []).filter((row: any) => {
+      // Check combined value qualification (must be within the rule's range)
+      if (row.combined_snapshot && matchingRule.range !== "gte") {
+        const combinedValue = Number(row.combined_snapshot[market]);
+        const [min, max] = matchingRule.range;
+        if (combinedValue < min || combinedValue > max) {
+          console.warn(`[filterizer-query] Combined ${market}=${combinedValue} outside range [${min}, ${max}] (fixture ${row.fixture_id}) - DROPPED`);
+          return false;
+        }
+      }
+      
+      // Check suspicious odds
       const suspiciousWarning = checkSuspiciousOdds(
         market as any,
         Number(row.line),
