@@ -19,67 +19,25 @@ export const AdminRefreshButton = () => {
 
   const handleFetchFixtures = async () => {
     setIsFetchingFixtures(true);
-    
     try {
-      toast.info("Fetching fixtures for top leagues...");
-      
-      // Top leagues from allowed countries (ID from API-Football)
-      const topLeagues = [
-        { id: 39, name: "Premier League" },        // England
-        { id: 40, name: "Championship" },          // England
-        { id: 140, name: "La Liga" },              // Spain
-        { id: 141, name: "La Liga 2" },            // Spain
-        { id: 135, name: "Serie A" },              // Italy
-        { id: 136, name: "Serie B" },              // Italy
-        { id: 78, name: "Bundesliga" },            // Germany
-        { id: 79, name: "2. Bundesliga" },         // Germany
-        { id: 61, name: "Ligue 1" },               // France
-        { id: 62, name: "Ligue 2" },               // France
-        { id: 88, name: "Eredivisie" },            // Netherlands
-        { id: 94, name: "Primeira Liga" },         // Portugal
-        { id: 203, name: "Super Lig" },            // Turkey
-        { id: 144, name: "Pro League" },           // Belgium
-        { id: 179, name: "Premiership" },          // Scotland
-        { id: 253, name: "MLS" },                  // USA
-        { id: 71, name: "Serie A" },               // Brazil
-        { id: 128, name: "Liga Profesional" },     // Argentina
-      ];
-      
-      let totalFetched = 0;
-      
-      for (const league of topLeagues) {
-        try {
-          const { data: fixturesData, error: fixturesError } = await supabase.functions.invoke(
-            "fetch-fixtures",
-            { 
-              body: { 
-                league: league.id, 
-                season: 2025,
-                date: new Date().toISOString().split('T')[0],
-                tz: "UTC"
-              } 
-            }
-          );
-          
-          if (!fixturesError && fixturesData?.fixtures) {
-            totalFetched += fixturesData.fixtures.length;
-            console.log(`✓ ${league.name}: ${fixturesData.fixtures.length} fixtures`);
-          }
-          
-          // Small delay to avoid rate limiting (50 RPM = 1.2s between calls)
-          await new Promise(resolve => setTimeout(resolve, 1300));
-          
-        } catch (err) {
-          console.warn(`✗ ${league.name}: ${err}`);
-        }
+      toast.info("Fetching fixtures for next 72 hours across all allowed leagues...");
+
+      const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
+        body: { window_hours: 72 },
+      });
+
+      if (error) {
+        console.error("Fetch fixtures error:", error);
+        toast.error("Failed to fetch fixtures");
+        return;
       }
-      
-      toast.success(`✓ Fetched ${totalFetched} fixtures from ${topLeagues.length} leagues`);
-      
+
+      const summary = `${data.scanned} scanned • ${data.in_window} in 72h • ${data.inserted + data.updated} saved`;
+      toast.success(`Fixtures fetched! ${summary}`);
+      console.log("[fetch-fixtures] Result:", data);
     } catch (error) {
-      console.error("Fetch fixtures error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      toast.error(`Failed: ${errorMessage}`);
+      console.error("Error in handleFetchFixtures:", error);
+      toast.error("Failed to fetch fixtures");
     } finally {
       setIsFetchingFixtures(false);
     }
