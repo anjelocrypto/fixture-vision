@@ -44,8 +44,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Get current season (always use 2025 for now)
-    const season = 2025;
+    // Season handling: default 2025, allow per-league override if needed
+    const DEFAULT_SEASON = 2025;
+    const seasonByLeague: Record<number, number> = {};
+    const getSeasonForLeague = (leagueId: number) => seasonByLeague[leagueId] ?? DEFAULT_SEASON;
 
     // Metrics tracking
     let apiCalls = 0;
@@ -79,8 +81,11 @@ serve(async (req) => {
       
       console.log(`[fetch-fixtures] Day ${dayOffset}: ${dateStr} - scanning ${ALLOWED_LEAGUE_IDS.length} leagues`);
       
-      for (const leagueId of ALLOWED_LEAGUE_IDS) {
-        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&date=${dateStr}`;
+        if (!perLeagueCounters[leagueId]) {
+          perLeagueCounters[leagueId] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
+        }
+        perLeagueCounters[leagueId].requested++;
+        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${getSeasonForLeague(leagueId)}&date=${dateStr}`;
         
         try {
           const response = await fetch(url, { headers: apiHeaders() });
