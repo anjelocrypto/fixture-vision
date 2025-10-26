@@ -3,19 +3,28 @@ import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 
 export const AdminRefreshButton = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedWindow, setSelectedWindow] = useState(48);
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (windowHours: number) => {
+    setSelectedWindow(windowHours);
     setIsRefreshing(true);
     
     try {
-      toast.info("Warming 48h odds pipeline...");
+      toast.info(`Warming ${windowHours}h odds pipeline...`);
       
       const { data, error } = await supabase.functions.invoke(
         "warmup-odds",
-        { body: { window_hours: 48 } }
+        { body: { window_hours: windowHours } }
       );
 
       if (error) {
@@ -57,15 +66,33 @@ export const AdminRefreshButton = () => {
   };
 
   return (
-    <Button
-      onClick={handleRefresh}
-      disabled={isRefreshing}
-      variant="outline"
-      size="sm"
-      className="gap-2"
-    >
-      <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-      {isRefreshing ? "Warming..." : "Warmup (48h)"}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          disabled={isRefreshing}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? "Warming..." : `Warmup (${selectedWindow}h)`}
+          <ChevronDown className="h-3 w-3 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => handleRefresh(72)}>
+          72 hours
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleRefresh(48)}>
+          48 hours
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleRefresh(6)}>
+          6 hours
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleRefresh(1)}>
+          1 hour
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
