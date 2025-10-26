@@ -4,7 +4,7 @@ import { pickFromCombined, RULES, StatMarket } from "../_shared/rules.ts";
 import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
-import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
+import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -206,19 +206,13 @@ serve(async (req) => {
 
         if (!pick) continue;
 
-        // Find best odds across bookmakers for this market+line
-        let bestOdds = 0;
-        let bestBookmaker = "";
+        // Find top N bookmakers (by odds) for this market+line to maximize variety
+        const bookmakerOdds: Array<{ bookmaker: string; odds: number }> = [];
 
         for (const bookmaker of bookmakers) {
           const betsData = bookmaker.bets || [];
           
           // Match market type by EXACT bet ID only (API-Football uses bets[].id)
-          // CRITICAL: We must use exact ID matching to avoid matching wrong bet types
-          // API-Football Official Bet IDs:
-          // - ID 5: "Goals Over/Under" (full match)
-          // - ID 45: "Corners Over Under" (full match)
-          // - ID 80: "Cards Over/Under" (full match)
           let targetBet = null;
           if (market === "goals") {
             targetBet = betsData.find((b: any) => b.id === 5);
@@ -227,36 +221,31 @@ serve(async (req) => {
           } else if (market === "cards") {
             targetBet = betsData.find((b: any) => b.id === 80);
           } else if (market === "fouls") {
-            // API-Football does not provide fouls betting markets
-            continue;
+            continue; // No API odds
           } else if (market === "offsides") {
-            // API-Football does not provide offsides betting markets
-            continue;
+            continue; // No API odds
           }
 
           if (!targetBet?.values) continue;
 
-          // Find the specific line in values array with STRICT format matching + normalization
+          // Find the specific line in values array with STRICT format matching
           const selection = targetBet.values.find((v: any) => {
             const value = v.value || "";
-            
-            // Normalize bookmaker string: handles "Over 2.5", "O 2.5", "Total Over (2.5)", "Over 2,5", etc.
             const normalizedValue = normalizeOddsValue(value);
             
-            // Check if normalized value matches target
             if (!matchesTarget(normalizedValue, pick.side, pick.line)) {
               return false;
             }
             
             const odds = parseFloat(v.odd);
             
-            // ODDS BAND CHECK: enforce global [ODDS_MIN, ODDS_MAX] constraint
+            // ODDS BAND CHECK
             if (odds < ODDS_MIN || odds > ODDS_MAX) {
               droppedOutOfBand++;
               return false;
             }
             
-            // SUSPICIOUS ODDS GUARD: reject obviously wrong odds
+            // SUSPICIOUS ODDS GUARD
             const suspiciousWarning = checkSuspiciousOdds(market, pick.line, odds);
             if (suspiciousWarning) {
               console.warn(`[optimize] ${suspiciousWarning} - REJECTED (fixture ${fixture.id}, bookmaker ${bookmaker.name})`);
@@ -269,56 +258,80 @@ serve(async (req) => {
 
           if (selection?.odd) {
             const odds = parseFloat(selection.odd);
-            if (odds > bestOdds) {
-              bestOdds = odds;
-              bestBookmaker = bookmaker.name || "Unknown";
-            }
+            bookmakerOdds.push({
+              bookmaker: bookmaker.name || "Unknown",
+              odds
+            });
           }
         }
 
-        if (bestOdds === 0) {
+        if (bookmakerOdds.length === 0) {
           droppedNoLine++;
           continue;
         }
 
-        // Calculate edge
-        const impliedProb = 1 / bestOdds;
-        // Simple model probability based on combined value relative to line
-        const modelProb = Math.min(0.95, Math.max(0.05, combinedValue / (pick.line * 2)));
-        const edgePct = ((modelProb - impliedProb) / impliedProb) * 100;
+        // Sort by odds descending and keep top N
+        bookmakerOdds.sort((a, b) => b.odds - a.odds);
+        const topBookmakers = bookmakerOdds.slice(0, KEEP_TOP_BOOKMAKERS);
 
-        // Prepare selection
+        // Create one selection per top bookmaker for variety
         const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
         const countryId = leagueToCountryMap.get(fixture.league_id);
         const countryCode = countryId ? countryCodeMap.get(countryId) : null;
 
-        selections.push({
-          fixture_id: fixture.id,
-          league_id: fixture.league_id,
-          country_code: countryCode,
-          utc_kickoff: utcKickoff,
-          market,
-          side: pick.side,
-          line: pick.line,
-          bookmaker: bestBookmaker,
-          odds: bestOdds,
-          is_live: false,
-          edge_pct: edgePct,
-          model_prob: modelProb,
-          sample_size: sampleSize,
-          combined_snapshot: combined,
-          rules_version: RULES_VERSION,
-          source: "api-football",
-          computed_at: new Date().toISOString(),
-        });
+        for (const { bookmaker, odds } of topBookmakers) {
+          // Calculate edge
+          const impliedProb = 1 / odds;
+          const modelProb = Math.min(0.95, Math.max(0.05, combinedValue / (pick.line * 2)));
+          const edgePct = ((modelProb - impliedProb) / impliedProb) * 100;
+
+          selections.push({
+            fixture_id: fixture.id,
+            league_id: fixture.league_id,
+            country_code: countryCode,
+            utc_kickoff: utcKickoff,
+            market,
+            side: pick.side,
+            line: pick.line,
+            bookmaker,
+            odds,
+            is_live: false,
+            edge_pct: edgePct,
+            model_prob: modelProb,
+            sample_size: sampleSize,
+            combined_snapshot: combined,
+            rules_version: RULES_VERSION,
+            source: "api-football",
+            computed_at: new Date().toISOString(),
+          });
+        }
       }
     }
 
     const with_odds = fixtures.filter(f => oddsMap.has(f.id)).length;
     const coveragePct = fixtures.length > 0 ? Math.round((with_odds / fixtures.length) * 100) : 0;
-    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (with_odds: ${with_odds}/${fixtures.length} = ${coveragePct}%, skipped: ${skipped})`);
-    console.log(`[optimize-selections-refresh] Filtering: dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}`);
-    console.log(`[optimize-selections-refresh] Odds band enforced: [${ODDS_MIN}, ${ODDS_MAX}]`);
+    const keptInBand = selections.length;
+    
+    // Calculate variety metrics
+    const fixturesWithSelections = new Set(selections.map(s => s.fixture_id)).size;
+    const avgPerFixture = fixturesWithSelections > 0 ? (selections.length / fixturesWithSelections).toFixed(2) : "0.00";
+    const bookmakers = new Set(selections.map(s => s.bookmaker)).size;
+    const marketBreakdown = selections.reduce((acc: any, s) => {
+      acc[s.market] = (acc[s.market] || 0) + 1;
+      return acc;
+    }, {});
+    const lineBreakdown = selections.reduce((acc: any, s) => {
+      const key = `${s.market}•${s.side}•${s.line}`;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    
+    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures`);
+    console.log(`[optimize-selections-refresh] Coverage: ${with_odds}/${fixtures.length} fixtures with odds (${coveragePct}%), ${fixturesWithSelections} with selections`);
+    console.log(`[optimize-selections-refresh] Variety: avg ${avgPerFixture} selections/fixture, ${bookmakers} bookmakers, top ${KEEP_TOP_BOOKMAKERS} kept per line`);
+    console.log(`[optimize-selections-refresh] Band enforcement [${ODDS_MIN}, ${ODDS_MAX}]: kept=${keptInBand}, dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}`);
+    console.log(`[optimize-selections-refresh] Market breakdown:`, JSON.stringify(marketBreakdown));
+    console.log(`[optimize-selections-refresh] Top 5 lines:`, Object.entries(lineBreakdown).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(", "));
 
     // Alert on low coverage
     if (coveragePct < 90 && fixtures.length >= 5) {
@@ -374,11 +387,20 @@ serve(async (req) => {
       window_start: now.toISOString(),
       window_end: endDate.toISOString(),
       scope: {
+        kept_in_band: keptInBand,
         dropped_out_of_band: droppedOutOfBand,
         dropped_suspicious: droppedSuspicious,
         dropped_no_line: droppedNoLine,
         odds_band: [ODDS_MIN, ODDS_MAX],
         coverage_pct: coveragePct,
+        fixtures_with_selections: fixturesWithSelections,
+        avg_per_fixture: parseFloat(avgPerFixture),
+        bookmakers_used: bookmakers,
+        market_breakdown: marketBreakdown,
+        top_lines: Object.entries(lineBreakdown).sort((a: any, b: any) => b[1] - a[1]).slice(0, 10).reduce((acc: any, [k, v]) => {
+          acc[k] = v;
+          return acc;
+        }, {}),
       },
       scanned,
       with_odds,
