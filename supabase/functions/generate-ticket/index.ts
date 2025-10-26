@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, Market } from "../_shared/ticket_rules.ts";
-import { pickFromCombined } from "../_shared/rules.ts";
+import { pickFromCombined, RULES, type StatMarket } from "../_shared/rules.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 
@@ -355,7 +355,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     
     let query = supabase
       .from("optimized_selections")
-      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size`)
+      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version`)
+      .eq("rules_version", "v2_combined_scaled") // Only v2 qualified selections
       .gte("utc_kickoff", now.toISOString())
       .lte("utc_kickoff", end48h.toISOString())
       .in("market", markets);
@@ -405,6 +406,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
       
       let droppedOutOfBand = 0;
+      let droppedNotQualified = 0;
+      
       for (const sel of selections) {
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
@@ -415,21 +418,49 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           continue;
         }
         
+        // Validate combined_snapshot against qualification range (same as Filterizer)
+        const market = (sel as any).market;
+        const side = (sel as any).side;
+        const line = (sel as any).line;
+        const combinedSnapshot = (sel as any).combined_snapshot;
+        
+        if (combinedSnapshot && combinedSnapshot[market] !== undefined) {
+          const combinedValue = Number(combinedSnapshot[market]);
+          const rules = RULES[market as StatMarket];
+          const matchingRule = rules?.find(r => {
+            if (r.range === "gte") return r.pick.side === side && r.pick.line === line;
+            return r.pick.side === side && r.pick.line === line;
+          });
+          
+          if (matchingRule && matchingRule.range !== "gte") {
+            const [rangeMin, rangeMax] = matchingRule.range;
+            if (combinedValue < rangeMin || combinedValue > rangeMax) {
+              droppedNotQualified++;
+              logs.push(`[NOT_QUALIFIED] fixture:${(sel as any).fixture_id} ${market} ${side} ${line}: combined=${combinedValue} outside [${rangeMin}, ${rangeMax}] - DROPPED`);
+              continue;
+            }
+          }
+        }
+        
         candidatePool.push({
           fixtureId: (sel as any).fixture_id,
           homeTeam: fixture.teams_home?.name || "Home",
           awayTeam: fixture.teams_away?.name || "Away",
           start: fixture.date || "",
-          market: (sel as any).market as Market,
-          selection: `${(sel as any).side} ${(sel as any).line}`,
+          market: market as Market,
+          selection: `${side} ${line}`,
           odds: (sel as any).odds,
           bookmaker: (sel as any).bookmaker || "Unknown",
-          combinedAvg: (sel as any).combined_snapshot?.[(sel as any).market],
+          combinedAvg: combinedSnapshot?.[market],
           source: (sel as any).is_live ? "live" : "prematch",
         });
       }
+      
       if (droppedOutOfBand > 0) {
         logs.push(`[Global Mode] Dropped ${droppedOutOfBand} selections outside [${ODDS_MIN}, ${ODDS_MAX}] band`);
+      }
+      if (droppedNotQualified > 0) {
+        logs.push(`[Global Mode] Dropped ${droppedNotQualified} selections not meeting v2 combined qualification`);
       }
       
       usedLive = selections.some((s: any) => s.is_live);
