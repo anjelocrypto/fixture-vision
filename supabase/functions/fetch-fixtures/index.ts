@@ -180,10 +180,13 @@ serve(async (req) => {
       try {
         const { error } = await supabaseClient
           .from("leagues")
-          .upsert(leagueData, { onConflict: "id,season" });
+          .upsert(leagueData, { onConflict: "id" });
         
         if (error) {
-          console.error(`[fetch-fixtures] Error upserting league ${leagueData.id}:`, error.message);
+          console.error(
+            `[fetch-fixtures] Error upserting league ${leagueData.id}: ${error.message}`,
+            { payload: leagueData }
+          );
           leaguesFailed++;
           failureReasons.league_upsert_error = (failureReasons.league_upsert_error || 0) + 1;
         } else {
@@ -234,12 +237,24 @@ serve(async (req) => {
           .upsert(fixtureData, { onConflict: "id" });
 
         if (error) {
-          console.error(`[fetch-fixtures] Error upserting fixture ${fixtureId} (${item.teams.home.name} vs ${item.teams.away.name}):`, error.message);
+          console.error(
+            `[fetch-fixtures] Error upserting fixture ${fixtureId} (${item.teams.home.name} vs ${item.teams.away.name}): ${error.message}`,
+            {
+              payload: {
+                fixture_id: fixtureId,
+                league_id: item.league.id,
+                season: getSeasonForLeague(item.league.id),
+                kickoff_iso: new Date(item.fixture.timestamp * 1000).toISOString(),
+                home_id: item.teams.home.id,
+                away_id: item.teams.away.id,
+              }
+            }
+          );
           fixturesFailed++;
-          
-          // Categorize error
           if (error.message.includes("foreign key")) {
             failureReasons.fk_constraint = (failureReasons.fk_constraint || 0) + 1;
+          } else if (error.message.includes("unique") || error.message.includes("conflict")) {
+            failureReasons.conflict = (failureReasons.conflict || 0) + 1;
           } else if (error.message.includes("null")) {
             failureReasons.null_violation = (failureReasons.null_violation || 0) + 1;
           } else {

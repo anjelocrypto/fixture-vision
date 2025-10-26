@@ -32,13 +32,17 @@ export const AdminRefreshButton = () => {
         return;
       }
 
-      const summary = `${data.in_window} in 72h • ${data.inserted} inserted • ${data.updated} updated • ${data.failed} failed`;
+      const topFailures =
+        Array.isArray(data.top_3_failures) && data.top_3_failures.length
+          ? data.top_3_failures.map((f: any) => `${f.reason}=${f.count}`).join(", ")
+          : "none";
+      const summary =
+        `window=${data.window} • leagues_upserted=${data.leagues_upserted} ` +
+        `• in_window=${data.in_window} • inserted=${data.inserted} • updated=${data.updated} • failed=${data.failed} ` +
+        `• rpm=${data.rpm_avg}`;
       toast.success(`Fixtures: ${summary}`);
       console.log("[fetch-fixtures] Result:", data);
-      
-      if (data.failed > 0 && data.top_3_failures) {
-        console.warn("[fetch-fixtures] Top failures:", data.top_3_failures);
-      }
+      console.warn("[fetch-fixtures] Top failures:", data.top_3_failures || []);
     } catch (error) {
       console.error("Error in handleFetchFixtures:", error);
       toast.error("Failed to fetch fixtures");
