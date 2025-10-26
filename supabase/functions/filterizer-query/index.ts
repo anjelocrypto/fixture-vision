@@ -80,15 +80,15 @@ serve(async (req) => {
 
     console.log(`[filterizer-query] User ${user.id} querying: market=${market}, side=${side}, line=${line}, minOdds=${minOdds}`);
 
-    // Calculate 7-day window from date
+    // Calculate 7-day window from date (query from selected date, not from "now")
     const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
-    const now = new Date();
-    const queryStart = startDate > now ? startDate : now;
+    startDate.setUTCHours(0, 0, 0, 0);
     
     const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 7);
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCDate(endDate.getUTCDate() + 7);
+    endDate.setUTCHours(23, 59, 59, 999);
+    
+    const queryStart = startDate;
 
     console.log(`[filterizer-query] Window: ${queryStart.toISOString()} to ${endDate.toISOString()}`);
 
