@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
+import { LastFetchBadge } from "./LastFetchBadge";
 
 const sports = [
   { name: "Football", active: true },
@@ -54,25 +55,28 @@ export function AppHeader() {
         </div>
 
         {/* Sport Tabs - Hidden on mobile */}
-        <div className="hidden md:flex items-center gap-2 bg-secondary/50 rounded-full p-1">
-          {sports.map((sport) => (
-            <Button
-              key={sport.name}
-              variant={sport.active ? "default" : "ghost"}
-              size="sm"
-              onClick={() => {
-                if (!sport.active) {
-                  toast({
-                    title: "Coming Soon",
-                    description: `${sport.name} predictions will be available soon!`,
-                  });
-                }
-              }}
-              className={sport.active ? "rounded-full" : "rounded-full text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"}
-            >
-              {sport.name}
-            </Button>
-          ))}
+        <div className="hidden md:flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-secondary/50 rounded-full p-1">
+            {sports.map((sport) => (
+              <Button
+                key={sport.name}
+                variant={sport.active ? "default" : "ghost"}
+                size="sm"
+                onClick={() => {
+                  if (!sport.active) {
+                    toast({
+                      title: "Coming Soon",
+                      description: `${sport.name} predictions will be available soon!`,
+                    });
+                  }
+                }}
+                className={sport.active ? "rounded-full" : "rounded-full text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"}
+              >
+                {sport.name}
+              </Button>
+            ))}
+          </div>
+          <LastFetchBadge />
         </div>
 
         {/* Right Utils - Simplified on mobile */}

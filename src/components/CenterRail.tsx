@@ -85,10 +85,15 @@ export function CenterRail({
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : !league ? (
-        <Card className="p-8 text-center">
-          <p className="text-lg font-medium mb-2">Select a league</p>
-          <p className="text-muted-foreground text-sm">
-            Choose a league from the left panel to view fixtures
+        <Card className="p-8 text-center space-y-4">
+          <div>
+            <p className="text-lg font-medium mb-2">Select a league</p>
+            <p className="text-muted-foreground text-sm">
+              Choose a league from the left panel to view fixtures
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Or view all upcoming fixtures across leagues by clicking "All Fixtures" above
           </p>
         </Card>
       ) : fixtures.length === 0 ? (
