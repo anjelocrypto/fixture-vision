@@ -561,13 +561,14 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   logs.push(`[Feasibility] OK: minPow=${minPowMinLegs.toFixed(2)}, maxPow=${maxPowMaxLegs.toFixed(2)}, target=[${minOdds}, ${maxOdds}]`);
 
-  // 4. COMPOSE TICKET
+  // 4. COMPOSE TICKET (with stochastic search)
   const ticket = generateOptimizedTicket(
     candidatePool,
     minOdds,
     maxOdds,
     legsMin,
-    legsMax
+    legsMax,
+    userId
   );
 
   if (!ticket) {
@@ -636,7 +637,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     );
   }
 
-  logs.push(`[AI-ticket] ✅ Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}, expansions ${ticket.attempts}, WITHIN BAND [${minOdds}, ${maxOdds}]`);
+  logs.push(`[AI-ticket] ✅ Generated ticket: ${ticket.legs.length} legs, total odds ${ticket.total_odds}, expansions ${ticket.attempts}, sampled_legs_attempts=[${ticket.sampled_legs_attempts?.join(',')}], time=${ticket.time_ms}ms, WITHIN BAND [${minOdds}, ${maxOdds}]`);
 
   // CONSISTENCY CHECK: Validate all legs match their source data
   let consistencyFailures = 0;
@@ -732,8 +733,21 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           maxPowMaxLegs: Math.round(maxPowMaxLegs * 100) / 100,
           impossible: false,
         },
-        attempts: { beamExpansions: ticket.attempts, timeMs: Date.now() - startTime },
+        attempts: { 
+          beamExpansions: ticket.attempts, 
+          timeMs: ticket.time_ms || (Date.now() - startTime),
+          sampledLegsAttempts: ticket.sampled_legs_attempts,
+        },
         constraints: { noDuplicateFixtureMarket: true, oddsBand: [ODDS_MIN, ODDS_MAX] },
+        stochasticSearch: {
+          sampled_legs_attempts: ticket.sampled_legs_attempts,
+          pool_size: candidatePool.length,
+          markets_used: Object.keys(poolByMarket),
+          bookmakers_used: [...new Set(candidatePool.map(l => l.bookmaker))].length,
+          evaluated: ticket.attempts,
+          found_in_range: ticket.within_band,
+          result_total_odds: ticket.total_odds,
+        },
       } : undefined,
       logs,
     }),
@@ -1034,21 +1048,41 @@ function logFactorial(n: number): number {
   return result;
 }
 
+// Simple PRNG for deterministic but varied results
+function seededRandom(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
 function generateOptimizedTicket(
   pool: TicketLeg[],
   targetMin: number,
   targetMax: number,
   minLegs: number,
-  maxLegs: number
+  maxLegs: number,
+  userId?: string
 ): { 
   total_odds: number; 
   legs: TicketLeg[]; 
   attempts: number; 
   within_band: boolean;
   best_nearby?: { total_odds: number; legs: TicketLeg[] };
+  sampled_legs_attempts?: number[];
+  time_ms?: number;
 } | null {
-  // HARD CONSTRAINT: Only return tickets within [targetMin, targetMax]
-  // Track best near-miss for suggestions
+  const startTime = Date.now();
+  const ATTEMPT_TIMEOUT = 250; // ms per leg-count attempt
+  const TOTAL_TIMEOUT = 2000; // ms total
+  const MAX_EVALUATIONS = 10000;
+  
+  // Seed PRNG with userId + date + target range for session-stable but varied results
+  const seed = (userId ? userId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) : 12345) + 
+                Date.now() + Math.floor(targetMin * 1000) + Math.floor(targetMax * 1000);
+  const rand = seededRandom(seed);
+  
   const logMin = Math.log(targetMin);
   const logMax = Math.log(targetMax);
   const logMid = (logMin + logMax) / 2;
@@ -1064,119 +1098,169 @@ function generateOptimizedTicket(
     legs: TicketLeg[]; 
     product: number; 
     used: Map<number, Set<string>>;
-    avgEdge: number; // Track avg edge for tie-breaking
+    avgEdge: number;
   };
   
-  let beam: State[] = [{ legs: [], product: 1, used: new Map(), avgEdge: 0 }];
-  const WIDTH = 50;
-  let expansions = 0;
-  
-  // Track best solution within band (priority) and best near-miss (fallback)
   let bestInBand: { legs: TicketLeg[]; product: number; avgEdge: number } | null = null;
   let bestNearMiss: { legs: TicketLeg[]; product: number } | null = null;
-
-  // Precompute max possible product with remaining slots for pruning
+  let totalExpansions = 0;
+  const sampledLegsAttempts: number[] = [];
+  
   const maxOddsInPool = Math.max(...sortedPool.map(l => l.odds), 1.0);
 
-  const score = (prod: number, len: number, avgEdge: number) => {
+  const score = (prod: number, len: number, avgEdge: number, targetN: number) => {
     const lp = Math.log(prod);
     const distanceToMid = Math.abs(lp - logMid);
-    // Prefer fewer legs if both satisfy (smaller depth first)
-    const legPenalty = len < minLegs ? (minLegs - len) * 0.1 : len * 0.01;
-    // Bonus for higher average edge
-    const edgeBonus = avgEdge * -0.5;
+    // Strongly prefer hitting the target N (sampled leg count)
+    const legPenalty = Math.abs(len - targetN) * 0.5;
+    const edgeBonus = avgEdge * -0.3;
     return distanceToMid + legPenalty + edgeBonus;
   };
 
-  for (let depth = 0; depth < maxLegs; depth++) {
-    const next: State[] = [];
-
-    for (const state of beam) {
-      for (const cand of sortedPool) {
-        // HARD CONSTRAINT: Per-leg odds band
-        if (cand.odds < ODDS_MIN || cand.odds > ODDS_MAX) continue;
-        
-        // Uniqueness: only one leg per (fixtureId, market)
-        const set = state.used.get(cand.fixtureId);
-        if (set && set.has(cand.market)) continue;
-
-        const newProduct = state.product * cand.odds;
-        
-        // PRUNING 1: If current product already exceeds targetMax, skip
-        if (newProduct > targetMax) continue;
-        
-        // PRUNING 2: If even with best remaining odds we can't reach targetMin, skip
-        const remainingSlots = maxLegs - state.legs.length - 1;
-        const maxPossibleProduct = newProduct * Math.pow(maxOddsInPool, remainingSlots);
-        if (state.legs.length + 1 >= minLegs && maxPossibleProduct < targetMin) continue;
-
-        const newLegs = [...state.legs, cand];
-        const newUsed = new Map(state.used);
-        const mset = newUsed.get(cand.fixtureId) || new Set<string>();
-        mset.add(cand.market);
-        newUsed.set(cand.fixtureId, mset);
-        
-        // Calculate average edge for tie-breaking
-        const totalEdge = newLegs.reduce((sum, leg) => {
-          const edgePct = leg.combinedAvg && leg.odds > 1 
-            ? ((1 / leg.odds) / leg.combinedAvg - 1) * 100 
-            : 0;
-          return sum + edgePct;
-        }, 0);
-        const avgEdge = newLegs.length > 0 ? totalEdge / newLegs.length : 0;
-
-        expansions++;
-
-        // HARD CONSTRAINT CHECK: Is this within band?
-        const withinBand = newLegs.length >= minLegs && newProduct >= targetMin && newProduct <= targetMax;
-        
-        if (withinBand) {
-          // Found a valid solution! Check if it's better than current best
-          if (!bestInBand || avgEdge > bestInBand.avgEdge || 
-              (avgEdge === bestInBand.avgEdge && Math.abs(Math.log(newProduct) - logMid) < Math.abs(Math.log(bestInBand.product) - logMid))) {
-            bestInBand = { legs: newLegs, product: newProduct, avgEdge };
-          }
-          // Don't return immediately - keep searching for better within-band solutions
-        }
-        
-        // Track best near-miss (for suggestions if no in-band solution found)
-        if (newLegs.length >= minLegs) {
-          if (!bestNearMiss || Math.abs(Math.log(newProduct) - logMid) < Math.abs(Math.log(bestNearMiss.product) - logMid)) {
-            bestNearMiss = { legs: newLegs, product: newProduct };
-          }
-        }
-
-        next.push({ legs: newLegs, product: newProduct, used: newUsed, avgEdge });
-      }
+  // Stochastic search: try multiple leg counts
+  const MAX_ATTEMPTS = 10;
+  for (let attemptIdx = 0; attemptIdx < MAX_ATTEMPTS && Date.now() - startTime < TOTAL_TIMEOUT; attemptIdx++) {
+    const attemptStart = Date.now();
+    
+    // Sample a target leg count N from [minLegs, maxLegs]
+    const targetN = minLegs + Math.floor(rand() * (maxLegs - minLegs + 1));
+    sampledLegsAttempts.push(targetN);
+    
+    console.log(`[stochastic-search] Attempt ${attemptIdx + 1}: trying N=${targetN} legs`);
+    
+    // Beam search for this specific N
+    const WIDTH = 50;
+    const NUM_SEEDS = 50; // Multiple diverse starting points
+    
+    // Generate diverse seed states by randomly picking starting legs
+    const seedStates: State[] = [];
+    for (let s = 0; s < NUM_SEEDS && s < sortedPool.length; s++) {
+      const startIdx = Math.floor(rand() * sortedPool.length);
+      const startLeg = sortedPool[startIdx];
+      
+      if (startLeg.odds < ODDS_MIN || startLeg.odds > ODDS_MAX) continue;
+      
+      const used = new Map<number, Set<string>>();
+      const mset = new Set<string>();
+      mset.add(startLeg.market);
+      used.set(startLeg.fixtureId, mset);
+      
+      seedStates.push({
+        legs: [startLeg],
+        product: startLeg.odds,
+        used,
+        avgEdge: 0,
+      });
     }
+    
+    // Also add empty state
+    seedStates.push({ legs: [], product: 1, used: new Map(), avgEdge: 0 });
+    
+    let beam: State[] = seedStates;
+    let expansions = 0;
 
-    // Beam prune deterministically by score
-    next.sort((a, b) => score(a.product, a.legs.length, a.avgEdge) - score(b.product, b.legs.length, b.avgEdge));
-    beam = next.slice(0, WIDTH);
-    if (beam.length === 0) break;
+    for (let depth = 0; depth < targetN && Date.now() - attemptStart < ATTEMPT_TIMEOUT; depth++) {
+      const next: State[] = [];
+
+      for (const state of beam) {
+        if (expansions > MAX_EVALUATIONS) break;
+        
+        for (const cand of sortedPool) {
+          if (expansions > MAX_EVALUATIONS) break;
+          
+          if (cand.odds < ODDS_MIN || cand.odds > ODDS_MAX) continue;
+          
+          const set = state.used.get(cand.fixtureId);
+          if (set && set.has(cand.market)) continue;
+
+          const newProduct = state.product * cand.odds;
+          
+          if (newProduct > targetMax * 1.5) continue; // Aggressive pruning
+          
+          const remainingSlots = targetN - state.legs.length - 1;
+          const maxPossibleProduct = newProduct * Math.pow(maxOddsInPool, remainingSlots);
+          if (state.legs.length + 1 >= minLegs && maxPossibleProduct < targetMin * 0.5) continue;
+
+          const newLegs = [...state.legs, cand];
+          const newUsed = new Map(state.used);
+          const mset = newUsed.get(cand.fixtureId) || new Set<string>();
+          mset.add(cand.market);
+          newUsed.set(cand.fixtureId, mset);
+          
+          const totalEdge = newLegs.reduce((sum, leg) => {
+            const edgePct = leg.combinedAvg && leg.odds > 1 
+              ? ((1 / leg.odds) / leg.combinedAvg - 1) * 100 
+              : 0;
+            return sum + edgePct;
+          }, 0);
+          const avgEdge = newLegs.length > 0 ? totalEdge / newLegs.length : 0;
+
+          expansions++;
+          totalExpansions++;
+
+          const withinBand = newLegs.length >= minLegs && newProduct >= targetMin && newProduct <= targetMax;
+          
+          if (withinBand) {
+            if (!bestInBand || avgEdge > bestInBand.avgEdge || 
+                (avgEdge === bestInBand.avgEdge && Math.abs(newLegs.length - targetN) < Math.abs(bestInBand.legs.length - targetN))) {
+              bestInBand = { legs: newLegs, product: newProduct, avgEdge };
+              console.log(`[stochastic-search] Found in-band solution: ${newLegs.length} legs, ${newProduct.toFixed(2)}x, avgEdge=${avgEdge.toFixed(2)}%`);
+            }
+          }
+          
+          if (newLegs.length >= minLegs) {
+            if (!bestNearMiss || Math.abs(Math.log(newProduct) - logMid) < Math.abs(Math.log(bestNearMiss.product) - logMid)) {
+              bestNearMiss = { legs: newLegs, product: newProduct };
+            }
+          }
+
+          next.push({ legs: newLegs, product: newProduct, used: newUsed, avgEdge });
+        }
+        
+        if (expansions > MAX_EVALUATIONS) break;
+      }
+
+      next.sort((a, b) => score(a.product, a.legs.length, a.avgEdge, targetN) - score(b.product, b.legs.length, b.avgEdge, targetN));
+      beam = next.slice(0, WIDTH);
+      if (beam.length === 0) break;
+    }
+    
+    console.log(`[stochastic-search] Attempt ${attemptIdx + 1} complete: ${expansions} expansions in ${Date.now() - attemptStart}ms`);
+    
+    // If we found an in-band solution, we can return early (but keep searching if time allows for better solutions)
+    if (bestInBand && Date.now() - startTime > TOTAL_TIMEOUT * 0.5) {
+      console.log(`[stochastic-search] Found good solution, stopping early`);
+      break;
+    }
   }
 
-  // RETURN LOGIC: Prioritize in-band solutions
+  const totalTime = Date.now() - startTime;
+  
+  console.log(`[stochastic-search] Complete: sampled_legs=${sampledLegsAttempts.join(',')}, pool=${pool.length}, evaluated=${totalExpansions}, time=${totalTime}ms, found_in_range=${!!bestInBand}`);
+
   if (bestInBand) {
     return { 
       total_odds: Math.round(bestInBand.product * 100) / 100, 
       legs: bestInBand.legs, 
-      attempts: expansions,
+      attempts: totalExpansions,
       within_band: true,
+      sampled_legs_attempts: sampledLegsAttempts,
+      time_ms: totalTime,
     };
   }
   
-  // No in-band solution found - return null with near-miss for suggestions
   if (bestNearMiss) {
     return {
       total_odds: Math.round(bestNearMiss.product * 100) / 100,
       legs: bestNearMiss.legs,
-      attempts: expansions,
+      attempts: totalExpansions,
       within_band: false,
       best_nearby: {
         total_odds: Math.round(bestNearMiss.product * 100) / 100,
         legs: bestNearMiss.legs,
       },
+      sampled_legs_attempts: sampledLegsAttempts,
+      time_ms: totalTime,
     };
   }
   

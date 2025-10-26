@@ -42,8 +42,8 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
   const [targetMin, setTargetMin] = useState(18);
   const [targetMax, setTargetMax] = useState(20);
   const [includeMarkets, setIncludeMarkets] = useState(["goals", "corners", "cards"]);
-  const [minLegs, setMinLegs] = useState(3);
-  const [maxLegs, setMaxLegs] = useState(8);
+  const [minLegs, setMinLegs] = useState(5);
+  const [maxLegs, setMaxLegs] = useState(15);
   const [useLiveOdds, setUseLiveOdds] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -125,6 +125,9 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             </p>
             <p className="text-xs text-muted-foreground border-l-2 border-destructive/30 pl-2">
               <span className="font-semibold">Total odds target:</span> Hard constraint (exact match only)
+            </p>
+            <p className="text-xs text-muted-foreground border-l-2 border-accent/30 pl-2">
+              <span className="font-semibold">Legs:</span> We'll try 5–15 legs and search for combos inside your target. Results vary per attempt.
             </p>
           </div>
         </DialogHeader>
