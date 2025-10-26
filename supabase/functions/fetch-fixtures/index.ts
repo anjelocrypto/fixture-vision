@@ -44,20 +44,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Season handling: default 2025, allow per-league override if needed
+    // Season handling: default 2025, can override per league if needed
     const DEFAULT_SEASON = 2025;
     const seasonByLeague: Record<number, number> = {};
     const getSeasonForLeague = (leagueId: number) => seasonByLeague[leagueId] ?? DEFAULT_SEASON;
 
-    // Metrics tracking
+    // Comprehensive metrics tracking
     let apiCalls = 0;
     let fixturesScannedTotal = 0;
     let fixturesInWindowKept = 0;
     let fixturesOutsideWindowDropped = 0;
-    let inserted = 0;
-    let updated = 0;
-    let skippedTtl = 0;
+    let fixturesInserted = 0;
+    let fixturesUpdated = 0;
+    let fixturesSkippedTtl = 0;
+    let fixturesFailed = 0;
+    let leaguesUpserted = 0;
+    let leaguesFailed = 0;
+    
     const leagueFixtureCounts: Record<number, number> = {};
+    const perLeagueCounters: Record<number, { requested: number; returned: number; in_window: number; inserted: number }> = {};
+    const failureReasons: Record<string, number> = {};
 
     // Check which fixtures we already have (within TTL)
     const ttlCutoff = new Date(Date.now() - FIXTURE_TTL_HOURS * 60 * 60 * 1000).toISOString();
@@ -81,11 +87,14 @@ serve(async (req) => {
       
       console.log(`[fetch-fixtures] Day ${dayOffset}: ${dateStr} - scanning ${ALLOWED_LEAGUE_IDS.length} leagues`);
       
+      for (const leagueId of ALLOWED_LEAGUE_IDS) {
         if (!perLeagueCounters[leagueId]) {
           perLeagueCounters[leagueId] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
         }
         perLeagueCounters[leagueId].requested++;
-        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${getSeasonForLeague(leagueId)}&date=${dateStr}`;
+        
+        const season = getSeasonForLeague(leagueId);
+        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&date=${dateStr}`;
         
         try {
           const response = await fetch(url, { headers: apiHeaders() });
@@ -93,21 +102,32 @@ serve(async (req) => {
 
           if (!response.ok) {
             console.error(`[fetch-fixtures] API error ${response.status} for league ${leagueId} on ${dateStr}`);
+            failureReasons[`api_${response.status}`] = (failureReasons[`api_${response.status}`] || 0) + 1;
             continue;
           }
 
           const data = await response.json();
           
           if (data.response && data.response.length > 0) {
+            perLeagueCounters[leagueId].returned += data.response.length;
+            
             const validFixtures = data.response.filter((item: any) => {
               // Must have valid structure
-              if (!item.fixture || !item.teams?.home || !item.teams?.away) return false;
+              if (!item.fixture || !item.teams?.home || !item.teams?.away) {
+                failureReasons.invalid_structure = (failureReasons.invalid_structure || 0) + 1;
+                return false;
+              }
               
               // Must have timestamp
-              if (!item.fixture.timestamp) return false;
+              if (!item.fixture.timestamp) {
+                failureReasons.missing_timestamp = (failureReasons.missing_timestamp || 0) + 1;
+                return false;
+              }
               
               // Must be prematch only (NS = Not Started, TBD = To Be Defined)
-              if (!['NS', 'TBD'].includes(item.fixture.status.short)) return false;
+              if (!['NS', 'TBD'].includes(item.fixture.status.short)) {
+                return false;
+              }
               
               const fixtureTs = item.fixture.timestamp;
               
@@ -118,6 +138,7 @@ serve(async (req) => {
               }
               
               fixturesInWindowKept++;
+              perLeagueCounters[leagueId].in_window++;
               leagueFixtureCounts[leagueId] = (leagueFixtureCounts[leagueId] || 0) + 1;
               return true;
             });
@@ -131,6 +152,7 @@ serve(async (req) => {
           
         } catch (error) {
           console.error(`[fetch-fixtures] Error fetching league ${leagueId} on ${dateStr}:`, error);
+          failureReasons.fetch_error = (failureReasons.fetch_error || 0) + 1;
         }
       }
     }
@@ -141,6 +163,7 @@ serve(async (req) => {
     const uniqueLeagues = new Map<number, any>();
     for (const item of allFixtures) {
       if (item.league && !uniqueLeagues.has(item.league.id)) {
+        const season = getSeasonForLeague(item.league.id);
         uniqueLeagues.set(item.league.id, {
           id: item.league.id,
           name: item.league.name,
@@ -154,22 +177,34 @@ serve(async (req) => {
     console.log(`[fetch-fixtures] Upserting ${uniqueLeagues.size} unique leagues before fixtures`);
     
     for (const leagueData of uniqueLeagues.values()) {
-      const { error } = await supabaseClient
-        .from("leagues")
-        .upsert(leagueData, { onConflict: "id,season" });
-      
-      if (error) {
-        console.error(`[fetch-fixtures] Error upserting league ${leagueData.id}:`, error);
+      try {
+        const { error } = await supabaseClient
+          .from("leagues")
+          .upsert(leagueData, { onConflict: "id,season" });
+        
+        if (error) {
+          console.error(`[fetch-fixtures] Error upserting league ${leagueData.id}:`, error.message);
+          leaguesFailed++;
+          failureReasons.league_upsert_error = (failureReasons.league_upsert_error || 0) + 1;
+        } else {
+          leaguesUpserted++;
+        }
+      } catch (error) {
+        console.error(`[fetch-fixtures] Exception upserting league ${leagueData.id}:`, error);
+        leaguesFailed++;
+        failureReasons.league_exception = (failureReasons.league_exception || 0) + 1;
       }
     }
     
-    // Step 2: Upsert fixtures
+    console.log(`[fetch-fixtures] Leagues: ${leaguesUpserted} upserted, ${leaguesFailed} failed`);
+    
+    // Step 2: Upsert fixtures with detailed error tracking
     for (const item of allFixtures) {
       const fixtureId = item.fixture.id;
       
       // Skip if already fresh
       if (recentFixtureIds.has(fixtureId)) {
-        skippedTtl++;
+        fixturesSkippedTtl++;
         continue;
       }
 
@@ -193,18 +228,38 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabaseClient
-        .from("fixtures")
-        .upsert(fixtureData, { onConflict: "id" });
+      try {
+        const { error } = await supabaseClient
+          .from("fixtures")
+          .upsert(fixtureData, { onConflict: "id" });
 
-      if (error) {
-        console.error(`[fetch-fixtures] Error upserting fixture ${fixtureId}:`, error);
-      } else {
-        if (recentFixtureIds.has(fixtureId)) {
-          updated++;
+        if (error) {
+          console.error(`[fetch-fixtures] Error upserting fixture ${fixtureId} (${item.teams.home.name} vs ${item.teams.away.name}):`, error.message);
+          fixturesFailed++;
+          
+          // Categorize error
+          if (error.message.includes("foreign key")) {
+            failureReasons.fk_constraint = (failureReasons.fk_constraint || 0) + 1;
+          } else if (error.message.includes("null")) {
+            failureReasons.null_violation = (failureReasons.null_violation || 0) + 1;
+          } else {
+            failureReasons.other_db_error = (failureReasons.other_db_error || 0) + 1;
+          }
         } else {
-          inserted++;
+          if (recentFixtureIds.has(fixtureId)) {
+            fixturesUpdated++;
+          } else {
+            fixturesInserted++;
+            const leagueId = item.league.id;
+            if (perLeagueCounters[leagueId]) {
+              perLeagueCounters[leagueId].inserted++;
+            }
+          }
         }
+      } catch (error) {
+        console.error(`[fetch-fixtures] Exception upserting fixture ${fixtureId}:`, error);
+        fixturesFailed++;
+        failureReasons.fixture_exception = (failureReasons.fixture_exception || 0) + 1;
       }
     }
 
@@ -222,8 +277,17 @@ serve(async (req) => {
       fixtures: count,
     }));
 
+    // Top 3 failure reasons
+    const top3Failures = Object.entries(failureReasons)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .map(([reason, count]) => ({ reason, count }));
+
     console.log(`[fetch-fixtures] Top 5 leagues: ${sortedLeagues.map(([id, cnt]) => `${LEAGUE_NAMES[Number(id)]}=${cnt}`).join(', ')}`);
-    console.log(`[fetch-fixtures] Summary: ${apiCalls} API calls (${avgRpm} RPM), ${inserted} inserted, ${updated} updated, ${skippedTtl} skipped (TTL)`);
+    console.log(`[fetch-fixtures] Summary: ${apiCalls} API calls (${avgRpm} RPM)`);
+    console.log(`[fetch-fixtures] Leagues: ${leaguesUpserted} upserted, ${leaguesFailed} failed`);
+    console.log(`[fetch-fixtures] Fixtures: ${fixturesInserted} inserted, ${fixturesUpdated} updated, ${fixturesSkippedTtl} skipped (TTL), ${fixturesFailed} failed`);
+    console.log(`[fetch-fixtures] Top failures:`, top3Failures);
 
     // Log to optimizer_run_logs
     await supabaseClient.from("optimizer_run_logs").insert({
@@ -234,46 +298,60 @@ serve(async (req) => {
       finished_at: new Date().toISOString(),
       duration_ms: durationMs,
       scanned: fixturesScannedTotal,
-      upserted: inserted + updated,
-      skipped: skippedTtl,
-      failed: 0,
+      upserted: fixturesInserted + fixturesUpdated,
+      skipped: fixturesSkippedTtl,
+      failed: fixturesFailed,
       scope: {
-        requested_window_start: now.toISOString(),
-        requested_window_end: windowEnd.toISOString(),
+        window: `${now.toISOString()} → ${windowEnd.toISOString()}`,
         api_calls: apiCalls,
         rpm_avg: avgRpm,
         leagues_scanned: ALLOWED_LEAGUE_IDS.length,
+        leagues_upserted: leaguesUpserted,
+        leagues_failed: leaguesFailed,
         fixtures_returned: fixturesScannedTotal,
         fixtures_in_window_kept: fixturesInWindowKept,
         fixtures_outside_window_dropped: fixturesOutsideWindowDropped,
-        inserted,
-        updated,
-        skipped_ttl: skippedTtl,
+        fixtures_inserted: fixturesInserted,
+        fixtures_updated: fixturesUpdated,
+        fixtures_skipped_ttl: fixturesSkippedTtl,
+        fixtures_failed: fixturesFailed,
         top_5_leagues: top5Leagues,
+        top_3_failures: top3Failures,
+        season_used: DEFAULT_SEASON,
       },
     });
 
     return new Response(
       JSON.stringify({
         success: true,
+        window: `${now.toISOString()} → ${windowEnd.toISOString()}`,
         scanned: fixturesScannedTotal,
         in_window: fixturesInWindowKept,
         dropped_outside: fixturesOutsideWindowDropped,
-        inserted,
-        updated,
-        skipped_ttl: skippedTtl,
+        leagues_upserted: leaguesUpserted,
+        leagues_failed: leaguesFailed,
+        inserted: fixturesInserted,
+        updated: fixturesUpdated,
+        skipped_ttl: fixturesSkippedTtl,
+        failed: fixturesFailed,
         api_calls: apiCalls,
         rpm_avg: avgRpm,
         top_5_leagues: top5Leagues,
+        top_3_failures: top3Failures,
         duration_ms: durationMs,
+        season_used: DEFAULT_SEASON,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error in fetch-fixtures:", error);
+    console.error("[fetch-fixtures] Fatal error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ 
+        success: false,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

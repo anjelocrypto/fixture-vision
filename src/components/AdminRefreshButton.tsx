@@ -32,9 +32,13 @@ export const AdminRefreshButton = () => {
         return;
       }
 
-      const summary = `${data.scanned} scanned • ${data.in_window} in 72h • ${data.inserted + data.updated} saved`;
-      toast.success(`Fixtures fetched! ${summary}`);
+      const summary = `${data.in_window} in 72h • ${data.inserted} inserted • ${data.updated} updated • ${data.failed} failed`;
+      toast.success(`Fixtures: ${summary}`);
       console.log("[fetch-fixtures] Result:", data);
+      
+      if (data.failed > 0 && data.top_3_failures) {
+        console.warn("[fetch-fixtures] Top failures:", data.top_3_failures);
+      }
     } catch (error) {
       console.error("Error in handleFetchFixtures:", error);
       toast.error("Failed to fetch fixtures");
