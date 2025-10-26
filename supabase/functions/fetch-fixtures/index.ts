@@ -132,7 +132,33 @@ serve(async (req) => {
     
     console.log(`[fetch-fixtures] Scanned ${fixturesScannedTotal}, kept ${fixturesInWindowKept} in window, dropped ${fixturesOutsideWindowDropped} outside`);
     
-    // Upsert fixtures
+    // Step 1: Collect unique leagues and upsert them first
+    const uniqueLeagues = new Map<number, any>();
+    for (const item of allFixtures) {
+      if (item.league && !uniqueLeagues.has(item.league.id)) {
+        uniqueLeagues.set(item.league.id, {
+          id: item.league.id,
+          name: item.league.name,
+          logo: item.league.logo,
+          season,
+          country_id: item.league.country_id || null,
+        });
+      }
+    }
+    
+    console.log(`[fetch-fixtures] Upserting ${uniqueLeagues.size} unique leagues before fixtures`);
+    
+    for (const leagueData of uniqueLeagues.values()) {
+      const { error } = await supabaseClient
+        .from("leagues")
+        .upsert(leagueData, { onConflict: "id,season" });
+      
+      if (error) {
+        console.error(`[fetch-fixtures] Error upserting league ${leagueData.id}:`, error);
+      }
+    }
+    
+    // Step 2: Upsert fixtures
     for (const item of allFixtures) {
       const fixtureId = item.fixture.id;
       
