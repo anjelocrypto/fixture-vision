@@ -46,12 +46,12 @@ export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps)
             <AccordionTrigger className="hover:no-underline">
               <div className="flex items-center justify-between w-full pr-4">
                 <div className="text-left">
-                  <div className="text-sm font-medium">{match.match_title}</div>
+                  <div className="text-sm font-medium leading-snug">{match.match_title}</div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {match.recommended_bet}
                   </div>
                 </div>
-                <Badge variant={getConfidenceBadgeVariant(match.confidence_level)}>
+                <Badge variant={getConfidenceBadgeVariant(match.confidence_level)} className="shrink-0">
                   {match.confidence_level}
                 </Badge>
               </div>

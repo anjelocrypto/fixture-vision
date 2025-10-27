@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,20 +26,62 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // Build structured data for each match
-    const matchesData = ticket.legs.map((leg: any, index: number) => ({
-      match_number: index + 1,
-      teams: `${leg.home_team} vs ${leg.away_team}`,
-      league: leg.league || 'Unknown League',
-      kickoff: leg.kickoff || 'TBD',
-      recommended_bet: `${leg.market} ${leg.pick}`,
-      odds: leg.odds,
-      bookmaker: leg.bookmaker,
-      edge: leg.edge ? `+${(leg.edge * 100).toFixed(1)}%` : 'N/A',
-      model_prob: leg.model_prob ? `${(leg.model_prob * 100).toFixed(1)}%` : 'N/A',
-      book_prob: leg.book_prob ? `${(leg.book_prob * 100).toFixed(1)}%` : 'N/A',
-      reason: leg.reason || 'Optimized bet based on statistical analysis'
-    }));
+    // Initialize Supabase client to fetch league data
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get unique league IDs from ticket legs
+    const leagueIds = [...new Set(ticket.legs.map((leg: any) => leg.league_id).filter(Boolean))];
+    
+    // Fetch league and country data
+    let leagueMap = new Map();
+    let countryMap = new Map();
+    
+    if (leagueIds.length > 0) {
+      const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, name, country_id')
+        .in('id', leagueIds);
+
+      if (leagues && leagues.length > 0) {
+        const countryIds = [...new Set(leagues.map(l => l.country_id).filter(Boolean))];
+        
+        if (countryIds.length > 0) {
+          const { data: countries } = await supabase
+            .from('countries')
+            .select('id, code, name')
+            .in('id', countryIds);
+          
+          countryMap = new Map(countries?.map(c => [c.id, c]) ?? []);
+        }
+        
+        leagueMap = new Map(leagues.map(l => [l.id, l]));
+      }
+    }
+
+    // Build structured data for each match with enriched league info
+    const matchesData = ticket.legs.map((leg: any, index: number) => {
+      const league = leagueMap.get(leg.league_id);
+      const country = league ? countryMap.get(league.country_id) : null;
+      
+      return {
+        match_number: index + 1,
+        teams: `${leg.home_team} vs ${leg.away_team}`,
+        league_id: leg.league_id,
+        league_name: league?.name || null,
+        country_code: country?.code || null,
+        country_name: country?.name || null,
+        kickoff: leg.kickoff || 'TBD',
+        recommended_bet: `${leg.market} ${leg.pick}`,
+        odds: leg.odds,
+        bookmaker: leg.bookmaker,
+        edge: leg.edge ? `+${(leg.edge * 100).toFixed(1)}%` : 'N/A',
+        model_prob: leg.model_prob ? `${(leg.model_prob * 100).toFixed(1)}%` : 'N/A',
+        book_prob: leg.book_prob ? `${(leg.book_prob * 100).toFixed(1)}%` : 'N/A',
+        reason: leg.reason || 'Optimized bet based on statistical analysis'
+      };
+    });
 
     const ticketSummary = {
       total_odds: ticket.total_odds,
@@ -79,13 +122,18 @@ Return a structured JSON with this format:
   "overall_summary": "General analysis of the entire ticket — e.g. overall logic, consistency, and confidence.",
   "matches": [
     {
-      "match_title": "Team A vs Team B (League)",
+      "match_title": "Team A vs Team B (League Name, Country)",
       "recommended_bet": "Over 2.5 Goals @ 1.75",
       "analysis": "Detailed 3–5 sentence analysis explaining why this bet was generated and what factors support it. Mention form, key players, match context, etc.",
       "confidence_level": "High / Medium / Low"
     }
   ]
 }
+
+**Important for match_title formatting:**
+- Use the provided league_name and country_name in the title format: "Home Team vs Away Team (League Name, Country)"
+- If league_name is missing, omit the parentheses entirely (do NOT write "Unknown League")
+- Example: "Real Betis vs Atletico Madrid (La Liga, Spain)" or "Arsenal vs Chelsea (Premier League, England)"
 
 Generate the JSON response only — no extra commentary. Ensure it's valid JSON.`;
 
