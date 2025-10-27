@@ -5,6 +5,8 @@ import { TrendingUp, Users, Trophy, Bug } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
+import { AddToTicketButton } from "./AddToTicketButton";
+import { TicketLeg } from "@/stores/useTicket";
 
 interface Selection {
   id: string;
@@ -86,7 +88,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
         return (
           <Card
             key={selection.id}
-            className="p-4 hover:bg-accent/50 transition-colors cursor-pointer border-l-4"
+            className="p-4 hover:bg-accent/50 transition-colors cursor-pointer border-l-4 relative"
             style={{
               borderLeftColor: hasEdge && selection.edge_pct > 5 
                 ? "hsl(var(--primary))" 
@@ -95,6 +97,30 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
             onClick={() => onSelectionClick?.(selection)}
           >
             <div className="flex items-start justify-between gap-4">
+              {/* Ticket Button - Top Right */}
+              <div className="absolute top-2 right-2">
+                <AddToTicketButton
+                  leg={{
+                    id: `${selection.fixture_id}-${selection.market}-${selection.side}-${selection.line}`,
+                    fixtureId: selection.fixture_id,
+                    leagueId: selection.league_id,
+                    countryCode: selection.country_code || undefined,
+                    homeTeam: selection.home_team || 'Home',
+                    awayTeam: selection.away_team || 'Away',
+                    kickoffUtc: selection.utc_kickoff,
+                    market: selection.market as TicketLeg['market'],
+                    side: selection.side as 'over' | 'under',
+                    line: selection.line,
+                    odds: selection.odds,
+                    bookmaker: selection.bookmaker,
+                    rulesVersion: 'v2_combined_matrix_v1',
+                    combinedAvg: selection.combined_snapshot?.[selection.market as keyof typeof selection.combined_snapshot],
+                    isLive: selection.is_live,
+                    source: 'bet_optimizer',
+                  }}
+                />
+              </div>
+
               {/* Left: Fixture & Market Info */}
               <div className="flex-1 min-w-0">
                 {/* Team names */}
