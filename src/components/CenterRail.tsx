@@ -99,13 +99,13 @@ export function CenterRail({
       ) : fixtures.length === 0 ? (
         <Card className="p-8 text-center space-y-4">
           <div>
-            <p className="text-lg font-medium mb-2">No upcoming fixtures</p>
+            <p className="text-lg font-medium mb-2">No matches on {format(selectedDate, "MMM d")}</p>
             <p className="text-muted-foreground text-sm">
-              {league?.name} has no matches scheduled in the next 7 days
+              {league?.name} has no matches scheduled for this date
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Try selecting a different league
+            Try selecting a different date or league
           </p>
         </Card>
       ) : (

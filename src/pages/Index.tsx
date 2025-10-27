@@ -200,22 +200,6 @@ const Index = () => {
     (fx: any) => format(new Date(fx.timestamp * 1000), "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd")
   );
 
-  // Auto-select next available date if current date has no fixtures
-  useEffect(() => {
-    if (!loadingFixtures && selectedLeague && allUpcomingFixtures.length > 0 && fixtures.length === 0) {
-      // Find the first date with fixtures in the next 7 days
-      const nextDateWithFixtures = allUpcomingFixtures[0];
-      if (nextDateWithFixtures) {
-        const nextDate = new Date(nextDateWithFixtures.timestamp * 1000);
-        nextDate.setHours(0, 0, 0, 0);
-        if (nextDate.getTime() !== selectedDate.getTime()) {
-          console.log(`Auto-selecting next date with fixtures: ${format(nextDate, "MMM d")}`);
-          setSelectedDate(nextDate);
-        }
-      }
-    }
-  }, [loadingFixtures, selectedLeague, allUpcomingFixtures.length, fixtures.length]);
-
   const handleAnalyze = async (fixture: any) => {
     setLoadingAnalysis(true);
     setAnalysis(null);
