@@ -33,6 +33,8 @@ export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: Add
     }
   };
 
+  const showText = size === "sm" || size === "default";
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -40,9 +42,14 @@ export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: Add
           variant={variant}
           size={size}
           onClick={handleClick}
-          className={isAdded ? "text-primary" : ""}
+          className={`${isAdded ? "text-primary border-primary bg-primary/5" : ""} transition-all`}
         >
           {isAdded ? <TicketCheck className="h-4 w-4" /> : <TicketPlus className="h-4 w-4" />}
+          {showText && (
+            <span className="ml-2">
+              {isAdded ? "Added" : "Add to Ticket"}
+            </span>
+          )}
         </Button>
       </TooltipTrigger>
       <TooltipContent>
