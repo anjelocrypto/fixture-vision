@@ -117,7 +117,102 @@ serve(async (req) => {
     // Enforce global odds band [1.25, 5.00] regardless of user input
     const effectiveMinOdds = Math.max(minOdds, ODDS_MIN);
     const effectiveMaxOdds = ODDS_MAX;
+
+    // Resolve league scoping: prefer explicit leagueIds; otherwise, resolve by country -> leagues
+    let scopeLeagueIds: number[] | undefined = leagueIds;
+    if ((!scopeLeagueIds || scopeLeagueIds.length === 0) && countryCode) {
+      // Lookup country id by ISO2 code
+      const { data: countryRow, error: countryErr } = await supabaseClient
+        .from("countries")
+        .select("id")
+        .eq("code", countryCode)
+        .maybeSingle();
+      if (countryErr) {
+        console.warn(`[filterizer] Country lookup failed for ${countryCode}:`, countryErr.message);
+      }
+
+      if (countryRow?.id) {
+        const { data: leagueRows, error: leaguesErr } = await supabaseClient
+          .from("leagues")
+          .select("id")
+          .eq("country_id", countryRow.id);
+        if (leaguesErr) {
+          console.warn(`[filterizer] League lookup failed for country ${countryCode}:`, leaguesErr.message);
+        }
+        const resolved = (leagueRows || []).map((l: any) => l.id);
+        if (resolved.length > 0) {
+          scopeLeagueIds = resolved;
+          console.log(`[filterizer] Resolved ${resolved.length} leagues for country ${countryCode}`);
+        } else {
+          console.warn(`[filterizer] No leagues resolved for ${countryCode}; will fall back to country_code column (may be NULL)`);
+        }
+      }
+    }
     
+    // Stage counters (computed via lightweight count queries)
+    const baseScope = supabaseClient
+      .from("optimized_selections")
+      .select("id", { count: "exact", head: true })
+      .eq("rules_version", RULES_VERSION)
+      .eq("is_live", live)
+      .gte("utc_kickoff", queryStart.toISOString())
+      .lte("utc_kickoff", endDate.toISOString());
+    
+    // Apply scope for base counts
+    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+      // @ts-ignore - head:true returns count
+      await (baseScope as any).in("league_id", scopeLeagueIds);
+    } else if (countryCode) {
+      // @ts-ignore
+      await (baseScope as any).eq("country_code", countryCode);
+    }
+    const { count: inWindow } = await baseScope;
+
+    // Market-matched count (no odds yet)
+    let marketScope = supabaseClient
+      .from("optimized_selections")
+      .select("id", { count: "exact", head: true })
+      .eq("rules_version", RULES_VERSION)
+      .eq("is_live", live)
+      .gte("utc_kickoff", queryStart.toISOString())
+      .lte("utc_kickoff", endDate.toISOString())
+      .eq("market", market)
+      .eq("side", side)
+      .gte("line", line - 0.01)
+      .lte("line", line + 0.01);
+    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+      // @ts-ignore
+      marketScope = (marketScope as any).in("league_id", scopeLeagueIds);
+    } else if (countryCode) {
+      // @ts-ignore
+      marketScope = (marketScope as any).eq("country_code", countryCode);
+    }
+    const { count: marketMatched } = await marketScope;
+
+    // Min-odds-kept count (apply global band and min)
+    let oddsScope = supabaseClient
+      .from("optimized_selections")
+      .select("id", { count: "exact", head: true })
+      .eq("rules_version", RULES_VERSION)
+      .eq("is_live", live)
+      .gte("utc_kickoff", queryStart.toISOString())
+      .lte("utc_kickoff", endDate.toISOString())
+      .eq("market", market)
+      .eq("side", side)
+      .gte("line", line - 0.01)
+      .lte("line", line + 0.01)
+      .gte("odds", effectiveMinOdds)
+      .lte("odds", effectiveMaxOdds);
+    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+      // @ts-ignore
+      oddsScope = (oddsScope as any).in("league_id", scopeLeagueIds);
+    } else if (countryCode) {
+      // @ts-ignore
+      oddsScope = (oddsScope as any).eq("country_code", countryCode);
+    }
+    const { count: minOddsKept } = await oddsScope;
+
+    // Final data query applying all filters
     let query = supabaseClient
       .from("optimized_selections")
       .select("*")
@@ -133,9 +228,9 @@ serve(async (req) => {
     // Filter by line (with small tolerance)
     query = query.gte("line", line - 0.01).lte("line", line + 0.01);
 
-    // Scope by country or leagues
-    if (leagueIds && leagueIds.length > 0) {
-      query = query.in("league_id", leagueIds);
+    // Scope by league (preferred) or country_code fallback
+    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+      query = query.in("league_id", scopeLeagueIds);
     } else if (countryCode) {
       query = query.eq("country_code", countryCode);
     }
@@ -258,6 +353,20 @@ serve(async (req) => {
 
     console.log(`[filterizer-query] Final: ${enriched.length} selections returned`);
 
+    // Acceptance-style logging
+    console.log(`[filterizer] market=${market} side=${side} line=${line} minOdds=${minOdds.toFixed(2)}`);
+    console.log(`[filterizer] window=[${queryStart.toISOString()} → ${endDate.toISOString()}] rules=${RULES_VERSION}`);
+    console.log(`[filterizer] counts: in_window=${inWindow || 0} → market_matched=${marketMatched || 0} → min_odds_kept=${minOddsKept || 0} → qualified_kept=${qualifiedCount} → final=${enriched.length}`);
+
+    // Reasons (only when empty)
+    const reasons = enriched.length === 0 ? [
+      `in_window=${inWindow || 0}`,
+      `market_matched=${marketMatched || 0}`,
+      `min_odds_kept=${minOddsKept || 0}`,
+      `qualified_kept=${qualifiedCount}`,
+      `final=${enriched.length}`,
+    ] : undefined;
+
     return new Response(
       JSON.stringify({
         selections: enriched,
@@ -265,15 +374,23 @@ serve(async (req) => {
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
         filters: { market, side, line, minOdds, rulesVersion: RULES_VERSION },
         debug: {
+          counters: {
+            in_window: inWindow || 0,
+            market_matched: marketMatched || 0,
+            min_odds_kept: minOddsKept || 0,
+            qualified_kept: qualifiedCount,
+            final_count: enriched.length,
+          },
           stages: {
-            in_window: rawCount,
+            in_window_raw_query: inWindow || 0,
             qualified: qualifiedCount,
             dropped_not_qualified: qualifiedDropped,
             dropped_suspicious: suspiciousDropped,
             deduped: deduped.length,
             final: enriched.length,
           }
-        }
+        },
+        reasons
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
