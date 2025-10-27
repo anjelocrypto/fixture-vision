@@ -150,23 +150,36 @@ serve(async (req) => {
     }
     
     // Stage counters (computed via lightweight count queries)
-    const baseScope = supabaseClient
+    const scopeType = (scopeLeagueIds && scopeLeagueIds.length > 0)
+      ? "leagues"
+      : (countryCode ? "country" : "global");
+
+    // Global in-window count (no scoping)
+    const baseGlobal = supabaseClient
       .from("optimized_selections")
       .select("id", { count: "exact", head: true })
       .eq("rules_version", RULES_VERSION)
       .eq("is_live", live)
       .gte("utc_kickoff", queryStart.toISOString())
       .lte("utc_kickoff", endDate.toISOString());
-    
-    // Apply scope for base counts
+    const { count: inWindow } = await baseGlobal;
+
+    // Scoped in-window count (applies when scopeType != 'global')
+    let baseScoped = supabaseClient
+      .from("optimized_selections")
+      .select("id", { count: "exact", head: true })
+      .eq("rules_version", RULES_VERSION)
+      .eq("is_live", live)
+      .gte("utc_kickoff", queryStart.toISOString())
+      .lte("utc_kickoff", endDate.toISOString());
     if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-      // @ts-ignore - head:true returns count
-      await (baseScope as any).in("league_id", scopeLeagueIds);
+      // @ts-ignore
+      baseScoped = (baseScoped as any).in("league_id", scopeLeagueIds);
     } else if (countryCode) {
       // @ts-ignore
-      await (baseScope as any).eq("country_code", countryCode);
+      baseScoped = (baseScoped as any).eq("country_code", countryCode);
     }
-    const { count: inWindow } = await baseScope;
+    const { count: scopeCount } = await baseScoped;
 
     // Market-matched count (no odds yet)
     let marketScope = supabaseClient
@@ -354,9 +367,9 @@ serve(async (req) => {
     console.log(`[filterizer-query] Final: ${enriched.length} selections returned`);
 
     // Acceptance-style logging
-    console.log(`[filterizer] market=${market} side=${side} line=${line} minOdds=${minOdds.toFixed(2)}`);
-    console.log(`[filterizer] window=[${queryStart.toISOString()} → ${endDate.toISOString()}] rules=${RULES_VERSION}`);
-    console.log(`[filterizer] counts: in_window=${inWindow || 0} → market_matched=${marketMatched || 0} → min_odds_kept=${minOddsKept || 0} → qualified_kept=${qualifiedCount} → final=${enriched.length}`);
+    console.log(`[filterizer] market=${market} side=${side} line=${line} minOdds=${minOdds.toFixed(2)} rules=${RULES_VERSION}`);
+    console.log(`[filterizer] window=[${queryStart.toISOString()} → ${endDate.toISOString()}] scope=${scopeType}`);
+    console.log(`[filterizer] counts: in_window=${inWindow || 0} → scope_count=${scopeCount || 0} → market_matched=${marketMatched || 0} → min_odds_kept=${minOddsKept || 0} → qualified_kept=${qualifiedCount} → final=${enriched.length}`);
 
     // Reasons (only when empty)
     const reasons = enriched.length === 0 ? [
@@ -371,11 +384,14 @@ serve(async (req) => {
       JSON.stringify({
         selections: enriched,
         count: enriched.length,
+        scope: scopeType,
+        scope_count: scopeCount || 0,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
         filters: { market, side, line, minOdds, rulesVersion: RULES_VERSION },
         debug: {
           counters: {
             in_window: inWindow || 0,
+            scope_count: scopeCount || 0,
             market_matched: marketMatched || 0,
             min_odds_kept: minOddsKept || 0,
             qualified_kept: qualifiedCount,
