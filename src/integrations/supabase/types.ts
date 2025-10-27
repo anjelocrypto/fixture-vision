@@ -408,6 +408,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_tickets: {
+        Row: {
+          ticket: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ticket: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ticket?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

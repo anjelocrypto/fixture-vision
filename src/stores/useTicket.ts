@@ -84,11 +84,11 @@ export const useTicket = create<TicketState & TicketActions>((set, get) => ({
 
   loadFromServer: async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_tickets')
         .select('ticket')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
 
@@ -122,7 +122,7 @@ export const useTicket = create<TicketState & TicketActions>((set, get) => ({
     };
 
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('user_tickets')
         .upsert({
           user_id: userId,
