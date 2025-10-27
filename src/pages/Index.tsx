@@ -154,30 +154,38 @@ const Index = () => {
     }
   }, [leaguesError, selectedCountry]);
 
-  // Fetch upcoming fixtures (today + next 7 days) with React Query
+  // Query fixtures from database for selected league (upcoming fixtures only)
   const { data: fixturesData, isLoading: loadingFixtures } = useQuery({
     queryKey: ['fixtures', selectedCountry, SEASON, selectedLeague?.id, 'upcoming', userTimezone],
     queryFn: async () => {
       if (!selectedLeague) return { fixtures: [] };
 
-      console.log(`[Index] Fetching upcoming fixtures for league: ${selectedLeague.id}, season: ${SEASON}, tz: ${userTimezone}`);
+      console.log(`[Index] Querying fixtures from database for league: ${selectedLeague.id}`);
 
-      const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
-        body: {
-          league: selectedLeague.id,
-          season: SEASON,
-          date: format(today, "yyyy-MM-dd"), // Still pass for compatibility
-          tz: userTimezone,
-        },
-      });
+      // Get current timestamp in seconds (for filtering upcoming fixtures)
+      const nowTs = Math.floor(Date.now() / 1000);
+      // Get timestamp for 7 days from now
+      const weekFromNowTs = nowTs + (7 * 24 * 60 * 60);
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from("fixtures")
+        .select("*")
+        .eq("league_id", selectedLeague.id)
+        .gte("timestamp", nowTs)
+        .lte("timestamp", weekFromNowTs)
+        .order("timestamp", { ascending: true });
 
-      console.log(`[Index] Fetched ${data?.fixtures?.length || 0} upcoming fixtures`);
-      return data;
+      if (error) {
+        console.error(`[Index] Error querying fixtures:`, error);
+        throw error;
+      }
+
+      console.log(`[Index] Found ${data?.length || 0} upcoming fixtures for ${selectedLeague.name}`);
+      return { fixtures: data || [] };
     },
     enabled: !!selectedLeague,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 2,
   });
 
   const leagues = leaguesData?.leagues || [];
