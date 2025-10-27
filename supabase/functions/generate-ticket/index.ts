@@ -1239,7 +1239,12 @@ function generateOptimizedTicket(
           if (state.legs.length + 1 >= minLegs && maxPossibleProduct < targetMin * 0.5) continue;
 
           const newLegs = [...state.legs, cand];
-          const newUsed = new Map(state.used);
+          
+          // Deep copy the used map (shallow copy shares Set references causing constraint bleeding!)
+          const newUsed = new Map<number, Set<string>>();
+          for (const [fid, markets] of state.used.entries()) {
+            newUsed.set(fid, new Set(markets));
+          }
           const mset = newUsed.get(cand.fixtureId) || new Set<string>();
           mset.add(cand.market);
           newUsed.set(cand.fixtureId, mset);
@@ -1296,7 +1301,13 @@ function generateOptimizedTicket(
   console.log(`[stochastic-search] Complete: sampled_legs=${sampledLegsAttempts.join(',')}, pool=${pool.length}, evaluated=${totalExpansions}, time=${totalTime}ms, found_in_range=${!!bestInBand}`);
 
   if (bestInBand) {
-    return { 
+    const marketDist: Record<string, number> = {};
+    for (const leg of bestInBand.legs) {
+      marketDist[leg.market] = (marketDist[leg.market] || 0) + 1;
+    }
+    console.log(`[stochastic-search] Best ticket market distribution: ${JSON.stringify(marketDist)}`);
+    
+    return {
       total_odds: Math.round(bestInBand.product * 100) / 100, 
       legs: bestInBand.legs, 
       attempts: totalExpansions,
