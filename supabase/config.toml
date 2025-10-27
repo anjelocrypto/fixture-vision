@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.warmup-odds]
 verify_jwt = true
+
+[functions.analyze-ticket]
+verify_jwt = true

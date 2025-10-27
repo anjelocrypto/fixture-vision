@@ -1,10 +1,13 @@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, TrendingUp, Target, AlertCircle } from "lucide-react";
+import { Copy, TrendingUp, Target, AlertCircle, Sparkles, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddToTicketButton } from "./AddToTicketButton";
 import { TicketLeg as MyTicketLeg } from "@/stores/useTicket";
+import { GeminiAnalysis } from "./GeminiAnalysis";
+import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 
 interface TicketLeg {
   fixture_id: number;
@@ -48,6 +51,8 @@ interface TicketDrawerProps {
 
 export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDrawerProps) {
   const { toast } = useToast();
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<any>(null);
 
   const copyTicket = () => {
     if (!ticket) return;
@@ -70,6 +75,40 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
       title: "Ticket copied!",
       description: "Betting ticket copied to clipboard",
     });
+  };
+
+  const analyzeWithGemini = async () => {
+    if (!ticket) return;
+
+    setAnalyzing(true);
+    setAnalysis(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-ticket', {
+        body: { ticket }
+      });
+
+      if (error) throw error;
+
+      if (data?.analysis) {
+        setAnalysis(data.analysis);
+        toast({
+          title: "Analysis complete!",
+          description: "Gemini has analyzed your ticket",
+        });
+      } else {
+        throw new Error('No analysis data received');
+      }
+    } catch (error) {
+      console.error('Error analyzing ticket:', error);
+      toast({
+        title: "Analysis failed",
+        description: error instanceof Error ? error.message : "Failed to analyze ticket",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   return (
@@ -243,11 +282,36 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
 
             {/* Actions */}
             <div className="flex gap-2">
-              <Button onClick={copyTicket} className="flex-1 gap-2">
+              <Button onClick={copyTicket} className="flex-1 gap-2" variant="outline">
                 <Copy className="h-4 w-4" />
                 Copy Ticket
               </Button>
+              <Button 
+                onClick={analyzeWithGemini} 
+                className="flex-1 gap-2"
+                disabled={analyzing}
+              >
+                {analyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Analyze with Gemini
+                  </>
+                )}
+              </Button>
             </div>
+
+            {/* Gemini Analysis */}
+            {analysis && (
+              <GeminiAnalysis 
+                overallSummary={analysis.overall_summary}
+                matches={analysis.matches}
+              />
+            )}
           </div>
         )}
 
