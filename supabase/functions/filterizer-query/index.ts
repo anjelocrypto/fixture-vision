@@ -99,7 +99,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`[filterizer-query] User ${user.id} querying: market=${market}, side=${side}, line=${line}, minOdds=${minOdds}`);
+    console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} rules=${RULES_VERSION}`);
 
     // Calculate 7-day window from date (query from selected date, not from "now")
     const startDate = new Date(date);
@@ -111,10 +111,10 @@ serve(async (req) => {
     
     const queryStart = startDate;
 
-    console.log(`[filterizer-query] Window: ${queryStart.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`[filterizer-query] window=[${queryStart.toISOString()} → ${endDate.toISOString()}]`);
 
-    // Build query for selections
-    // Enforce global odds band regardless of user input
+    // Build query for selections - READ ONLY PRE-QUALIFIED ROWS
+    // Enforce global odds band [1.25, 5.00] regardless of user input
     const effectiveMinOdds = Math.max(minOdds, ODDS_MIN);
     const effectiveMaxOdds = ODDS_MAX;
     
@@ -153,20 +153,28 @@ serve(async (req) => {
       );
     }
 
-    // Post-filter: check combined_snapshot qualification and suspicious odds
+    const rawCount = selections?.length || 0;
+    console.log(`[filterizer-query] Stage 1: in_window=${rawCount}`);
+
+    // Post-filter: defensive qualification check using pickFromCombined
+    let qualifiedDropped = 0;
+    let suspiciousDropped = 0;
+    
     const rows = (selections || []).filter((row: any) => {
-      // Check combined value qualification using pickFromCombined
+      // Defensive: Check combined value qualification using pickFromCombined (inclusive bounds)
       if (row.combined_snapshot && row.combined_snapshot[market] !== undefined) {
         const combinedValue = Number(row.combined_snapshot[market]);
         const expectedPick = pickFromCombined(market as StatMarket, combinedValue);
         
         // Verify the selection matches what the combined value should qualify for
         if (!expectedPick || expectedPick.side !== side || expectedPick.line !== line) {
-          console.warn(`[filterizer-query] ${market}=${combinedValue.toFixed(2)} does not qualify for ${side} ${line} (fixture ${row.fixture_id}) - DROPPED`);
+          qualifiedDropped++;
+          console.warn(`[filterizer-query] NOT_QUALIFIED: ${market}=${combinedValue.toFixed(2)} → expected ${expectedPick?.side} ${expectedPick?.line}, got ${side} ${line} (fixture ${row.fixture_id})`);
           return false;
         }
-        
-        console.log(`[filterizer-query] ${market}=${combinedValue.toFixed(2)} qualifies for ${side} ${line} (fixture ${row.fixture_id}) - KEPT`);
+      } else if (row.combined_snapshot) {
+        // Snapshot exists but market key is missing - log warning but keep (backward compat)
+        console.warn(`[filterizer-query] Missing combined_snapshot.${market} for fixture ${row.fixture_id}, keeping row`);
       }
       
       // Check suspicious odds
@@ -177,22 +185,29 @@ serve(async (req) => {
       );
       
       if (suspiciousWarning) {
-        console.warn(`[filterizer-query] ${suspiciousWarning} (fixture ${row.fixture_id}, ${row.bookmaker}) - DROPPED`);
+        suspiciousDropped++;
+        console.warn(`[filterizer-query] SUSPICIOUS: ${suspiciousWarning} (fixture ${row.fixture_id}, ${row.bookmaker})`);
         return false;
       }
       
       return true;
     });
 
-    // Dedupe: keep best bookmaker per fixture (max odds)
-    const bestByFixture = new Map<number, any>();
+    const qualifiedCount = rows.length;
+    console.log(`[filterizer-query] Stage 2: qualified=${qualifiedCount} (dropped: not_qualified=${qualifiedDropped}, suspicious=${suspiciousDropped})`);
+
+    // Dedupe: keep best odds per (fixture, market) - use composite key for consistency with ticket creator
+    const bestByFixtureMarket = new Map<string, any>();
     for (const row of rows) {
-      const prev = bestByFixture.get(row.fixture_id);
+      const key = `${row.fixture_id}|${row.market}`;
+      const prev = bestByFixtureMarket.get(key);
       if (!prev || Number(row.odds) > Number(prev.odds)) {
-        bestByFixture.set(row.fixture_id, row);
+        bestByFixtureMarket.set(key, row);
       }
     }
-    const deduped = Array.from(bestByFixture.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
+    const deduped = Array.from(bestByFixtureMarket.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
+    
+    console.log(`[filterizer-query] Stage 3: dedup=${deduped.length} (removed ${qualifiedCount - deduped.length} duplicate bookmakers)`);
 
     // Fetch fixture metadata for enrichment
     const fixtureIds = deduped.map((row: any) => row.fixture_id);
@@ -241,12 +256,24 @@ serve(async (req) => {
       };
     });
 
+    console.log(`[filterizer-query] Final: ${enriched.length} selections returned`);
+
     return new Response(
       JSON.stringify({
         selections: enriched,
         count: enriched.length,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
-        filters: { market, side, line, minOdds },
+        filters: { market, side, line, minOdds, rulesVersion: RULES_VERSION },
+        debug: {
+          stages: {
+            in_window: rawCount,
+            qualified: qualifiedCount,
+            dropped_not_qualified: qualifiedDropped,
+            dropped_suspicious: suspiciousDropped,
+            deduped: deduped.length,
+            final: enriched.length,
+          }
+        }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
