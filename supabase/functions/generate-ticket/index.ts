@@ -4,6 +4,7 @@ import { pickLine, Market } from "../_shared/ticket_rules.ts";
 import { pickFromCombined, RULES, RULES_VERSION, type StatMarket } from "../_shared/rules.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
+import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -348,6 +349,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   let fallbackToPrematch = false;
 
   console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}`);
+  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}]}`);
 
   // GLOBAL MODE: Query optimized_selections for next 48h
   if (globalMode) {
@@ -407,9 +409,18 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         .in("id", fixtureIdsSet);
       
       const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
+
+      const rawCount = selections.length;
+      const byMarket: Record<string, number> = {};
+      for (const s of selections) byMarket[(s as any).market] = (byMarket[(s as any).market] || 0) + 1;
+      logs.push(`[ticket] pool raw=${rawCount}, byMarket ${JSON.stringify(byMarket)}`);
       
       let droppedOutOfBand = 0;
       let droppedNotQualified = 0;
+      let suspiciousDropped = 0;
+      let bandKept = 0;
+      let qualifiedKept = 0;
+      const tempCandidates: TicketLeg[] = [];
       
       for (const sel of selections) {
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
@@ -420,6 +431,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           droppedOutOfBand++;
           continue;
         }
+        bandKept++;
         
         // Validate combined_snapshot against qualification range (same as Filterizer)
         const market = (sel as any).market;
@@ -429,20 +441,25 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         if (combinedSnapshot && combinedSnapshot[market] !== undefined) {
           const combinedValue = Number(combinedSnapshot[market]);
-          // Use pickFromCombined to find what the qualification SHOULD be for this combined value
           const expectedPick = pickFromCombined(market as StatMarket, combinedValue);
-          
-          // Check if the selection matches the expected pick
           if (!expectedPick || expectedPick.side !== side || expectedPick.line !== line) {
             droppedNotQualified++;
             logs.push(`[NOT_QUALIFIED] ${market}=${combinedValue.toFixed(2)} does not qualify for ${side} ${line} (fixture ${(sel as any).fixture_id}) - DROPPED`);
             continue;
           }
-          
+          qualifiedKept++;
           logs.push(`[QUALIFIED] ${market}=${combinedValue.toFixed(2)} qualifies for ${side} ${line} (fixture ${(sel as any).fixture_id}) - KEPT`);
         }
         
-        candidatePool.push({
+        // Suspicious odds guard
+        const suspiciousWarning = checkSuspiciousOdds(market as any, Number(line), Number((sel as any).odds));
+        if (suspiciousWarning) {
+          suspiciousDropped++;
+          logs.push(`[SUSPICIOUS] ${suspiciousWarning} (fixture ${(sel as any).fixture_id}, ${(sel as any).bookmaker}) - DROPPED`);
+          continue;
+        }
+        
+        tempCandidates.push({
           fixtureId: (sel as any).fixture_id,
           homeTeam: fixture.teams_home?.name || "Home",
           awayTeam: fixture.teams_away?.name || "Away",
@@ -456,12 +473,21 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         });
       }
       
-      if (droppedOutOfBand > 0) {
-        logs.push(`[Global Mode] Dropped ${droppedOutOfBand} selections outside [${ODDS_MIN}, ${ODDS_MAX}] band`);
+      // Dedupe: keep best odds per fixture+market
+      const dedupMap = new Map<string, TicketLeg>();
+      for (const leg of tempCandidates) {
+        const key = `${leg.fixtureId}|${leg.market}`;
+        const prev = dedupMap.get(key);
+        if (!prev || leg.odds > prev.odds) dedupMap.set(key, leg);
       }
-      if (droppedNotQualified > 0) {
-        logs.push(`[Global Mode] Dropped ${droppedNotQualified} selections not meeting v2 combined qualification`);
-      }
+      const deduped = Array.from(dedupMap.values());
+      candidatePool.push(...deduped);
+      
+      if (droppedOutOfBand > 0) logs.push(`[Global Mode] Dropped ${droppedOutOfBand} selections outside [${ODDS_MIN}, ${ODDS_MAX}] band`);
+      if (droppedNotQualified > 0) logs.push(`[Global Mode] Dropped ${droppedNotQualified} selections not meeting v2 combined qualification`);
+      if (suspiciousDropped > 0) logs.push(`[Global Mode] Dropped ${suspiciousDropped} suspicious odds selections`);
+      
+      logs.push(`[ticket] stages raw=${rawCount}; band_kept=${bandKept}; qualified_kept=${qualifiedKept}; suspicious_dropped=${suspiciousDropped}; de_dupe_kept=${deduped.length}; final_pool=${candidatePool.length}`);
       
       usedLive = selections.some((s: any) => s.is_live);
       logs.push(`[Global Mode] Built pool of ${candidatePool.length} candidates from ${fixtureIdsSet.length} fixtures`);
@@ -1105,9 +1131,9 @@ function generateOptimizedTicket(
   time_ms?: number;
 } | null {
   const startTime = Date.now();
-  const ATTEMPT_TIMEOUT = 250; // ms per leg-count attempt
-  const TOTAL_TIMEOUT = 2000; // ms total
-  const MAX_EVALUATIONS = 10000;
+  const ATTEMPT_TIMEOUT = 600; // ms per leg-count attempt (temporarily elevated)
+  const TOTAL_TIMEOUT = 6000; // ms total (temporarily elevated)
+  const MAX_EVALUATIONS = 100000;
   
   // Seed PRNG with userId + date + target range for session-stable but varied results
   const seed = (userId ? userId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) : 12345) + 

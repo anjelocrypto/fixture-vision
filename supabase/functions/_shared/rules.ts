@@ -68,10 +68,21 @@ export const RULES_VERSION = "v2_combined_matrix_v1";
 
 export function pickFromCombined(stat: StatMarket, combinedValue: number) {
   const rules = RULES[stat];
+  // Determine threshold for the final "gte" rule (max upper bound among finite ranges)
+  let gteThreshold = -Infinity;
   for (const r of rules) {
+    if (r.range !== "gte") {
+      const [, hi] = r.range;
+      if (hi > gteThreshold) gteThreshold = hi;
+    }
+  }
+
+  // Iterate from the end so that shared boundaries prefer the upper bucket
+  for (let i = rules.length - 1; i >= 0; i--) {
+    const r = rules[i];
     if (r.range === "gte") {
-      // "gte" rules apply to all values >= the threshold (open-ended upper bound)
-      return r.pick;
+      if (combinedValue >= gteThreshold) return r.pick;
+      continue;
     }
     const [lo, hi] = r.range;
     // Ranges are INCLUSIVE on both ends (lo ≤ x ≤ hi)
