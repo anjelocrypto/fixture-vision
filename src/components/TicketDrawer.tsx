@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Copy, TrendingUp, Target, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AddToTicketButton } from "./AddToTicketButton";
+import { TicketLeg as MyTicketLeg } from "@/stores/useTicket";
 
 interface TicketLeg {
   fixture_id: number;
@@ -152,49 +154,83 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
             {/* Legs */}
             <div className="space-y-3">
               <div className="text-sm font-medium">Selections ({ticket.legs.length} legs)</div>
-              {ticket.legs.map((leg, index) => (
-                <div
-                  key={`${leg.fixture_id}-${index}`}
-                  className="bg-card border rounded-lg p-4 space-y-2"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium">
-                        {leg.home_team} vs {leg.away_team}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{leg.league}</div>
-                    </div>
-                    <Badge variant="outline" className="ml-2">
-                      #{index + 1}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <div>
-                      <div className="text-sm font-semibold text-primary capitalize">
-                        {leg.market} {leg.pick}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{leg.bookmaker}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">@{leg.odds.toFixed(2)}</div>
-                      {leg.edge && (
-                        <div className="flex items-center gap-1 text-xs text-green-600">
-                          <TrendingUp className="h-3 w-3" />
-                          +{(leg.edge * 100).toFixed(1)}% edge
+              {ticket.legs.map((leg, index) => {
+                // Parse the pick to extract side and line (e.g., "Over 2.5" -> side: "over", line: 2.5)
+                const pickLower = leg.pick.toLowerCase();
+                const side = pickLower.includes('over') ? 'over' : pickLower.includes('under') ? 'under' : 'over';
+                const lineMatch = leg.pick.match(/(\d+\.?\d*)/);
+                const line = lineMatch ? parseFloat(lineMatch[1]) : (leg.line || 2.5);
+                
+                return (
+                  <div
+                    key={`${leg.fixture_id}-${index}`}
+                    className="bg-card border rounded-lg p-4 space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1">
+                        <div className="text-sm font-medium">
+                          {leg.home_team} vs {leg.away_team}
                         </div>
-                      )}
+                        <div className="text-xs text-muted-foreground">{leg.league}</div>
+                      </div>
+                      <Badge variant="outline" className="ml-2">
+                        #{index + 1}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-primary capitalize">
+                          {leg.market} {leg.pick}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{leg.bookmaker}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold">@{leg.odds.toFixed(2)}</div>
+                        {leg.edge && (
+                          <div className="flex items-center gap-1 text-xs text-green-600">
+                            <TrendingUp className="h-3 w-3" />
+                            +{(leg.edge * 100).toFixed(1)}% edge
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {leg.reason && (
+                      <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                        <Target className="h-3 w-3" />
+                        {leg.reason}
+                      </div>
+                    )}
+
+                    {/* Add to My Ticket Button */}
+                    <div className="pt-2 border-t">
+                      <AddToTicketButton
+                        leg={{
+                          id: `${leg.fixture_id}-${leg.market}-${side}-${line}`,
+                          fixtureId: leg.fixture_id,
+                          leagueId: 0, // Not available in generated ticket
+                          countryCode: undefined,
+                          homeTeam: leg.home_team,
+                          awayTeam: leg.away_team,
+                          kickoffUtc: leg.kickoff || new Date().toISOString(),
+                          market: leg.market as MyTicketLeg['market'],
+                          side: side as 'over' | 'under',
+                          line: line,
+                          odds: leg.odds,
+                          bookmaker: leg.bookmaker,
+                          rulesVersion: 'v2_combined_matrix_v1',
+                          combinedAvg: undefined,
+                          isLive: ticket.used_live || false,
+                          source: 'ticket_creator',
+                        }}
+                        size="sm"
+                        variant="outline"
+                      />
                     </div>
                   </div>
-
-                  {leg.reason && (
-                    <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-                      <Target className="h-3 w-3" />
-                      {leg.reason}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Notes */}
