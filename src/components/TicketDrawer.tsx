@@ -281,28 +281,62 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
             )}
 
             {/* Actions */}
-            <div className="flex gap-2">
-              <Button onClick={copyTicket} className="flex-1 gap-2" variant="outline">
+            <div className="space-y-2">
+              <Button onClick={copyTicket} className="w-full gap-2" variant="outline">
                 <Copy className="h-4 w-4" />
                 Copy Ticket
               </Button>
-              <Button 
-                onClick={analyzeWithGemini} 
-                className="flex-1 gap-2"
-                disabled={analyzing}
-              >
-                {analyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Analyze with Gemini
-                  </>
-                )}
-              </Button>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <Button 
+                  onClick={analyzeWithGemini} 
+                  className="gap-2"
+                  size="sm"
+                  disabled={analyzing}
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Gemini
+                    </>
+                  )}
+                </Button>
+                
+                <Button 
+                  onClick={() => toast({ title: "Coming Soon", description: "GPT-5 analysis will be available soon" })}
+                  className="gap-2"
+                  size="sm"
+                  variant="outline"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  GPT-5
+                </Button>
+                
+                <Button 
+                  onClick={() => toast({ title: "Coming Soon", description: "Claude analysis will be available soon" })}
+                  className="gap-2"
+                  size="sm"
+                  variant="outline"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Claude
+                </Button>
+                
+                <Button 
+                  onClick={() => toast({ title: "Coming Soon", description: "Perplexity analysis will be available soon" })}
+                  className="gap-2"
+                  size="sm"
+                  variant="outline"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Perplexity
+                </Button>
+              </div>
             </div>
 
             {/* Gemini Analysis */}
