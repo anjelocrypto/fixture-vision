@@ -1172,10 +1172,9 @@ function generateOptimizedTicket(
     const distanceToMid = Math.abs(lp - logMid);
     // Strongly prefer hitting the target N (sampled leg count)
     const legPenalty = Math.abs(len - targetN) * 0.5;
-    const edgeBonus = avgEdge * -0.3;
-    return distanceToMid + legPenalty + edgeBonus;
+    // IMPORTANT: Do NOT include avgEdge in scoring to avoid hidden market bias
+    return distanceToMid + legPenalty;
   };
-
   // Stochastic search: try multiple leg counts
   const MAX_ATTEMPTS = 10;
   for (let attemptIdx = 0; attemptIdx < MAX_ATTEMPTS && Date.now() - startTime < TOTAL_TIMEOUT; attemptIdx++) {
