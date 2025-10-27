@@ -429,25 +429,17 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         if (combinedSnapshot && combinedSnapshot[market] !== undefined) {
           const combinedValue = Number(combinedSnapshot[market]);
-          const rules = RULES[market as StatMarket];
-          const matchingRule = rules?.find(r => {
-            if (r.range === "gte") return r.pick && r.pick.side === side && r.pick.line === line;
-            return r.pick && r.pick.side === side && r.pick.line === line;
-          });
+          // Use pickFromCombined to find what the qualification SHOULD be for this combined value
+          const expectedPick = pickFromCombined(market as StatMarket, combinedValue);
           
-          if (matchingRule && matchingRule.range !== "gte") {
-            const [rangeMin, rangeMax] = matchingRule.range;
-            // Ranges are INCLUSIVE on both ends: rangeMin ≤ x ≤ rangeMax
-            if (combinedValue < rangeMin || combinedValue > rangeMax) {
-              droppedNotQualified++;
-              logs.push(`[NOT_QUALIFIED] ${market}=${combinedValue.toFixed(2)} outside [${rangeMin}, ${rangeMax}] for ${side} ${line} (fixture ${(sel as any).fixture_id}) - DROPPED`);
-              continue;
-            }
+          // Check if the selection matches the expected pick
+          if (!expectedPick || expectedPick.side !== side || expectedPick.line !== line) {
+            droppedNotQualified++;
+            logs.push(`[NOT_QUALIFIED] ${market}=${combinedValue.toFixed(2)} does not qualify for ${side} ${line} (fixture ${(sel as any).fixture_id}) - DROPPED`);
+            continue;
           }
-          // For "gte" rules, no upper bound check needed
-          if (matchingRule && matchingRule.range === "gte") {
-            logs.push(`[QUALIFIED] ${market}=${combinedValue.toFixed(2)} qualifies for ${side} ${line} (gte rule, fixture ${(sel as any).fixture_id}) - KEPT`);
-          }
+          
+          logs.push(`[QUALIFIED] ${market}=${combinedValue.toFixed(2)} qualifies for ${side} ${line} (fixture ${(sel as any).fixture_id}) - KEPT`);
         }
         
         candidatePool.push({
