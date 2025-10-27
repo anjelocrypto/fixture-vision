@@ -625,6 +625,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     maxOdds,
     legsMin,
     legsMax,
+    markets,
     userId
   );
 
@@ -1120,8 +1121,9 @@ function generateOptimizedTicket(
   targetMax: number,
   minLegs: number,
   maxLegs: number,
+  markets: string[],
   userId?: string
-): { 
+): {
   total_odds: number; 
   legs: TicketLeg[]; 
   attempts: number; 
@@ -1189,26 +1191,43 @@ function generateOptimizedTicket(
     const WIDTH = 50;
     const NUM_SEEDS = 50; // Multiple diverse starting points
     
-    // Generate diverse seed states by randomly picking starting legs
-    const seedStates: State[] = [];
-    for (let s = 0; s < NUM_SEEDS && s < sortedPool.length; s++) {
-      const startIdx = Math.floor(rand() * sortedPool.length);
-      const startLeg = sortedPool[startIdx];
-      
-      if (startLeg.odds < ODDS_MIN || startLeg.odds > ODDS_MAX) continue;
-      
-      const used = new Map<number, Set<string>>();
-      const mset = new Set<string>();
-      mset.add(startLeg.market);
-      used.set(startLeg.fixtureId, mset);
-      
-      seedStates.push({
-        legs: [startLeg],
-        product: startLeg.odds,
-        used,
-        avgEdge: 0,
-      });
+    // Group pool by market for balanced seed generation
+    const poolByMarket: Map<string, TicketLeg[]> = new Map();
+    for (const leg of sortedPool) {
+      if (!poolByMarket.has(leg.market)) poolByMarket.set(leg.market, []);
+      poolByMarket.get(leg.market)!.push(leg);
     }
+    const availableMarkets = Array.from(poolByMarket.keys()).filter(m => markets.includes(m));
+    
+    // Generate market-balanced seed states
+    const seedStates: State[] = [];
+    const seedsPerMarket = Math.max(1, Math.floor(NUM_SEEDS / availableMarkets.length));
+    
+    for (const market of availableMarkets) {
+      const marketLegs = poolByMarket.get(market) || [];
+      const numSeeds = Math.min(seedsPerMarket, marketLegs.length);
+      
+      for (let s = 0; s < numSeeds; s++) {
+        const startIdx = Math.floor(rand() * marketLegs.length);
+        const startLeg = marketLegs[startIdx];
+        
+        if (startLeg.odds < ODDS_MIN || startLeg.odds > ODDS_MAX) continue;
+        
+        const used = new Map<number, Set<string>>();
+        const mset = new Set<string>();
+        mset.add(startLeg.market);
+        used.set(startLeg.fixtureId, mset);
+        
+        seedStates.push({
+          legs: [startLeg],
+          product: startLeg.odds,
+          used,
+          avgEdge: 0,
+        });
+      }
+    }
+    
+    console.log(`[stochastic-search] Generated ${seedStates.length} market-balanced seeds from ${availableMarkets.length} markets: ${availableMarkets.join(', ')}`);
     
     // Also add empty state
     seedStates.push({ legs: [], product: 1, used: new Map(), avgEdge: 0 });
