@@ -8,6 +8,7 @@ import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { AdminRefreshButton } from "@/components/AdminRefreshButton";
+import { PaywallGate } from "@/components/PaywallGate";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -570,11 +571,13 @@ const Index = () => {
 
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
             {showFilterizer && (
-              <FilterizerPanel
-                onApplyFilters={handleApplyFilters}
-                onClearFilters={handleClearFilters}
-                isActive={!!filterCriteria}
-              />
+              <PaywallGate feature="Filterizer">
+                <FilterizerPanel
+                  onApplyFilters={handleApplyFilters}
+                  onClearFilters={handleClearFilters}
+                  isActive={!!filterCriteria}
+                />
+              </PaywallGate>
             )}
 
             {filterCriteria ? (
@@ -604,67 +607,73 @@ const Index = () => {
         {/* Desktop Right Rail */}
         <div className="hidden lg:flex w-[360px] flex-col overflow-hidden border-l border-border">
           {/* Bet Optimizer (Quick) */}
-          <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-            <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                onClick={() => generateQuickTicket("safe")}
-                disabled={generatingTicket}
-              >
-                <Shield className="h-3.5 w-3.5" />
-                Safe
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                onClick={() => generateQuickTicket("standard")}
-                disabled={generatingTicket}
-              >
-                <Ticket className="h-3.5 w-3.5" />
-                Standard
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                onClick={() => generateQuickTicket("risky")}
-                disabled={generatingTicket}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                Risky
-              </Button>
+          <PaywallGate feature="Optimizer">
+            <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
+              <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => generateQuickTicket("safe")}
+                  disabled={generatingTicket}
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  Safe
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => generateQuickTicket("standard")}
+                  disabled={generatingTicket}
+                >
+                  <Ticket className="h-3.5 w-3.5" />
+                  Standard
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => generateQuickTicket("risky")}
+                  disabled={generatingTicket}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Risky
+                </Button>
+              </div>
             </div>
-          </div>
+          </PaywallGate>
 
           {/* AI Ticket Creator (Advanced) */}
-          <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-            <Button
-              className="w-full gap-2"
-              variant="default"
-              onClick={() => setTicketCreatorOpen(true)}
-            >
-              <Sparkles className="h-4 w-4" />
-              AI Ticket Creator
-            </Button>
-          </div>
+          <PaywallGate feature="Ticket Creator">
+            <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+              <Button
+                className="w-full gap-2"
+                variant="default"
+                onClick={() => setTicketCreatorOpen(true)}
+              >
+                <Sparkles className="h-4 w-4" />
+                AI Ticket Creator
+              </Button>
+            </div>
+          </PaywallGate>
 
-          <div className="flex-1 overflow-y-auto">
-            <RightRail
-              analysis={analysis}
-              loading={loadingAnalysis}
-              suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
-              onAddToTicket={(market) => {
-                toast({
-                  title: "Market added",
-                  description: `${market.market} ${market.side} ${market.line} added to considerations`,
-                });
-              }}
-            />
-          </div>
+          <PaywallGate feature="Gemini Analyzer">
+            <div className="flex-1 overflow-y-auto">
+              <RightRail
+                analysis={analysis}
+                loading={loadingAnalysis}
+                suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+                onAddToTicket={(market) => {
+                  toast({
+                    title: "Market added",
+                    description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                  });
+                }}
+              />
+            </div>
+          </PaywallGate>
         </div>
 
         {/* Mobile Right Sheet */}
@@ -672,80 +681,86 @@ const Index = () => {
           <SheetContent side="right" className="w-full sm:w-[380px] p-0">
             <div className="flex flex-col h-full">
               {/* Bet Optimizer (Quick) */}
-              <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-                <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => {
-                      generateQuickTicket("safe");
-                      setRightSheetOpen(false);
-                    }}
-                    disabled={generatingTicket}
-                  >
-                    <Shield className="h-3.5 w-3.5" />
-                    Safe
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => {
-                      generateQuickTicket("standard");
-                      setRightSheetOpen(false);
-                    }}
-                    disabled={generatingTicket}
-                  >
-                    <Ticket className="h-3.5 w-3.5" />
-                    Standard
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => {
-                      generateQuickTicket("risky");
-                      setRightSheetOpen(false);
-                    }}
-                    disabled={generatingTicket}
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    Risky
-                  </Button>
+              <PaywallGate feature="Optimizer">
+                <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
+                  <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => {
+                        generateQuickTicket("safe");
+                        setRightSheetOpen(false);
+                      }}
+                      disabled={generatingTicket}
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                      Safe
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => {
+                        generateQuickTicket("standard");
+                        setRightSheetOpen(false);
+                      }}
+                      disabled={generatingTicket}
+                    >
+                      <Ticket className="h-3.5 w-3.5" />
+                      Standard
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => {
+                        generateQuickTicket("risky");
+                        setRightSheetOpen(false);
+                      }}
+                      disabled={generatingTicket}
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      Risky
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              </PaywallGate>
 
               {/* AI Ticket Creator (Advanced) */}
-              <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-                <Button
-                  className="w-full gap-2"
-                  variant="default"
-                  onClick={() => {
-                    setTicketCreatorOpen(true);
-                    setRightSheetOpen(false);
-                  }}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  AI Ticket Creator
-                </Button>
-              </div>
+              <PaywallGate feature="Ticket Creator">
+                <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+                  <Button
+                    className="w-full gap-2"
+                    variant="default"
+                    onClick={() => {
+                      setTicketCreatorOpen(true);
+                      setRightSheetOpen(false);
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    AI Ticket Creator
+                  </Button>
+                </div>
+              </PaywallGate>
 
-              <div className="flex-1 overflow-y-auto">
-                <RightRail
-                  analysis={analysis}
-                  loading={loadingAnalysis}
-                  suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
-                  onAddToTicket={(market) => {
-                    toast({
-                      title: "Market added",
-                      description: `${market.market} ${market.side} ${market.line} added to considerations`,
-                    });
-                    setRightSheetOpen(false);
-                  }}
-                />
-              </div>
+              <PaywallGate feature="Gemini Analyzer">
+                <div className="flex-1 overflow-y-auto">
+                  <RightRail
+                    analysis={analysis}
+                    loading={loadingAnalysis}
+                    suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+                    onAddToTicket={(market) => {
+                      toast({
+                        title: "Market added",
+                        description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                      });
+                      setRightSheetOpen(false);
+                    }}
+                  />
+                </div>
+              </PaywallGate>
             </div>
           </SheetContent>
         </Sheet>

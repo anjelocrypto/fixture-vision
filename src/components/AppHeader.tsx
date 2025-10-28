@@ -1,6 +1,6 @@
-import { Search, Twitter, User, LogOut, Ticket } from "lucide-react";
+import { Search, Twitter, User, LogOut, Ticket, CreditCard, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { LastFetchBadge } from "./LastFetchBadge";
 import { useTicket } from "@/stores/useTicket";
 import { MyTicketDrawer } from "./MyTicketDrawer";
+import { useAccess } from "@/hooks/useAccess";
 
 const sports = [
   { name: "Football", active: true },
@@ -25,6 +26,7 @@ export function AppHeader() {
   const [session, setSession] = useState<Session | null>(null);
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const { legs, loadFromStorage, loadFromServer } = useTicket();
+  const { hasAccess, entitlement } = useAccess();
 
   useEffect(() => {
     // Load ticket from localStorage on mount
@@ -123,14 +125,41 @@ export function AppHeader() {
           {session ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="relative">
                   <User className="h-5 w-5" />
+                  {hasAccess && (
+                    <Badge 
+                      variant="default" 
+                      className="absolute -top-1 -right-1 h-3 w-3 flex items-center justify-center p-0"
+                    >
+                      <Sparkles className="h-2 w-2" />
+                    </Badge>
+                  )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                   {session.user.email}
                 </DropdownMenuItem>
+                {hasAccess && entitlement && (
+                  <DropdownMenuItem disabled className="text-xs font-medium">
+                    <Sparkles className="mr-2 h-3 w-3" />
+                    {entitlement.plan === "day_pass" ? "Day Pass" : 
+                     entitlement.plan === "premium_monthly" ? "Premium" : "Annual"}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate("/account")}>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Account & Billing
+                </DropdownMenuItem>
+                {!hasAccess && (
+                  <DropdownMenuItem onClick={() => navigate("/pricing")}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Upgrade to Premium
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
