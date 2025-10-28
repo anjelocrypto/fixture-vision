@@ -387,6 +387,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_entitlements: {
+        Row: {
+          current_period_end: string
+          plan: string
+          source: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          current_period_end: string
+          plan: string
+          source?: string
+          status: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          current_period_end?: string
+          plan?: string
+          source?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -446,6 +479,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      user_has_access: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"
