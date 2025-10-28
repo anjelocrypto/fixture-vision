@@ -22,9 +22,9 @@ export const useAccess = () => {
         .from("user_entitlements")
         .select("*")
         .eq("user_id", session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
+      if (error) {
         console.error("[useAccess] Error fetching entitlement:", error);
         setHasAccess(false);
         setEntitlement(null);
