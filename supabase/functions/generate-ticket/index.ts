@@ -438,6 +438,21 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         }
       } else {
         logs.push("[Global Mode] No fixtures found for next 48h");
+        
+        // Return specific error for no fixtures
+        return new Response(
+          JSON.stringify({
+            code: "NO_FIXTURES_AVAILABLE",
+            message: "No upcoming fixtures found in the next 48 hours. Please use 'Fetch Fixtures' to load matches first.",
+            suggestions: [
+              "Click the 'Fetch Fixtures' button to load upcoming matches",
+              "Select a country/league from the left sidebar first",
+              "Make sure you're viewing upcoming dates (today onwards)"
+            ],
+            logs,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
       }
     } else {
       logs.push(`[Global Mode] Found ${selections.length} pre-optimized selections`);

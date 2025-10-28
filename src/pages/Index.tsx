@@ -335,6 +335,19 @@ const Index = () => {
         },
       });
 
+      // Check for NO_FIXTURES_AVAILABLE before checking error
+      if (data?.code === "NO_FIXTURES_AVAILABLE") {
+        toast({ 
+          title: "No Fixtures Available", 
+          description: "Click 'Fetch Fixtures' in the top bar to load upcoming matches first.",
+          variant: "destructive",
+          duration: 6000,
+        });
+        await refreshAccess(); // Still refresh in case trial was used
+        setGeneratingTicket(false);
+        return;
+      }
+
       if (error) {
         // Check for paywall error (402)
         if ((error as any).status === 402) {
@@ -396,6 +409,20 @@ const Index = () => {
           useLiveOdds: params.useLiveOdds,
         },
       });
+
+      // Check for NO_FIXTURES_AVAILABLE before checking error
+      if (data?.code === "NO_FIXTURES_AVAILABLE") {
+        toast({ 
+          title: "No Fixtures Available", 
+          description: "Click 'Fetch Fixtures' in the top bar to load upcoming matches first.",
+          variant: "destructive",
+          duration: 6000,
+        });
+        await refreshAccess(); // Still refresh in case trial was used
+        setGeneratingTicket(false);
+        setTicketCreatorOpen(false);
+        return;
+      }
 
       if (error) {
         // Check for paywall error (402)
@@ -459,6 +486,15 @@ const Index = () => {
             });
             return;
           }
+        } else if (data.code === "NO_FIXTURES_AVAILABLE") {
+          // Special handling for no fixtures - show very clear instructions
+          toast({ 
+            title: "No Fixtures Available", 
+            description: "Click 'Fetch Fixtures' in the top bar to load upcoming matches first.",
+            variant: "destructive",
+            duration: 6000,
+          });
+          return;
         } else if (data.code === "IMPOSSIBLE_TARGET" && data.diagnostic) {
           const d = data.diagnostic;
           friendlyMessage += ` Try: 1) Widen odds range (current: ${d.target.min}–${d.target.max}), 2) Adjust legs (${d.legs.min}–${d.legs.max}), or 3) Include more markets.`;
