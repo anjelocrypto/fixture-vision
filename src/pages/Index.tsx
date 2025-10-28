@@ -9,8 +9,10 @@ import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { AdminRefreshButton } from "@/components/AdminRefreshButton";
 import { PaywallGate } from "@/components/PaywallGate";
+import { useAccess } from "@/hooks/useAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -31,7 +33,9 @@ const MOCK_COUNTRIES = [
 
 const Index = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { hasAccess } = useAccess();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -202,6 +206,18 @@ const Index = () => {
   );
 
   const handleAnalyze = async (fixture: any) => {
+    // Check access before analyzing
+    if (!hasAccess) {
+      toast({
+        title: "Premium Feature",
+        description: "Match analysis requires a subscription. Click here to view plans.",
+        variant: "default",
+        action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
+      });
+      setRightSheetOpen(true); // Open right sheet to show paywall on mobile
+      return;
+    }
+
     setLoadingAnalysis(true);
     setAnalysis(null);
     setValueAnalysis(null);
