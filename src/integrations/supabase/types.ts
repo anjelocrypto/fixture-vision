@@ -459,6 +459,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_trial_credits: {
+        Row: {
+          remaining_uses: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          remaining_uses?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          remaining_uses?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       webhook_events: {
         Row: {
           created_at: string
@@ -476,7 +494,12 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      current_user_is_whitelisted: {
+        Row: {
+          is_whitelisted: boolean | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       backfill_optimized_selections: {
@@ -487,12 +510,23 @@ export type Database = {
           skipped: number
         }[]
       }
+      ensure_trial_row: { Args: never; Returns: undefined }
+      get_trial_credits: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      is_user_whitelisted: { Args: never; Returns: boolean }
+      try_use_feature: {
+        Args: { feature_key: string }
+        Returns: {
+          allowed: boolean
+          reason: string
+          remaining_uses: number
+        }[]
       }
       user_has_access: { Args: never; Returns: boolean }
     }

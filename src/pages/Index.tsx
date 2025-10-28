@@ -9,6 +9,7 @@ import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { AdminRefreshButton } from "@/components/AdminRefreshButton";
 import { PaywallGate } from "@/components/PaywallGate";
+import { TrialBadge } from "@/components/TrialBadge";
 import { useAccess } from "@/hooks/useAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +36,7 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { hasAccess } = useAccess();
+  const { hasAccess, isWhitelisted, trialCredits, refreshAccess } = useAccess();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -206,15 +207,14 @@ const Index = () => {
   );
 
   const handleAnalyze = async (fixture: any) => {
-    // Check access before analyzing
-    if (!hasAccess) {
+    // Check access: paid, whitelisted, or has trial credits
+    if (!hasAccess && !isWhitelisted && (trialCredits === null || trialCredits <= 0)) {
       toast({
-        title: "Premium Feature",
-        description: "Match analysis requires a subscription. Click here to view plans.",
-        variant: "default",
+        title: "No Trial Credits",
+        description: "You've used all your free analyses. Subscribe to continue.",
         action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
       });
-      setRightSheetOpen(true); // Open right sheet to show paywall on mobile
+      setRightSheetOpen(true);
       return;
     }
 
@@ -243,7 +243,28 @@ const Index = () => {
         },
       });
 
-      if (analysisError) throw analysisError;
+      if (analysisError) {
+        // Check for paywall error (402)
+        if ((analysisError as any).status === 402) {
+          const errorData = (analysisError as any).context?.body;
+          if (errorData?.code === 'PAYWALL') {
+            toast({
+              title: "Trial Expired",
+              description: errorData.reason === 'no_trial_credits' 
+                ? "You've used all 5 free analyses. Subscribe to continue."
+                : "This feature requires a subscription.",
+              action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
+            });
+            await refreshAccess(); // Refresh to update trial credits display
+            setLoadingAnalysis(false);
+            return;
+          }
+        }
+        throw analysisError;
+      }
+
+      // Refresh access to update trial credits count
+      await refreshAccess();
 
       // Check if odds are available
       const { data: oddsData } = await supabase
@@ -314,7 +335,27 @@ const Index = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Check for paywall error (402)
+        if ((error as any).status === 402) {
+          const errorData = (error as any).context?.body;
+          if (errorData?.code === 'PAYWALL') {
+            toast({
+              title: "Trial Expired",
+              description: errorData.reason === 'no_trial_credits' 
+                ? "You've used all 5 free generations. Subscribe to continue."
+                : "This feature requires a subscription.",
+              action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
+            });
+            await refreshAccess();
+            setGeneratingTicket(false);
+            return;
+          }
+        }
+        throw error;
+      }
+
+      await refreshAccess(); // Refresh trial credits
 
       setCurrentTicket(data);
       setTicketDrawerOpen(true);
@@ -357,11 +398,29 @@ const Index = () => {
       });
 
       if (error) {
+        // Check for paywall error (402)
+        if ((error as any).status === 402) {
+          const errorData = (error as any).context?.body;
+          if (errorData?.code === 'PAYWALL') {
+            toast({
+              title: "Trial Expired",
+              description: errorData.reason === 'no_trial_credits' 
+                ? "You've used all 5 free generations. Subscribe to continue."
+                : "This feature requires a subscription.",
+              action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
+            });
+            await refreshAccess();
+            setGeneratingTicket(false);
+            return;
+          }
+        }
         // If the function returned a non-2xx status, try to surface a friendly message if available
         const friendly = (error as any)?.message || "Failed to generate ticket";
         toast({ title: "Could not generate ticket", description: friendly, variant: "destructive" });
         return;
       }
+
+      await refreshAccess(); // Refresh trial credits
 
       // Business outcome without ticket
       if (data.code) {
@@ -572,6 +631,11 @@ const Index = () => {
             </h2>
             
             <div className="flex gap-2 shrink-0">
+              <TrialBadge 
+                creditsRemaining={trialCredits} 
+                isWhitelisted={isWhitelisted}
+                hasAccess={hasAccess}
+              />
               <AdminRefreshButton />
               <Button
                 variant={showFilterizer ? "default" : "outline"}
@@ -693,7 +757,7 @@ const Index = () => {
         {/* Mobile Right Sheet */}
         <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
           <SheetContent side="right" className="w-full sm:w-[380px] p-0">
-            <PaywallGate feature="advanced betting tools and AI analysis">
+            <PaywallGate feature="advanced betting tools and AI analysis" allowTrial={true}>
               <div className="flex flex-col h-full">
                 {/* Bet Optimizer (Quick) */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">

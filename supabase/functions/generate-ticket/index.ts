@@ -93,6 +93,36 @@ serve(async (req) => {
       );
     }
 
+    // Check access for optimizer feature (paid, whitelisted, or trial)
+    const { data: accessCheck, error: accessError } = await supabase.rpc('try_use_feature', {
+      feature_key: 'bet_optimizer'
+    });
+
+    if (accessError) {
+      console.error('[generate-ticket] Access check error:', accessError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to check access' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const accessResult = Array.isArray(accessCheck) ? accessCheck[0] : accessCheck;
+    
+    if (!accessResult?.allowed) {
+      console.log(`[generate-ticket] Access denied: ${accessResult?.reason}`);
+      return new Response(
+        JSON.stringify({ 
+          code: 'PAYWALL',
+          error: 'This feature requires a subscription',
+          reason: accessResult?.reason || 'no_access',
+          remaining_uses: accessResult?.remaining_uses
+        }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[generate-ticket] Access granted: ${accessResult.reason}, remaining: ${accessResult.remaining_uses ?? 'unlimited'}`);
+
     // Parse and validate request body
     const bodyRaw = await req.json().catch(() => null);
     if (!bodyRaw) {

@@ -24,6 +24,58 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication first
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication token" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    // Check access: paid, whitelisted, or trial
+    const { data: accessCheck, error: accessError } = await supabase.rpc('try_use_feature', {
+      feature_key: 'gemini_analysis'
+    });
+
+    if (accessError) {
+      console.error('[analyze-ticket] Access check error:', accessError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to check access' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const accessResult = Array.isArray(accessCheck) ? accessCheck[0] : accessCheck;
+    
+    if (!accessResult?.allowed) {
+      console.log(`[analyze-ticket] Access denied: ${accessResult?.reason}`);
+      return new Response(
+        JSON.stringify({ 
+          code: 'PAYWALL',
+          error: 'This feature requires a subscription',
+          reason: accessResult?.reason || 'no_access',
+          remaining_uses: accessResult?.remaining_uses
+        }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[analyze-ticket] Access granted: ${accessResult.reason}, remaining: ${accessResult.remaining_uses ?? 'unlimited'}`);
+
     const { ticket } = await req.json();
     
     if (!ticket || !ticket.legs) {
@@ -35,16 +87,10 @@ serve(async (req) => {
 
     console.log(`[analyze-ticket] Processing ticket with ${ticket.legs.length} legs, mode: ${ticket.mode}`);
 
-
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
-
-    // Initialize Supabase client to fetch enriched data
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get unique league IDs and fixture IDs
     const leagueIds = [...new Set(ticket.legs.map((leg: any) => leg.league_id).filter(Boolean))];

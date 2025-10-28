@@ -8,10 +8,11 @@ import { Lock, Sparkles } from "lucide-react";
 interface PaywallGateProps {
   children: ReactNode;
   feature?: string;
+  allowTrial?: boolean; // Whether this feature supports trial usage
 }
 
-export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateProps) => {
-  const { hasAccess, loading } = useAccess();
+export const PaywallGate = ({ children, feature = "this feature", allowTrial = false }: PaywallGateProps) => {
+  const { hasAccess, loading, isWhitelisted, trialCredits } = useAccess();
   const navigate = useNavigate();
 
   if (loading) {
@@ -25,7 +26,15 @@ export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateP
     );
   }
 
-  if (!hasAccess) {
+  // Check if user has access via subscription or whitelist
+  const hasPaidAccess = hasAccess || isWhitelisted;
+  
+  // For features with trial: allow if has paid access OR has trial credits
+  const hasPermission = allowTrial ? (hasPaidAccess || (trialCredits !== null && trialCredits > 0)) : hasPaidAccess;
+
+  if (!hasPermission) {
+    const showTrialMessage = allowTrial && trialCredits === 0;
+    
     return (
       <div className="p-6">
         <Card className="border-primary/20">
@@ -33,12 +42,24 @@ export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateP
             <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Lock className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-xl">Premium Feature</CardTitle>
+            <CardTitle className="text-xl">
+              {showTrialMessage ? "Trial Expired" : "Premium Feature"}
+            </CardTitle>
             <CardDescription className="text-base">
-              Unlock {feature} with a subscription
+              {showTrialMessage 
+                ? `You've used all 5 free uses of ${feature}. Subscribe to continue.`
+                : `Unlock ${feature} with a subscription`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {allowTrial && !showTrialMessage && trialCredits !== null && trialCredits > 0 && (
+              <div className="p-3 rounded-lg bg-primary/10 text-center">
+                <p className="text-sm font-medium">
+                  <Sparkles className="inline h-4 w-4 mr-1" />
+                  {trialCredits} free {trialCredits === 1 ? 'use' : 'uses'} remaining
+                </p>
+              </div>
+            )}
             <div className="space-y-3 text-sm">
               <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
                 <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />

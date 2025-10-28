@@ -5,6 +5,8 @@ export const useAccess = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [entitlement, setEntitlement] = useState<any>(null);
+  const [isWhitelisted, setIsWhitelisted] = useState(false);
+  const [trialCredits, setTrialCredits] = useState<number | null>(null);
 
   const checkAccess = async () => {
     try {
@@ -14,8 +16,20 @@ export const useAccess = () => {
       if (!session?.user) {
         setHasAccess(false);
         setEntitlement(null);
+        setIsWhitelisted(false);
+        setTrialCredits(null);
         return;
       }
+
+      // Check whitelist status
+      const { data: whitelistData, error: whitelistError } = await supabase.rpc('is_user_whitelisted');
+      const whitelisted = whitelistError ? false : (whitelistData || false);
+      setIsWhitelisted(whitelisted);
+
+      // Get trial credits
+      const { data: creditsData, error: creditsError } = await supabase.rpc('get_trial_credits');
+      const credits = creditsError ? null : (creditsData ?? null);
+      setTrialCredits(credits);
 
       // Query user_entitlements directly
       const { data, error } = await supabase
@@ -26,7 +40,7 @@ export const useAccess = () => {
 
       if (error) {
         console.error("[useAccess] Error fetching entitlement:", error);
-        setHasAccess(false);
+        setHasAccess(whitelisted); // Whitelist overrides
         setEntitlement(null);
         return;
       }
@@ -34,16 +48,18 @@ export const useAccess = () => {
       if (data) {
         // Check if active and not expired
         const isActive = data.status === "active" && new Date(data.current_period_end) > new Date();
-        setHasAccess(isActive);
+        setHasAccess(isActive || whitelisted);
         setEntitlement(data);
       } else {
-        setHasAccess(false);
+        setHasAccess(whitelisted);
         setEntitlement(null);
       }
     } catch (error) {
       console.error("[useAccess] Error:", error);
       setHasAccess(false);
       setEntitlement(null);
+      setIsWhitelisted(false);
+      setTrialCredits(null);
     } finally {
       setLoading(false);
     }
@@ -69,5 +85,12 @@ export const useAccess = () => {
     };
   }, []);
 
-  return { hasAccess, loading, entitlement, refreshAccess: checkAccess };
+  return { 
+    hasAccess, 
+    loading, 
+    entitlement, 
+    isWhitelisted, 
+    trialCredits,
+    refreshAccess: checkAccess 
+  };
 };
