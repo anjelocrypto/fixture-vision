@@ -637,15 +637,6 @@ const Index = () => {
                 hasAccess={hasAccess}
               />
               <AdminRefreshButton />
-              <Button
-                variant={showFilterizer ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowFilterizer(!showFilterizer)}
-                className="gap-2"
-              >
-                <Filter className="h-4 w-4" />
-                <span className="hidden sm:inline">{showFilterizer ? "Hide" : "Show"}</span>
-              </Button>
             </div>
           </div>
 
@@ -737,6 +728,18 @@ const Index = () => {
                 </Button>
               </div>
 
+              {/* Filterizer Toggle */}
+              <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+                <Button
+                  className="w-full gap-2"
+                  variant={showFilterizer ? "default" : "outline"}
+                  onClick={() => setShowFilterizer(!showFilterizer)}
+                >
+                  <Filter className="h-4 w-4" />
+                  FILTERIZER
+                </Button>
+              </div>
+
               <div className="flex-1 overflow-y-auto">
                 <RightRail
                   analysis={analysis}
@@ -817,6 +820,18 @@ const Index = () => {
                   >
                     <Sparkles className="h-4 w-4" />
                     AI Ticket Creator
+                  </Button>
+                </div>
+
+                {/* Filterizer Toggle */}
+                <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+                  <Button
+                    className="w-full gap-2"
+                    variant={showFilterizer ? "default" : "outline"}
+                    onClick={() => setShowFilterizer(!showFilterizer)}
+                  >
+                    <Filter className="h-4 w-4" />
+                    FILTERIZER
                   </Button>
                 </div>
 
