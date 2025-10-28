@@ -1,17 +1,17 @@
 # Stripe Integration Setup Guide
 
 ## Overview
-This app implements Stripe for subscriptions and one-time payments with three plans:
-- **Premium Monthly** - $20/month (recurring)
-- **Day Pass** - 10 GEL one-time (24h access)
-- **Annual** - 499 GEL/year (recurring)
+This app uses your live Stripe products with hardcoded price IDs:
+- **Premium Monthly** - $20/month (recurring) - `price_1SNEq4KAifASkGDzr44W6Htn`
+- **Day Pass** - 10 GEL one-time (24h access) - `price_1SNEqpKAifASkGDzdydTmEQc`
+- **Annual** - 499 GEL/year (recurring) - `price_1SNErcKAifASkGDzCZ71QpQE`
 
 ## Prerequisites
-1. Stripe account (test or live mode)
+1. Stripe account with products already created
 2. Secrets configured in Lovable Cloud:
-   - `STRIPE_SECRET_KEY`
+   - `STRIPE_SECRET_KEY` (test mode initially)
    - `STRIPE_WEBHOOK_SECRET`
-   - `APP_URL`
+   - `APP_URL` (https://ticketai.bet)
 
 ## Setup Steps
 
@@ -21,42 +21,7 @@ Before users can manage their subscriptions, enable the Stripe Customer Portal:
 2. Click **Activate**
 3. Configure your portal settings (cancellation policy, allowed actions, etc.)
 
-### 2. Run Bootstrap Function
-The bootstrap function creates products and prices in Stripe:
-
-```bash
-# Call the bootstrap function (dev/admin only)
-curl -X POST https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/stripe-bootstrap
-```
-
-This will return price IDs like:
-```json
-{
-  "productIds": {
-    "premium_monthly": "prod_...",
-    "day_pass": "prod_...",
-    "annual": "prod_..."
-  },
-  "priceIds": {
-    "premium_monthly": "price_...",
-    "day_pass": "price_...",
-    "annual": "price_..."
-  }
-}
-```
-
-### 3. Update Price IDs in Code
-Edit `supabase/functions/create-checkout-session/index.ts` and replace the placeholder price IDs:
-
-```typescript
-const PRICE_IDS: Record<string, string> = {
-  premium_monthly: "price_XXXXXX", // Replace with actual ID
-  day_pass: "price_XXXXXX",        // Replace with actual ID
-  annual: "price_XXXXXX",          // Replace with actual ID
-};
-```
-
-### 4. Configure Webhook in Stripe
+### 2. Configure Webhook in Stripe
 1. Go to [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/webhooks)
 2. Click **Add endpoint**
 3. Set endpoint URL: `https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/stripe-webhook`
@@ -68,9 +33,7 @@ const PRICE_IDS: Record<string, string> = {
    - `invoice.paid`
    - `invoice.payment_failed`
    - `charge.succeeded`
-5. Copy the **Signing secret** and update `STRIPE_WEBHOOK_SECRET` in Lovable Cloud
-
-### 5. Test the Integration
+5. Copy the **Signing secret** (starts with `whsec_`) and update `STRIPE_WEBHOOK_SECRET` in Lovable Cloud
 
 #### Test Cards (Stripe Test Mode)
 - **Success**: `4242 4242 4242 4242`
@@ -164,13 +127,15 @@ All gated by subscription:
 
 ## Going Live
 
+When ready to switch from test to live mode:
+
 1. Switch to **Live Mode** in Stripe Dashboard
-2. Update `STRIPE_SECRET_KEY` to live key
-3. Update webhook endpoint to use live key signing secret
-4. Update `APP_URL` to production domain
-5. Re-run bootstrap or manually create live products/prices
-6. Update price IDs in code with live IDs
-7. Test with real cards (small amounts first)
+2. Get live price IDs from your products
+3. Update `supabase/functions/_shared/stripe_plans.ts` with live price IDs
+4. Update `STRIPE_SECRET_KEY` secret to live key in Lovable Cloud
+5. Update webhook endpoint in Stripe to use live mode signing secret
+6. Update `STRIPE_WEBHOOK_SECRET` in Lovable Cloud with live webhook secret
+7. Test with real cards (start with small test purchases)
 
 ## Support
 

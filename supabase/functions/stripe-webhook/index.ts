@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { STRIPE_PLANS } from "../_shared/stripe_plans.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,16 @@ const mapSubscriptionStatus = (stripeStatus: string): string => {
     default:
       return "expired";
   }
+};
+
+// Get plan name from price ID
+const getPlanFromPriceId = (priceId: string): string => {
+  for (const [planKey, config] of Object.entries(STRIPE_PLANS)) {
+    if (config.priceId === priceId) {
+      return planKey;
+    }
+  }
+  return "unknown";
 };
 
 serve(async (req) => {
@@ -115,9 +126,13 @@ serve(async (req) => {
           break;
         }
 
-        const plan = subscription.items.data[0]?.price?.metadata?.plan || "premium_monthly";
+        // Determine plan from price ID
+        const priceId = subscription.items.data[0]?.price?.id;
+        const plan = getPlanFromPriceId(priceId || "");
         const status = mapSubscriptionStatus(subscription.status);
         const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+        console.log(`[webhook] Upserting subscription: user=${userId}, plan=${plan}, status=${status}`);
 
         const { error } = await supabase
           .from("user_entitlements")
@@ -209,28 +224,46 @@ serve(async (req) => {
 
       case "charge.succeeded": {
         const charge = event.data.object as Stripe.Charge;
-        // Only handle one-time charges (Day Pass)
-        if (charge.metadata?.plan === "day_pass") {
-          const userId = charge.metadata?.user_id;
-          if (!userId) break;
-
-          const customerId = charge.customer as string;
-
-          const { error } = await supabase
-            .from("user_entitlements")
-            .upsert({
-              user_id: userId,
-              plan: "day_pass",
-              status: "active",
-              current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              stripe_customer_id: customerId,
-              stripe_subscription_id: null,
-              source: "stripe",
-            });
-
-          if (error) console.error("[webhook] Error upserting day pass:", error);
-          else console.log(`[webhook] Day pass charge succeeded for user ${userId}`);
+        
+        // Get invoice to check if this is a subscription payment
+        const invoiceId = charge.invoice as string | null;
+        if (invoiceId) {
+          // This is a subscription payment, handled by invoice.paid
+          console.log(`[webhook] Charge ${charge.id} is subscription payment, skipping`);
+          break;
         }
+
+        // Handle one-time payments (Day Pass)
+        const customerId = charge.customer as string;
+        if (!customerId) {
+          console.error("[webhook] No customer in charge");
+          break;
+        }
+
+        const customer = await stripe.customers.retrieve(customerId);
+        const userId = (customer as any).metadata?.user_id;
+        if (!userId) {
+          console.error("[webhook] No user_id in customer metadata");
+          break;
+        }
+
+        // This is a one-time payment (Day Pass)
+        console.log(`[webhook] One-time payment for user ${userId}`);
+
+        const { error } = await supabase
+          .from("user_entitlements")
+          .upsert({
+            user_id: userId,
+            plan: "day_pass",
+            status: "active",
+            current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            stripe_customer_id: customerId,
+            stripe_subscription_id: null,
+            source: "stripe",
+          });
+
+        if (error) console.error("[webhook] Error upserting day pass:", error);
+        else console.log(`[webhook] Day pass activated for user ${userId}`);
         break;
       }
 

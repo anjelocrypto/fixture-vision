@@ -1,17 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { STRIPE_PLANS, getPlanConfig } from "../_shared/stripe_plans.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-// Price IDs mapping - update after running bootstrap
-const PRICE_IDS: Record<string, string> = {
-  premium_monthly: "price_premium_monthly", // Replace with actual ID after bootstrap
-  day_pass: "price_day_pass", // Replace with actual ID after bootstrap
-  annual: "price_annual", // Replace with actual ID after bootstrap
 };
 
 serve(async (req) => {
@@ -45,9 +39,10 @@ serve(async (req) => {
     }
 
     const { plan } = await req.json();
-    if (!plan || !["premium_monthly", "day_pass", "annual"].includes(plan)) {
-      throw new Error("Invalid plan");
-    }
+    
+    // Validate plan
+    const planConfig = getPlanConfig(plan);
+    console.log(`[checkout] Creating session for ${planConfig.name}, user ${user.id}`);
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
@@ -55,13 +50,21 @@ serve(async (req) => {
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     let customerId = customers.data[0]?.id;
 
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: { user_id: user.id },
+      });
+      customerId = customer.id;
+      console.log(`[checkout] Created customer ${customerId} for user ${user.id}`);
+    }
+
     // Create checkout session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
-      customer_email: customerId ? undefined : user.email,
       client_reference_id: user.id,
-      line_items: [{ price: PRICE_IDS[plan], quantity: 1 }],
-      mode: plan === "day_pass" ? "payment" : "subscription",
+      line_items: [{ price: planConfig.priceId, quantity: 1 }],
+      mode: planConfig.type === "payment" ? "payment" : "subscription",
       success_url: `${appUrl}/account?checkout=success`,
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
       metadata: { user_id: user.id, plan },
@@ -69,7 +72,7 @@ serve(async (req) => {
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
-    console.log(`[checkout] Created session for ${plan}, user ${user.id}`);
+    console.log(`[checkout] Session created: ${session.id} for ${planConfig.name}`);
 
     return new Response(
       JSON.stringify({ url: session.url }),

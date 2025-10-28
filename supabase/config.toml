@@ -39,9 +39,6 @@ verify_jwt = true
 [functions.analyze-ticket]
 verify_jwt = true
 
-[functions.stripe-bootstrap]
-verify_jwt = false
-
 [functions.create-checkout-session]
 verify_jwt = true
 
