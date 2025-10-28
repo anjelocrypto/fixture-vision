@@ -76,11 +76,19 @@ const Pricing = () => {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+      const { data, error: fnError } = await supabase.functions.invoke("create-checkout-session", {
         body: { plan: planId },
       });
 
-      if (error) throw error;
+      if (fnError) {
+        const detail = (fnError as any)?.context?.response?.data?.detail || (fnError as any)?.message || "Failed to create checkout session";
+        throw new Error(detail);
+      }
+
+      if (!data?.url) {
+        const detail = (data as any)?.error || "Checkout URL not returned";
+        throw new Error(detail);
+      }
 
       // Open in new tab
       window.open(data.url, "_blank");
@@ -92,8 +100,8 @@ const Pricing = () => {
     } catch (error: any) {
       console.error("Checkout error:", error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create checkout session",
+        title: "Checkout error",
+        description: error?.message ?? "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -101,9 +109,9 @@ const Pricing = () => {
     }
   };
 
-  // Show cancellation message if redirected from cancel
-  const checkoutStatus = searchParams.get("checkout");
-  if (checkoutStatus === "cancel") {
+// Show cancellation message if redirected
+  const statusParam = searchParams.get("status") || searchParams.get("checkout");
+  if (statusParam === "cancelled" || statusParam === "cancel") {
     toast({
       title: "Checkout canceled",
       description: "You can return anytime to complete your purchase",
