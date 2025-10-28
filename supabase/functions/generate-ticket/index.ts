@@ -624,8 +624,14 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     return new Response(
       JSON.stringify({
         code: "INSUFFICIENT_CANDIDATES",
-        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin})`,
+        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin}). Try: 1) Click 'Fetch Fixtures' to refresh data, 2) Lower min legs to ${candidatePool.length} or less, 3) Include more markets, or 4) Widen odds range.`,
         details: { found: candidatePool.length, required: legsMin },
+        suggestions: [
+          "Click 'Fetch Fixtures' in the top bar to refresh match data",
+          `Lower minimum legs to ${candidatePool.length} or less in the dialog`,
+          "Enable more markets (Goals, Corners, Cards)",
+          "Widen your target odds range (e.g., 5-15x instead of 10-12x)"
+        ],
         diagnostic: debug ? diagnostic : undefined,
         logs,
       }),

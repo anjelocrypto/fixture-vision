@@ -495,6 +495,16 @@ const Index = () => {
             duration: 6000,
           });
           return;
+        } else if (data.code === "INSUFFICIENT_CANDIDATES") {
+          // Show suggestions from the response
+          const suggestions = data.suggestions?.join(" • ") || "Try refreshing fixture data or adjusting your parameters.";
+          toast({ 
+            title: "Not Enough Valid Selections", 
+            description: suggestions,
+            variant: "destructive",
+            duration: 8000,
+          });
+          return;
         } else if (data.code === "IMPOSSIBLE_TARGET" && data.diagnostic) {
           const d = data.diagnostic;
           friendlyMessage += ` Try: 1) Widen odds range (current: ${d.target.min}–${d.target.max}), 2) Adjust legs (${d.legs.min}–${d.legs.max}), or 3) Include more markets.`;
