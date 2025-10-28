@@ -27,46 +27,41 @@ export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateP
 
   if (!hasAccess) {
     return (
-      <div className="relative">
-        <div className="filter blur-sm pointer-events-none select-none">
-          {children}
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <Card className="max-w-md mx-4">
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <Lock className="h-6 w-6 text-primary" />
+      <div className="p-6">
+        <Card className="border-primary/20">
+          <CardHeader className="text-center pb-4">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Lock className="h-8 w-8 text-primary" />
+            </div>
+            <CardTitle className="text-xl">Premium Feature</CardTitle>
+            <CardDescription className="text-base">
+              Unlock {feature} with a subscription
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
+                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <span>Advanced analytics & tools</span>
               </div>
-              <CardTitle>Premium Feature</CardTitle>
-              <CardDescription>
-                Unlock {feature} with a subscription
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span>Advanced analytics & tools</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span>AI-powered insights</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span>Unlimited ticket creation</span>
-                </div>
+              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
+                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <span>AI-powered insights</span>
               </div>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => navigate("/pricing")}
-              >
-                View Plans
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
+                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <span>Unlimited ticket creation</span>
+              </div>
+            </div>
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={() => navigate("/pricing")}
+            >
+              View Plans
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
