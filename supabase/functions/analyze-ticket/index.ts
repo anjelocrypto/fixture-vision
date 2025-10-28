@@ -35,10 +35,15 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    // Create client with user's token for auth and RPC calls
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication token" }),
@@ -47,9 +52,13 @@ serve(async (req) => {
     }
 
     // Check access: paid, whitelisted, or trial
-    const { data: accessCheck, error: accessError } = await supabase.rpc('try_use_feature', {
+    // Use user client so auth.uid() works in the RPC
+    const { data: accessCheck, error: accessError } = await supabaseUser.rpc('try_use_feature', {
       feature_key: 'gemini_analysis'
     });
+    
+    // Create service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (accessError) {
       console.error('[analyze-ticket] Access check error:', accessError);
