@@ -111,25 +111,28 @@ serve(async (req) => {
     
     console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup`);
 
-// Kick off long-running jobs in background to avoid browser 60s CORS timeout
-console.log(`[warmup-odds] Triggering backfill-odds (${window_hours}h) in background`);
-triggerEdgeFunction("backfill-odds", { window_hours });
+    // Kick off pipeline in background to avoid browser 60s CORS timeout
+    console.log(`[warmup-odds] Step 1: Triggering backfill-odds (${window_hours}h)`);
+    triggerEdgeFunction("backfill-odds", { window_hours });
 
-console.log(`[warmup-odds] Triggering optimize-selections-refresh (${window_hours}h) in background`);
-triggerEdgeFunction("optimize-selections-refresh", { window_hours });
+    console.log(`[warmup-odds] Step 2: Triggering stats-refresh (${window_hours}h)`);
+    triggerEdgeFunction("stats-refresh", { window_hours, stats_ttl_hours: 24 });
 
-// Respond immediately – progress can be observed via badges/logs
-return jsonResponse(
-  {
-    success: true,
-    started: true,
-    window_hours,
-    message: `Warmup started for ${window_hours}h. Odds and selections will populate in the background.`,
-  },
-  origin,
-  202,
-  req
-);
+    console.log(`[warmup-odds] Step 3: Triggering optimize-selections-refresh (${window_hours}h)`);
+    triggerEdgeFunction("optimize-selections-refresh", { window_hours });
+
+    // Respond immediately – progress can be observed via badges/logs
+    return jsonResponse(
+      {
+        success: true,
+        started: true,
+        window_hours,
+        message: `Warmup started for ${window_hours}h. Pipeline: odds → stats → selections running in background.`,
+      },
+      origin,
+      202,
+      req
+    );
 
   } catch (error) {
     console.error("[warmup-odds] Internal error:", {
