@@ -4,7 +4,7 @@ project_id = "dutkpzrisvqgxadxbkxo"
 verify_jwt = false
 
 [functions.fetch-fixtures]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-fixture]
 verify_jwt = true
@@ -34,7 +34,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.warmup-odds]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-ticket]
 verify_jwt = true
