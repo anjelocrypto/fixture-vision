@@ -41,6 +41,35 @@ async function callEdgeFunction(name: string, body: unknown) {
   return { ok: true, status: res.status, data: json };
 }
 
+// Fire-and-forget trigger for long-running Edge Functions to avoid browser timeouts
+function triggerEdgeFunction(name: string, body: unknown) {
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!baseUrl || !serviceRoleKey) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  const url = `${baseUrl}/functions/v1/${name}`;
+  // Intentionally do not await – let the platform execute independently
+  fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  })
+    .then(async (res) => {
+      const text = await res.text().catch(() => "");
+      console.log(`[warmup-odds] trigger ${name} -> ${res.status}`);
+      if (!res.ok) {
+        console.error(`[warmup-odds] trigger error ${name}:`, text.substring(0, 200));
+      }
+    })
+    .catch((e) => {
+      console.error(`[warmup-odds] trigger failed ${name}:`, e?.message || e);
+    });
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   
@@ -82,68 +111,25 @@ serve(async (req) => {
     
     console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup`);
 
-    // Step 1: Backfill odds with service role auth
-    console.log(`[warmup-odds] Step 1/2: Calling backfill-odds (${window_hours}h)`);
-    
-    const backfillResponse = await callEdgeFunction("backfill-odds", { window_hours });
+// Kick off long-running jobs in background to avoid browser 60s CORS timeout
+console.log(`[warmup-odds] Triggering backfill-odds (${window_hours}h) in background`);
+triggerEdgeFunction("backfill-odds", { window_hours });
 
-    if (!backfillResponse.ok) {
-      console.error(`[warmup-odds] Backfill failed with status ${backfillResponse.status}`);
-      return jsonResponse(
-        { 
-          success: false,
-          error: "Backfill failed", 
-          status: backfillResponse.status,
-          details: backfillResponse.data,
-          backfill: backfillResponse.data
-        },
-        origin,
-        200,
-        req
-      );
-    }
+console.log(`[warmup-odds] Triggering optimize-selections-refresh (${window_hours}h) in background`);
+triggerEdgeFunction("optimize-selections-refresh", { window_hours });
 
-    const backfillData = backfillResponse.data || {};
-    console.log("[warmup-odds] Backfill complete:", JSON.stringify(backfillData).substring(0, 200));
-
-    // Step 2: Optimize selections with service role auth
-    console.log(`[warmup-odds] Step 2/2: Calling optimize-selections-refresh (${window_hours}h)`);
-    
-    const optimizeResponse = await callEdgeFunction("optimize-selections-refresh", { window_hours });
-
-    if (!optimizeResponse.ok) {
-      console.error(`[warmup-odds] Optimize failed with status ${optimizeResponse.status}`);
-      return jsonResponse(
-        { 
-          success: false,
-          error: "Optimize failed", 
-          status: optimizeResponse.status,
-          details: optimizeResponse.data,
-          backfill: backfillData,
-          optimize: optimizeResponse.data
-        },
-        origin,
-        200,
-        req
-      );
-    }
-
-    const optimizeData = optimizeResponse.data || {};
-    console.log("[warmup-odds] Optimize complete:", JSON.stringify(optimizeData).substring(0, 200));
-
-    // Return combined results
-    return jsonResponse(
-      {
-        success: true,
-        window_hours,
-        backfill: backfillData,
-        optimize: optimizeData,
-        message: `Successfully warmed ${window_hours}h window: ${backfillData.fetched || 0} odds fetched, ${optimizeData.inserted || 0} selections created`
-      },
-      origin,
-      200,
-      req
-    );
+// Respond immediately – progress can be observed via badges/logs
+return jsonResponse(
+  {
+    success: true,
+    started: true,
+    window_hours,
+    message: `Warmup started for ${window_hours}h. Odds and selections will populate in the background.`,
+  },
+  origin,
+  202,
+  req
+);
 
   } catch (error) {
     console.error("[warmup-odds] Internal error:", {
