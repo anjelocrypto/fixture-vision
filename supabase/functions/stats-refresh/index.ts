@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
       return errorResponse("Unauthorized: Missing credentials", origin, 401, req);
     }
 
-    console.log(`[stats-refresh] Starting stats refresh job (${window_hours}h window, ${stats_ttl_hours}h TTL)`);
+    console.log(`[stats-refresh] Starting stats refresh job (${window_hours}h window, ${stats_ttl_hours}h TTL, force=${force})`);
 
     // Acquire mutex to prevent concurrent runs
     const { data: lockAcquired } = await supabase.rpc('acquire_cron_lock', {
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
 
     const { data: upcomingFixtures, error: fixturesError } = await supabase
       .from("fixtures")
-      .select("teams_home, teams_away")
+      .select("id, league_id, teams_home, teams_away")
       .gte("timestamp", Math.floor(now.getTime() / 1000))
       .lte("timestamp", Math.floor(windowEnd.getTime() / 1000));
 
@@ -183,26 +183,87 @@ Deno.serve(async (req) => {
       throw fixturesError;
     }
 
-    // Collect unique team IDs
-    const teamIds = new Set<number>();
+    // Collect unique team IDs from fixtures, grouped by league
+    const teamsByLeague = new Map<number, Set<number>>();
+    const allTeamIds = new Set<number>();
+    
     for (const fixture of upcomingFixtures || []) {
+      const leagueId = fixture.league_id;
       const homeId = fixture.teams_home?.id;
       const awayId = fixture.teams_away?.id;
-      if (homeId) teamIds.add(homeId);
-      if (awayId) teamIds.add(awayId);
+      
+      if (!teamsByLeague.has(leagueId)) {
+        teamsByLeague.set(leagueId, new Set());
+      }
+      
+      if (homeId) {
+        teamsByLeague.get(leagueId)!.add(homeId);
+        allTeamIds.add(homeId);
+      }
+      if (awayId) {
+        teamsByLeague.get(leagueId)!.add(awayId);
+        allTeamIds.add(awayId);
+      }
     }
 
-    console.log(`[stats-refresh] Found ${teamIds.size} unique teams in ${upcomingFixtures?.length || 0} upcoming fixtures`);
+    console.log(`[stats-refresh] Found ${allTeamIds.size} teams from ${upcomingFixtures?.length || 0} fixtures across ${teamsByLeague.size} leagues`);
+
+    // For leagues with few/no fixtures, fetch all teams from API
+    const leaguesWithFewFixtures = Array.from(teamsByLeague.entries())
+      .filter(([_, teams]) => teams.size < 5)
+      .map(([leagueId]) => leagueId);
+
+    if (leaguesWithFewFixtures.length > 0) {
+      console.log(`[stats-refresh] ${leaguesWithFewFixtures.length} leagues have <5 teams in fixtures, fetching from teams API`);
+      
+      for (const leagueId of leaguesWithFewFixtures) {
+        if (!ALLOWED_LEAGUE_IDS.includes(leagueId)) continue;
+        
+        try {
+          await sleep(1200); // Rate limit: ~45 RPM
+          const teamIds = await fetchTeamsByLeagueSeason(leagueId, season);
+          
+          for (const teamId of teamIds) {
+            if (!teamsByLeague.has(leagueId)) {
+              teamsByLeague.set(leagueId, new Set());
+            }
+            teamsByLeague.get(leagueId)!.add(teamId);
+            allTeamIds.add(teamId);
+          }
+        } catch (error) {
+          console.error(`[stats-refresh] Failed to fetch teams for league ${leagueId}:`, error);
+        }
+      }
+      
+      console.log(`[stats-refresh] After teams API fallback: ${allTeamIds.size} total teams`);
+    }
 
     let teamsScanned = 0;
     let teamsRefreshed = 0;
     let skippedTTL = 0;
     let apiCalls = 0;
     let failures = 0;
+    const leagueStats = new Map<number, { total: number; fetched: number; skipped: number; errors: number }>();
 
-    // Process each team
-    for (const teamId of teamIds) {
+    // Initialize league stats
+    for (const [leagueId, teams] of teamsByLeague) {
+      leagueStats.set(leagueId, { total: teams.size, fetched: 0, skipped: 0, errors: 0 });
+    }
+
+    // Process teams with batching (45 RPM = ~1.33s per request)
+    const teamArray = Array.from(allTeamIds);
+    for (let i = 0; i < teamArray.length; i++) {
+      const teamId = teamArray[i];
       teamsScanned++;
+      
+      // Find which league this team belongs to
+      let teamLeagueId: number | undefined;
+      for (const [leagueId, teams] of teamsByLeague) {
+        if (teams.has(teamId)) {
+          teamLeagueId = leagueId;
+          break;
+        }
+      }
       
       try {
         // Check current cache with TTL
@@ -212,57 +273,64 @@ Deno.serve(async (req) => {
           .eq("team_id", teamId)
           .single();
 
-        // Skip if updated within TTL window
-        if (cached?.computed_at) {
+        // Skip if updated within TTL window (unless force=true)
+        if (!force && cached?.computed_at) {
           const lastUpdate = new Date(cached.computed_at);
           if (lastUpdate > statsTTL) {
-            console.log(`[stats-refresh] Team ${teamId} cache is fresh (within ${stats_ttl_hours}h TTL)`);
             skippedTTL++;
+            if (teamLeagueId && leagueStats.has(teamLeagueId)) {
+              leagueStats.get(teamLeagueId)!.skipped++;
+            }
             continue;
           }
         }
 
-        // Fetch current last-5 fixture IDs
-        const currentFixtureIds = await fetchTeamLast5FixtureIds(teamId);
-        apiCalls++;
+        // Rate limit: ~45 RPM (1.33s between requests)
+        if (i > 0 && i % 10 === 0) {
+          await sleep(1300);
+        }
 
-        // Compare with cached IDs - need refresh if IDs changed or missing
-        const cachedIds = cached?.last_five_fixture_ids || [];
-        const needsRefresh = 
-          !cached || 
-          cachedIds.length !== currentFixtureIds.length ||
-          !cachedIds.every((id: number, idx: number) => id === currentFixtureIds[idx]);
+        // Compute stats with retry
+        const { ids: currentFixtureIds, stats } = await computeWithRetry(teamId);
+        apiCalls += 1 + (stats.sample_size * 2); // 1 for fixture IDs + 2 per fixture for stats
 
-        if (needsRefresh) {
-          console.log(`[stats-refresh] Refreshing team ${teamId} (window changed or missing)`);
-          
-          const stats = await computeLastFiveAverages(teamId);
-          apiCalls += stats.sample_size * 2; // Approximate API calls made
+        // Upsert with updated_at timestamp
+        await supabase.from("stats_cache").upsert({
+          team_id: teamId,
+          goals: stats.goals,
+          cards: stats.cards,
+          offsides: stats.offsides,
+          corners: stats.corners,
+          fouls: stats.fouls,
+          sample_size: stats.sample_size,
+          last_five_fixture_ids: stats.last_five_fixture_ids,
+          last_final_fixture: stats.last_final_fixture,
+          computed_at: new Date().toISOString(),
+          source: 'api-football'
+        });
 
-          // Upsert with updated_at timestamp
-          await supabase.from("stats_cache").upsert({
-            team_id: teamId,
-            goals: stats.goals,
-            cards: stats.cards,
-            offsides: stats.offsides,
-            corners: stats.corners,
-            fouls: stats.fouls,
-            sample_size: stats.sample_size,
-            last_five_fixture_ids: stats.last_five_fixture_ids,
-            last_final_fixture: stats.last_final_fixture,
-            computed_at: new Date().toISOString(),
-            source: 'api-football'
-          });
-
-          teamsRefreshed++;
-        } else {
-          console.log(`[stats-refresh] Team ${teamId} cache unchanged (same last-5 window)`);
-          skippedTTL++;
+        teamsRefreshed++;
+        if (teamLeagueId && leagueStats.has(teamLeagueId)) {
+          leagueStats.get(teamLeagueId)!.fetched++;
+        }
+        
+        if (teamsRefreshed % 20 === 0) {
+          console.log(`[stats-refresh] Progress: ${teamsRefreshed}/${teamArray.length} teams refreshed`);
         }
       } catch (error) {
         console.error(`[stats-refresh] Failed to process team ${teamId}:`, error);
         failures++;
+        if (teamLeagueId && leagueStats.has(teamLeagueId)) {
+          leagueStats.get(teamLeagueId)!.errors++;
+        }
       }
+    }
+
+    // Log per-league summary
+    console.log("[stats-refresh] Per-league summary:");
+    for (const [leagueId, stats] of leagueStats) {
+      const leagueName = LEAGUE_NAMES[leagueId] || `League ${leagueId}`;
+      console.log(`  ${leagueName} (${leagueId}): ${stats.total} teams, ${stats.fetched} fetched, ${stats.skipped} skipped, ${stats.errors} errors`);
     }
 
     console.log("[stats-refresh] Job complete", {
@@ -286,9 +354,10 @@ Deno.serve(async (req) => {
       window_start: now.toISOString(),
       window_end: windowEnd.toISOString(),
       scope: { 
-        teams: teamIds.size, 
+        teams: allTeamIds.size, 
         window_hours, 
-        stats_ttl_hours 
+        stats_ttl_hours,
+        force
       },
       scanned: teamsScanned,
       with_odds: 0,

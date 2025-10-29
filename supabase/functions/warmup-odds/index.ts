@@ -107,17 +107,33 @@ serve(async (req) => {
 
     console.log("[warmup-odds] Admin access verified");
 
-    const { window_hours = 48 } = await req.json().catch(() => ({}));
+    const { window_hours = 48, force = false } = await req.json().catch(() => ({}));
     
-    console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup`);
+    console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup (force=${force})`);
 
-    // Kick off pipeline in background to avoid browser 60s CORS timeout
-    console.log(`[warmup-odds] Step 1: Triggering backfill-odds (${window_hours}h)`);
+    // Execute pipeline in proper sequence to avoid browser 60s CORS timeout
+    // Step 1: Refresh stats first (teams need stats for selections)
+    console.log(`[warmup-odds] Step 1: Calling stats-refresh (${window_hours}h, force=${force})`);
+    const statsResult = await callEdgeFunction("stats-refresh", { 
+      window_hours, 
+      stats_ttl_hours: 24,
+      force 
+    });
+
+    if (!statsResult.ok) {
+      console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
+    } else {
+      console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(statsResult.data).substring(0, 200)}`);
+    }
+
+    // Step 2: Backfill odds (can run after stats)
+    console.log(`[warmup-odds] Step 2: Triggering backfill-odds (${window_hours}h)`);
     triggerEdgeFunction("backfill-odds", { window_hours });
 
-    console.log(`[warmup-odds] Step 2: Triggering stats-refresh (${window_hours}h)`);
-    triggerEdgeFunction("stats-refresh", { window_hours, stats_ttl_hours: 24 });
+    // Small delay to let odds start populating
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
+    // Step 3: Generate optimized selections (needs both stats and odds)
     console.log(`[warmup-odds] Step 3: Triggering optimize-selections-refresh (${window_hours}h)`);
     triggerEdgeFunction("optimize-selections-refresh", { window_hours });
 
@@ -127,7 +143,9 @@ serve(async (req) => {
         success: true,
         started: true,
         window_hours,
-        message: `Warmup started for ${window_hours}h. Pipeline: odds → stats → selections running in background.`,
+        force,
+        statsResult: statsResult.ok ? "completed" : "failed",
+        message: `Warmup started for ${window_hours}h. Pipeline: stats (awaited) → odds → selections running in background.`,
       },
       origin,
       202,
