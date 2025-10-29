@@ -16,7 +16,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.stats-refresh]
-verify_jwt = true
+verify_jwt = false
 
 [functions.calculate-value]
 verify_jwt = true
