@@ -237,7 +237,12 @@ Deno.serve(async (req) => {
     
     // Release mutex on error
     try {
-      await supabase.rpc('release_cron_lock', { p_job_name: 'stats-refresh' });
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && supabaseKey) {
+        const supabaseCleanup = createClient(supabaseUrl, supabaseKey);
+        await supabaseCleanup.rpc('release_cron_lock', { p_job_name: 'stats-refresh' });
+      }
     } catch (e) {
       console.error("[stats-refresh] Failed to release lock:", e);
     }
