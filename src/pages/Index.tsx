@@ -20,9 +20,10 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-// Mock countries data
+// Mock countries data - comprehensive coverage
 const MOCK_COUNTRIES = [
   { id: 0, name: "World", flag: "🌍", code: "WORLD" },
+  // Western Europe
   { id: 39, name: "England", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", code: "GB" },
   { id: 140, name: "Spain", flag: "🇪🇸", code: "ES" },
   { id: 135, name: "Italy", flag: "🇮🇹", code: "IT" },
@@ -30,7 +31,6 @@ const MOCK_COUNTRIES = [
   { id: 61, name: "France", flag: "🇫🇷", code: "FR" },
   { id: 88, name: "Netherlands", flag: "🇳🇱", code: "NL" },
   { id: 94, name: "Portugal", flag: "🇵🇹", code: "PT" },
-  { id: 203, name: "Turkey", flag: "🇹🇷", code: "TR" },
   { id: 144, name: "Belgium", flag: "🇧🇪", code: "BE" },
   { id: 179, name: "Scotland", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", code: "GB-SCT" },
   { id: 218, name: "Austria", flag: "🇦🇹", code: "AT" },
@@ -39,9 +39,45 @@ const MOCK_COUNTRIES = [
   { id: 119, name: "Denmark", flag: "🇩🇰", code: "DK" },
   { id: 103, name: "Norway", flag: "🇳🇴", code: "NO" },
   { id: 113, name: "Sweden", flag: "🇸🇪", code: "SE" },
+  // Eastern Europe
+  { id: 203, name: "Turkey", flag: "🇹🇷", code: "TR" },
+  { id: 106, name: "Poland", flag: "🇵🇱", code: "PL" },
+  { id: 345, name: "Czech Republic", flag: "🇨🇿", code: "CZ" },
+  { id: 283, name: "Romania", flag: "🇷🇴", code: "RO" },
+  { id: 210, name: "Croatia", flag: "🇭🇷", code: "HR" },
+  { id: 286, name: "Serbia", flag: "🇷🇸", code: "RS" },
+  { id: 172, name: "Bulgaria", flag: "🇧🇬", code: "BG" },
+  { id: 271, name: "Hungary", flag: "🇭🇺", code: "HU" },
+  { id: 333, name: "Ukraine", flag: "🇺🇦", code: "UA" },
+  { id: 235, name: "Russia", flag: "🇷🇺", code: "RU" },
+  // Americas
   { id: 253, name: "USA", flag: "🇺🇸", code: "US" },
+  { id: 262, name: "Mexico", flag: "🇲🇽", code: "MX" },
   { id: 71, name: "Brazil", flag: "🇧🇷", code: "BR" },
   { id: 128, name: "Argentina", flag: "🇦🇷", code: "AR" },
+  { id: 239, name: "Colombia", flag: "🇨🇴", code: "CO" },
+  { id: 265, name: "Chile", flag: "🇨🇱", code: "CL" },
+  { id: 274, name: "Uruguay", flag: "🇺🇾", code: "UY" },
+  { id: 250, name: "Paraguay", flag: "🇵🇾", code: "PY" },
+  { id: 242, name: "Ecuador", flag: "🇪🇨", code: "EC" },
+  // Asia & Oceania
+  { id: 98, name: "Japan", flag: "🇯🇵", code: "JP" },
+  { id: 292, name: "South Korea", flag: "🇰🇷", code: "KR" },
+  { id: 188, name: "Australia", flag: "🇦🇺", code: "AU" },
+  { id: 17, name: "China", flag: "🇨🇳", code: "CN" },
+  { id: 307, name: "Saudi Arabia", flag: "🇸🇦", code: "SA" },
+  { id: 301, name: "UAE", flag: "🇦🇪", code: "AE" },
+  { id: 305, name: "Qatar", flag: "🇶🇦", code: "QA" },
+  // Africa
+  { id: 288, name: "South Africa", flag: "🇿🇦", code: "ZA" },
+  { id: 233, name: "Egypt", flag: "🇪🇬", code: "EG" },
+  { id: 200, name: "Morocco", flag: "🇲🇦", code: "MA" },
+  { id: 185, name: "Algeria", flag: "🇩🇿", code: "DZ" },
+  { id: 202, name: "Tunisia", flag: "🇹🇳", code: "TN" },
+  // Other
+  { id: 383, name: "Israel", flag: "🇮🇱", code: "IL" },
+  { id: 165, name: "Iceland", flag: "🇮🇸", code: "IS" },
+  { id: 244, name: "Finland", flag: "🇫🇮", code: "FI" },
 ];
 
 const Index = () => {
