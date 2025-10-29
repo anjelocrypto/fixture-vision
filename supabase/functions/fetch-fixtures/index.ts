@@ -70,6 +70,23 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Acquire mutex to prevent overlapping runs triggered from UI
+    const jobName = 'fetch-fixtures-admin';
+    const { data: lockAcquired, error: lockError } = await supabaseClient.rpc('acquire_cron_lock', {
+      p_job_name: jobName,
+      p_duration_minutes: 20,
+    });
+
+    if (lockError) {
+      console.error('[fetch-fixtures] Lock error:', lockError);
+      return errorResponse('lock_acquire_failed', origin, 423, req);
+    }
+
+    if (!lockAcquired) {
+      console.warn('[fetch-fixtures] Another run is already in progress');
+      return jsonResponse({ success: false, busy: true, message: 'Another fetch-fixtures run is in progress' }, origin, 200, req);
+    }
+
     // Season handling: default 2025, can override per league if needed
     const DEFAULT_SEASON = 2025;
     const seasonByLeague: Record<number, number> = {};
@@ -103,25 +120,26 @@ serve(async (req) => {
     const recentFixtureIds = new Set(existingFixtures?.map(f => f.id) || []);
     console.log(`[fetch-fixtures] ${recentFixtureIds.size} fixtures already fresh (updated within ${FIXTURE_TTL_HOURS}h)`);
 
-    // Fetch fixtures per league using "next" to greatly reduce API calls and stay under timeout
+    // Fetch fixtures per date to minimize API calls and keep runtime under gateway timeout
     const allFixtures: any[] = [];
     
-    for (const leagueId of ALLOWED_LEAGUE_IDS) {
-      if (!perLeagueCounters[leagueId]) {
-        perLeagueCounters[leagueId] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
-      }
-      perLeagueCounters[leagueId].requested++;
-      
-      // Use the API-Football `next` parameter to fetch upcoming fixtures in one call per league
-      // This avoids per-date scans that can hit platform timeouts
-      const url = `${API_BASE}/fixtures?league=${leagueId}&next=100`;
+    // Build the list of distinct dates within the window
+    const days = Math.max(1, Math.ceil(window_hours / 24));
+    const dateSet: string[] = [];
+    for (let d = 0; d < days; d++) {
+      const date = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+      dateSet.push(date.toISOString().split('T')[0]);
+    }
+    
+    for (const dateStr of dateSet) {
+      const url = `${API_BASE}/fixtures?date=${dateStr}&timezone=UTC`;
       
       try {
         const response = await fetch(url, { headers: apiHeaders() });
         apiCalls++;
 
         if (!response.ok) {
-          console.error(`[fetch-fixtures] API error ${response.status} for league ${leagueId}`);
+          console.error(`[fetch-fixtures] API error ${response.status} for date ${dateStr}`);
           failureReasons[`api_${response.status}`] = (failureReasons[`api_${response.status}`] || 0) + 1;
           continue;
         }
@@ -129,52 +147,53 @@ serve(async (req) => {
         const data = await response.json();
         
         if (data.response && data.response.length > 0) {
-          perLeagueCounters[leagueId].returned += data.response.length;
-          
+          fixturesScannedTotal += data.response.length;
+
           const validFixtures = data.response.filter((item: any) => {
-            // Must have valid structure
-            if (!item.fixture || !item.teams?.home || !item.teams?.away) {
+            if (!item.fixture || !item.teams?.home || !item.teams?.away || !item.league?.id) {
               failureReasons.invalid_structure = (failureReasons.invalid_structure || 0) + 1;
               return false;
             }
             
-            // Must have timestamp
+            // Only keep allowed leagues
+            if (!ALLOWED_LEAGUE_IDS.includes(item.league.id)) {
+              return false;
+            }
+            
             if (!item.fixture.timestamp) {
               failureReasons.missing_timestamp = (failureReasons.missing_timestamp || 0) + 1;
               return false;
             }
             
-            // Must be prematch only (NS = Not Started, TBD = To Be Defined)
-            if (!['NS', 'TBD'].includes(item.fixture.status.short)) {
+            // Prematch only
+            if (!['NS', 'TBD'].includes(item.fixture.status?.short)) {
               return false;
             }
             
             const fixtureTs = item.fixture.timestamp;
-            
-            // Strict window enforcement: [now, now+window_hours]
             if (fixtureTs < nowTs || fixtureTs >= endTs) {
               fixturesOutsideWindowDropped++;
               return false;
             }
             
             fixturesInWindowKept++;
-            perLeagueCounters[leagueId].in_window++;
-            leagueFixtureCounts[leagueId] = (leagueFixtureCounts[leagueId] || 0) + 1;
+            leagueFixtureCounts[item.league.id] = (leagueFixtureCounts[item.league.id] || 0) + 1;
+            if (!perLeagueCounters[item.league.id]) {
+              perLeagueCounters[item.league.id] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
+            }
+            perLeagueCounters[item.league.id].returned++;
+            perLeagueCounters[item.league.id].in_window++;
             return true;
           });
-          
-          fixturesScannedTotal += data.response.length;
+
           allFixtures.push(...validFixtures);
         }
-
-        // Rate limiting: ~1300ms delay for ~46 RPM
-        await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
-        
       } catch (error) {
-        console.error(`[fetch-fixtures] Error fetching league ${leagueId}:`, error);
+        console.error(`[fetch-fixtures] Error fetching date ${dateStr}:`, error);
         failureReasons.fetch_error = (failureReasons.fetch_error || 0) + 1;
       }
     }
+
     
     console.log(`[fetch-fixtures] Scanned ${fixturesScannedTotal}, kept ${fixturesInWindowKept} in window, dropped ${fixturesOutsideWindowDropped} outside`);
     
