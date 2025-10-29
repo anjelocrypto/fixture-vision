@@ -59,7 +59,7 @@ serve(async (req) => {
 
     console.log('[fetch-fixtures] Admin access verified');
 
-    const { window_hours = 72 } = await req.json();
+    const { window_hours = 120 } = await req.json();
     
     console.log(`[fetch-fixtures] Starting bulk fetch for ${window_hours}h window`);
     

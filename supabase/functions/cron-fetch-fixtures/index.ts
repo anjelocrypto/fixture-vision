@@ -60,7 +60,7 @@ serve(async (req) => {
     console.log('[cron-fetch-fixtures] Lock acquired, starting job');
 
     // 4. Parse window_hours
-    const { window_hours = 72 } = await req.json().catch(() => ({ window_hours: 72 }));
+    const { window_hours = 120 } = await req.json().catch(() => ({ window_hours: 120 }));
     const now = new Date();
     const windowEnd = new Date(now.getTime() + window_hours * 60 * 60 * 1000);
 

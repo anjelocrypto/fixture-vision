@@ -60,7 +60,7 @@ export const AdminRefreshButton = () => {
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFetchingFixtures, setIsFetchingFixtures] = useState(false);
-  const [selectedWindow, setSelectedWindow] = useState(48);
+  const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
 
@@ -71,12 +71,12 @@ export const AdminRefreshButton = () => {
     let finalState: "ok" | "fallback_ok" | "fail" = "fail";
 
     try {
-      toast.info("Fetching fixtures for next 72 hours...");
+      toast.info("Fetching fixtures for next 120 hours (5 days)...");
 
       const { data, error } = await retryWithBackoff(
         () =>
           supabase.functions.invoke("fetch-fixtures", {
-            body: { window_hours: 72 },
+            body: { window_hours: 120 },
           }),
         5,
         (attempt) => {
@@ -244,12 +244,12 @@ export const AdminRefreshButton = () => {
           size="sm"
           className="gap-2 animate-in fade-in slide-in-from-left-2"
           onClick={() => {
-            handleRefresh(72);
+            handleRefresh(120);
             setShowWarmupPrompt(false);
           }}
         >
           <CheckCircle2 className="h-4 w-4" />
-          Run Warmup (72h)?
+          Run Warmup (120h)?
         </Button>
       )}
       
@@ -268,11 +268,14 @@ export const AdminRefreshButton = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleRefresh(72)}>
-              🏟️ 72 hours
+            <DropdownMenuItem onClick={() => handleRefresh(168)}>
+              📆 7 days (168h)
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleRefresh(48)}>
-              📅 48 hours
+            <DropdownMenuItem onClick={() => handleRefresh(120)}>
+              🏟️ 5 days (120h)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleRefresh(72)}>
+              📅 3 days (72h)
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleRefresh(6)}>
               ⚡ 6 hours
