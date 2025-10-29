@@ -38,18 +38,21 @@ function isOriginAllowed(origin: string | null): boolean {
  * Returns the specific origin if allowed, otherwise uses default
  */
 export function getCorsHeaders(origin: string | null, request?: Request): HeadersInit {
-  const allowedOrigin = isOriginAllowed(origin) ? origin : 'https://ticketai.bet';
+  // Always echo the incoming Origin to avoid browser CORS cache issues
+  const allowedOrigin = origin || 'https://ticketai.bet';
   
   // Echo requested headers for preflight robustness
   const requestedHeaders = request?.headers.get('access-control-request-headers');
   const allowHeaders = requestedHeaders && requestedHeaders.length > 0
     ? requestedHeaders
-    : 'authorization, x-client-info, apikey, content-type, x-supabase-api-version';
+    : 'authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key';
   
   return {
-    'Access-Control-Allow-Origin': allowedOrigin!,
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': allowHeaders,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Expose-Headers': 'content-type, x-supabase-api-version',
     'Access-Control-Max-Age': '86400', // 24 hours
     'Vary': 'Origin',
   };
