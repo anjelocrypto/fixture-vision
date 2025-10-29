@@ -45,7 +45,7 @@ serve(async (req) => {
   const origin = req.headers.get('origin');
   
   if (req.method === "OPTIONS") {
-    return handlePreflight(origin);
+    return handlePreflight(origin, req);
   }
 
   try {
@@ -55,7 +55,7 @@ serve(async (req) => {
 
     if (!jwt) {
       console.error("[warmup-odds] No authorization token provided");
-      return errorResponse("authentication_required", origin, 401);
+      return errorResponse("authentication_required", origin, 401, req);
     }
 
     const supabaseUser = createClient(
@@ -68,12 +68,12 @@ serve(async (req) => {
 
     if (whitelistError) {
       console.error("[warmup-odds] is_user_whitelisted error:", whitelistError);
-      return errorResponse("auth_check_failed", origin, 401);
+      return errorResponse("auth_check_failed", origin, 401, req);
     }
 
     if (!isWhitelisted) {
       console.warn("[warmup-odds] Non-admin user attempted access");
-      return errorResponse("forbidden_admin_only", origin, 403);
+      return errorResponse("forbidden_admin_only", origin, 403, req);
     }
 
     console.log("[warmup-odds] Admin access verified");
@@ -98,7 +98,8 @@ serve(async (req) => {
           backfill: backfillResponse.data
         },
         origin,
-        200
+        200,
+        req
       );
     }
 
@@ -122,7 +123,8 @@ serve(async (req) => {
           optimize: optimizeResponse.data
         },
         origin,
-        200
+        200,
+        req
       );
     }
 

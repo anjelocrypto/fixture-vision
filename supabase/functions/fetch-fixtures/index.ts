@@ -12,7 +12,7 @@ serve(async (req) => {
   const origin = req.headers.get('origin');
   
   if (req.method === "OPTIONS") {
-    return handlePreflight(origin);
+    return handlePreflight(origin, req);
   }
 
   const startTime = Date.now();
@@ -24,7 +24,7 @@ serve(async (req) => {
 
     if (!jwt) {
       console.error('[fetch-fixtures] No authorization token provided');
-      return errorResponse('authentication_required', origin, 401);
+      return errorResponse('authentication_required', origin, 401, req);
     }
 
     const supabaseUser = createClient(
@@ -37,12 +37,12 @@ serve(async (req) => {
     
     if (whitelistError) {
       console.error('[fetch-fixtures] is_user_whitelisted error:', whitelistError);
-      return errorResponse('auth_check_failed', origin, 401);
+      return errorResponse('auth_check_failed', origin, 401, req);
     }
 
     if (!isWhitelisted) {
       console.warn('[fetch-fixtures] Non-admin user attempted access');
-      return errorResponse('forbidden_admin_only', origin, 403);
+      return errorResponse('forbidden_admin_only', origin, 403, req);
     }
 
     console.log('[fetch-fixtures] Admin access verified');
@@ -383,10 +383,10 @@ serve(async (req) => {
       season_used: DEFAULT_SEASON,
     };
     
-    return jsonResponse(summaryData, origin, 200);
+    return jsonResponse(summaryData, origin, 200, req);
   } catch (error) {
     console.error("[fetch-fixtures] Fatal error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return errorResponse(errorMessage, origin, 500);
+    return errorResponse(errorMessage, origin, 500, req);
   }
 });
