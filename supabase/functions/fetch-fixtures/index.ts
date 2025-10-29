@@ -3,19 +3,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES } from "../_shared/leagues.ts";
 import { RPM_LIMIT } from "../_shared/config.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-};
+import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 const FIXTURE_TTL_HOURS = 12;
 const REQUEST_DELAY_MS = 1300; // ~46 RPM to stay under 50 RPM limit
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return handlePreflight(origin);
   }
 
   const startTime = Date.now();
@@ -27,10 +24,7 @@ serve(async (req) => {
 
     if (!jwt) {
       console.error('[fetch-fixtures] No authorization token provided');
-      return new Response(
-        JSON.stringify({ success: false, error: 'authentication_required' }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse('authentication_required', origin, 401);
     }
 
     const supabaseUser = createClient(
@@ -43,18 +37,12 @@ serve(async (req) => {
     
     if (whitelistError) {
       console.error('[fetch-fixtures] is_user_whitelisted error:', whitelistError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'auth_check_failed' }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse('auth_check_failed', origin, 401);
     }
 
     if (!isWhitelisted) {
       console.warn('[fetch-fixtures] Non-admin user attempted access');
-      return new Response(
-        JSON.stringify({ success: false, error: 'forbidden_admin_only' }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse('forbidden_admin_only', origin, 403);
     }
 
     console.log('[fetch-fixtures] Admin access verified');
@@ -374,41 +362,31 @@ serve(async (req) => {
       },
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        window: `${now.toISOString()} → ${windowEnd.toISOString()}`,
-        scanned: fixturesScannedTotal,
-        in_window: fixturesInWindowKept,
-        dropped_outside: fixturesOutsideWindowDropped,
-        leagues_upserted: leaguesUpserted,
-        leagues_failed: leaguesFailed,
-        inserted: fixturesInserted,
-        updated: fixturesUpdated,
-        skipped_ttl: fixturesSkippedTtl,
-        failed: fixturesFailed,
-        api_calls: apiCalls,
-        rpm_avg: avgRpm,
-        top_5_leagues: top5Leagues,
-        top_3_failures: top3Failures,
-        duration_ms: durationMs,
-        season_used: DEFAULT_SEASON,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Step 11: Return success with all metrics
+    const summaryData = {
+      success: true,
+      window: `${now.toISOString()} → ${windowEnd.toISOString()}`,
+      scanned: fixturesScannedTotal,
+      in_window: fixturesInWindowKept,
+      dropped_outside: fixturesOutsideWindowDropped,
+      leagues_upserted: leaguesUpserted,
+      leagues_failed: leaguesFailed,
+      inserted: fixturesInserted,
+      updated: fixturesUpdated,
+      skipped_ttl: fixturesSkippedTtl,
+      failed: fixturesFailed,
+      api_calls: apiCalls,
+      rpm_avg: avgRpm,
+      top_5_leagues: top5Leagues,
+      top_3_failures: top3Failures,
+      duration_ms: durationMs,
+      season_used: DEFAULT_SEASON,
+    };
+    
+    return jsonResponse(summaryData, origin, 200);
   } catch (error) {
     console.error("[fetch-fixtures] Fatal error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: errorMessage,
-        stack: error instanceof Error ? error.stack : undefined,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return errorResponse(errorMessage, origin, 500);
   }
 });

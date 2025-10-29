@@ -1,11 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-};
+import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 // Helper to call edge functions with service role key
 async function callEdgeFunction(name: string, body: unknown) {
@@ -47,8 +42,10 @@ async function callEdgeFunction(name: string, body: unknown) {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return handlePreflight(origin);
   }
 
   try {
@@ -58,10 +55,7 @@ serve(async (req) => {
 
     if (!jwt) {
       console.error("[warmup-odds] No authorization token provided");
-      return new Response(
-        JSON.stringify({ success: false, error: "authentication_required" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse("authentication_required", origin, 401);
     }
 
     const supabaseUser = createClient(
@@ -74,18 +68,12 @@ serve(async (req) => {
 
     if (whitelistError) {
       console.error("[warmup-odds] is_user_whitelisted error:", whitelistError);
-      return new Response(
-        JSON.stringify({ success: false, error: "auth_check_failed" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse("auth_check_failed", origin, 401);
     }
 
     if (!isWhitelisted) {
       console.warn("[warmup-odds] Non-admin user attempted access");
-      return new Response(
-        JSON.stringify({ success: false, error: "forbidden_admin_only" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse("forbidden_admin_only", origin, 403);
     }
 
     console.log("[warmup-odds] Admin access verified");
@@ -101,15 +89,16 @@ serve(async (req) => {
 
     if (!backfillResponse.ok) {
       console.error(`[warmup-odds] Backfill failed with status ${backfillResponse.status}`);
-      return new Response(
-        JSON.stringify({ 
+      return jsonResponse(
+        { 
           success: false,
           error: "Backfill failed", 
           status: backfillResponse.status,
           details: backfillResponse.data,
           backfill: backfillResponse.data
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        },
+        origin,
+        200
       );
     }
 
@@ -123,16 +112,17 @@ serve(async (req) => {
 
     if (!optimizeResponse.ok) {
       console.error(`[warmup-odds] Optimize failed with status ${optimizeResponse.status}`);
-      return new Response(
-        JSON.stringify({ 
+      return jsonResponse(
+        { 
           success: false,
           error: "Optimize failed", 
           status: optimizeResponse.status,
           details: optimizeResponse.data,
           backfill: backfillData,
           optimize: optimizeResponse.data
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        },
+        origin,
+        200
       );
     }
 
@@ -140,15 +130,16 @@ serve(async (req) => {
     console.log("[warmup-odds] Optimize complete:", JSON.stringify(optimizeData).substring(0, 200));
 
     // Return combined results
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: true,
         window_hours,
         backfill: backfillData,
         optimize: optimizeData,
         message: `Successfully warmed ${window_hours}h window: ${backfillData.fetched || 0} odds fetched, ${optimizeData.inserted || 0} selections created`
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      },
+      origin,
+      200
     );
 
   } catch (error) {
@@ -156,13 +147,10 @@ serve(async (req) => {
       message: error instanceof Error ? error.message : "Unknown",
       stack: error instanceof Error ? error.stack : undefined,
     });
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error"
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return errorResponse(
+      error instanceof Error ? error.message : "Internal server error",
+      origin,
+      500
     );
   }
 });
