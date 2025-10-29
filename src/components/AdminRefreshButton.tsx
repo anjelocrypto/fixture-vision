@@ -60,6 +60,7 @@ export const AdminRefreshButton = () => {
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFetchingFixtures, setIsFetchingFixtures] = useState(false);
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -171,6 +172,34 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handleRefreshStats = async (windowHours: number) => {
+    setIsRefreshingStats(true);
+    
+    try {
+      toast.info(`Refreshing stats for ${windowHours}h window...`);
+      
+      const { data, error } = await supabase.functions.invoke(
+        "stats-refresh",
+        { body: { window_hours: windowHours, stats_ttl_hours: 24 } }
+      );
+
+      if (error) {
+        console.error("Stats refresh error:", error);
+        throw error;
+      }
+
+      console.log("Stats refresh result:", data);
+      toast.success(data?.message || "Stats refreshed successfully");
+
+    } catch (error) {
+      console.error("Stats refresh error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Stats refresh failed: ${errorMessage}`);
+    } finally {
+      setIsRefreshingStats(false);
+    }
+  };
+
   const handleRefresh = async (windowHours: number) => {
     setSelectedWindow(windowHours);
     setIsRefreshing(true);
@@ -242,7 +271,7 @@ export const AdminRefreshButton = () => {
         <Button
           variant="default"
           size="sm"
-          className="gap-2 animate-in fade-in slide-in-from-left-2"
+          className="gap-2 animate-in fade-in-from-left-2"
           onClick={() => {
             handleRefresh(120);
             setShowWarmupPrompt(false);
@@ -254,37 +283,65 @@ export const AdminRefreshButton = () => {
       )}
       
       {!showWarmupPrompt && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              disabled={isRefreshing}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              {isRefreshing ? "Warming..." : `Warmup (${selectedWindow}h)`}
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleRefresh(168)}>
-              📆 7 days (168h)
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleRefresh(120)}>
-              🏟️ 5 days (120h)
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleRefresh(72)}>
-              📅 3 days (72h)
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleRefresh(6)}>
-              ⚡ 6 hours
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleRefresh(1)}>
-              🔥 1 hour
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isRefreshingStats}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshingStats ? "animate-spin" : ""}`} />
+                {isRefreshingStats ? "Refreshing..." : "Refresh Stats"}
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleRefreshStats(168)}>
+                📆 7 days (168h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefreshStats(120)}>
+                🏟️ 5 days (120h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefreshStats(72)}>
+                📅 3 days (72h)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isRefreshing}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                {isRefreshing ? "Warming..." : `Warmup (${selectedWindow}h)`}
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleRefresh(168)}>
+                📆 7 days (168h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefresh(120)}>
+                🏟️ 5 days (120h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefresh(72)}>
+                📅 3 days (72h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefresh(6)}>
+                ⚡ 6 hours
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRefresh(1)}>
+                🔥 1 hour
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
       )}
     </div>
   );
