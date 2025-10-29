@@ -89,7 +89,8 @@ export const useAccess = () => {
     hasAccess, 
     loading, 
     entitlement, 
-    isWhitelisted, 
+    isWhitelisted,
+    isAdmin: isWhitelisted, // Whitelist = admin access
     trialCredits,
     refreshAccess: checkAccess 
   };

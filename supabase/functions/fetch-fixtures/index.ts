@@ -21,6 +21,44 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Admin gate: verify user is whitelisted
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+
+    if (!jwt) {
+      console.error('[fetch-fixtures] No authorization token provided');
+      return new Response(
+        JSON.stringify({ success: false, error: 'authentication_required' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUser = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+    );
+
+    const { data: isWhitelisted, error: whitelistError } = await supabaseUser.rpc('is_user_whitelisted');
+    
+    if (whitelistError) {
+      console.error('[fetch-fixtures] is_user_whitelisted error:', whitelistError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'auth_check_failed' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!isWhitelisted) {
+      console.warn('[fetch-fixtures] Non-admin user attempted access');
+      return new Response(
+        JSON.stringify({ success: false, error: 'forbidden_admin_only' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log('[fetch-fixtures] Admin access verified');
+
     const { window_hours = 72 } = await req.json();
     
     console.log(`[fetch-fixtures] Starting bulk fetch for ${window_hours}h window`);

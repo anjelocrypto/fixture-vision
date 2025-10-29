@@ -36,7 +36,7 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { hasAccess, isWhitelisted, trialCredits, refreshAccess } = useAccess();
+  const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -682,7 +682,7 @@ const Index = () => {
                 isWhitelisted={isWhitelisted}
                 hasAccess={hasAccess}
               />
-              <AdminRefreshButton />
+              {isAdmin && <AdminRefreshButton />}
             </div>
           </div>
 

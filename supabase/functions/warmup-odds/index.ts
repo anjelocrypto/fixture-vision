@@ -52,60 +52,47 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      console.log("[warmup-odds] No auth header provided");
+    // Admin gate: verify user is whitelisted
+    const authHeader = req.headers.get("authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+
+    if (!jwt) {
+      console.error("[warmup-odds] No authorization token provided");
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Authentication required" 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+        JSON.stringify({ success: false, error: "authentication_required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabaseClient = createClient(
+    const supabaseUser = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
     );
 
-    // Verify admin role
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !user) {
-      console.log("[warmup-odds] Invalid token:", authError?.message);
+    const { data: isWhitelisted, error: whitelistError } = await supabaseUser.rpc("is_user_whitelisted");
+
+    if (whitelistError) {
+      console.error("[warmup-odds] is_user_whitelisted error:", whitelistError);
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Invalid authentication token" 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+        JSON.stringify({ success: false, error: "auth_check_failed" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if user has admin role
-    const { data: roleData } = await supabaseClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-
-    if (!roleData) {
-      console.log(`[warmup-odds] User ${user.id} is not an admin`);
+    if (!isWhitelisted) {
+      console.warn("[warmup-odds] Non-admin user attempted access");
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Admin access required" 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 }
+        JSON.stringify({ success: false, error: "forbidden_admin_only" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("[warmup-odds] Admin access verified");
 
     const { window_hours = 48 } = await req.json().catch(() => ({}));
     
-    console.log(`[warmup-odds] Admin ${user.id} initiated ${window_hours}h warmup`);
+    console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup`);
 
     // Step 1: Backfill odds with service role auth
     console.log(`[warmup-odds] Step 1/2: Calling backfill-odds (${window_hours}h)`);
