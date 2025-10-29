@@ -13,10 +13,11 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const apiKey = Deno.env.get("API_FOOTBALL_KEY");
     const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
 
-    if (!supabaseUrl || !supabaseKey || !apiKey) {
+    if (!supabaseUrl || !supabaseKey || !supabaseAnonKey || !apiKey) {
       throw new Error("Missing required environment variables");
     }
 
@@ -45,19 +46,24 @@ Deno.serve(async (req) => {
       console.log("[stats-refresh] Authorized via CRON_INTERNAL_KEY");
       isAuthorized = true;
     } else if (authHeader) {
-      // Check if user is whitelisted admin
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      // Check if user is whitelisted admin - use anon key client with user JWT
+      const jwt = authHeader.replace(/^Bearer\s+/i, '');
       
-      if (userError || !user) {
-        console.error("[stats-refresh] Auth failed:", userError?.message);
-        return errorResponse("Unauthorized", origin, 401, req);
-      }
+      const supabaseUser = createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+        { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
 
-      const { data: isWhitelisted, error: whitelistError } = await supabase
+      const { data: isWhitelisted, error: whitelistError } = await supabaseUser
         .rpc('is_user_whitelisted');
 
-      if (whitelistError || !isWhitelisted) {
+      if (whitelistError) {
+        console.error("[stats-refresh] Whitelist check failed:", whitelistError.message);
+        return errorResponse("Auth check failed", origin, 401, req);
+      }
+
+      if (!isWhitelisted) {
         console.error("[stats-refresh] User not whitelisted");
         return errorResponse("Forbidden: Admin access required", origin, 403, req);
       }
