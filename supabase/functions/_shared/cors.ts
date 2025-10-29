@@ -37,13 +37,19 @@ function isOriginAllowed(origin: string | null): boolean {
  * Get CORS headers for the given request origin
  * Returns the specific origin if allowed, otherwise uses default
  */
-export function getCorsHeaders(origin: string | null): HeadersInit {
+export function getCorsHeaders(origin: string | null, request?: Request): HeadersInit {
   const allowedOrigin = isOriginAllowed(origin) ? origin : 'https://ticketai.bet';
+  
+  // Echo requested headers for preflight robustness
+  const requestedHeaders = request?.headers.get('access-control-request-headers');
+  const allowHeaders = requestedHeaders && requestedHeaders.length > 0
+    ? requestedHeaders
+    : 'authorization, x-client-info, apikey, content-type, x-supabase-api-version';
   
   return {
     'Access-Control-Allow-Origin': allowedOrigin!,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Max-Age': '86400', // 24 hours
     'Vary': 'Origin',
   };
@@ -52,10 +58,10 @@ export function getCorsHeaders(origin: string | null): HeadersInit {
 /**
  * Handle preflight OPTIONS request
  */
-export function handlePreflight(origin: string | null): Response {
+export function handlePreflight(origin: string | null, request?: Request): Response {
   return new Response(null, {
     status: 204,
-    headers: getCorsHeaders(origin),
+    headers: getCorsHeaders(origin, request),
   });
 }
 
@@ -65,12 +71,13 @@ export function handlePreflight(origin: string | null): Response {
 export function jsonResponse(
   data: unknown,
   origin: string | null,
-  status = 200
+  status = 200,
+  request?: Request
 ): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      ...getCorsHeaders(origin),
+      ...getCorsHeaders(origin, request),
       'Content-Type': 'application/json',
     },
   });
@@ -82,7 +89,8 @@ export function jsonResponse(
 export function errorResponse(
   message: string,
   origin: string | null,
-  status = 500
+  status = 500,
+  request?: Request
 ): Response {
-  return jsonResponse({ success: false, error: message }, origin, status);
+  return jsonResponse({ success: false, error: message }, origin, status, request);
 }

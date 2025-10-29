@@ -140,7 +140,7 @@ export const AdminRefreshButton = () => {
           .gte("started_at", fiveMinutesAgo)
           .order("started_at", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (logData) {
           finalState = "fallback_ok";
