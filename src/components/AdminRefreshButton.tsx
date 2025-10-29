@@ -178,9 +178,21 @@ export const AdminRefreshButton = () => {
     try {
       toast.info(`Refreshing stats for ${windowHours}h window...`);
       
+      // Get current session to ensure we have a valid token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
       const { data, error } = await supabase.functions.invoke(
         "stats-refresh",
-        { body: { window_hours: windowHours, stats_ttl_hours: 24 } }
+        { 
+          body: { window_hours: windowHours, stats_ttl_hours: 24 },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
       );
 
       if (error) {
@@ -207,9 +219,21 @@ export const AdminRefreshButton = () => {
     try {
       toast.info(`Warming ${windowHours}h odds pipeline...`);
       
+      // Get current session to ensure we have a valid token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+      
       const { data, error } = await supabase.functions.invoke(
         "warmup-odds",
-        { body: { window_hours: windowHours } }
+        { 
+          body: { window_hours: windowHours },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
       );
 
       if (error) {

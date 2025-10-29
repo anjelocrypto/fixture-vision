@@ -80,10 +80,13 @@ serve(async (req) => {
   try {
     // Admin gate: verify user is whitelisted
     const authHeader = req.headers.get("authorization") ?? "";
+    console.log("[warmup-odds] Auth header present:", !!authHeader);
+    
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
 
     if (!jwt) {
       console.error("[warmup-odds] No authorization token provided");
+      console.log("[warmup-odds] Headers:", Array.from(req.headers.entries()));
       return errorResponse("authentication_required", origin, 401, req);
     }
 

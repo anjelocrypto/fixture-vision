@@ -88,7 +88,8 @@ Deno.serve(async (req) => {
     const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
 
     if (!supabaseUrl || !supabaseKey || !supabaseAnonKey || !apiKey) {
-      throw new Error("Missing required environment variables");
+      console.error("[stats-refresh] Missing environment variables");
+      return errorResponse("Missing required environment variables", origin, 500, req);
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
