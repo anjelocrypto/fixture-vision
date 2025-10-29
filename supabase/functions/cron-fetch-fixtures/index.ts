@@ -19,23 +19,22 @@ serve(async (req) => {
   const jobName = 'cron-fetch-fixtures';
 
   try {
-    // 1. Validate cron key
+    // 1. Initialize Supabase service role client (needed for key validation)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 2. Validate cron key from DB
     const cronKey = req.headers.get('X-CRON-KEY');
-    const expectedKey = Deno.env.get('CRON_INTERNAL_KEY');
+    const { data: expectedKey, error: keyError } = await supabase.rpc('get_cron_internal_key');
     
-    if (!cronKey || cronKey !== expectedKey) {
+    if (keyError || !expectedKey || !cronKey || cronKey !== expectedKey) {
       console.error('[cron-fetch-fixtures] Unauthorized: Invalid or missing X-CRON-KEY');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // 2. Initialize Supabase service role client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     // 3. Try to acquire lock
     const { data: lockAcquired, error: lockError } = await supabase.rpc('acquire_cron_lock', {
       p_job_name: jobName,
