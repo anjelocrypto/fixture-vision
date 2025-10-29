@@ -22,16 +22,22 @@ export const MIN_SAMPLE_SIZE = 3;
 
 // League allowlist for expanded variety (country codes)
 export const ALLOWED_LEAGUES = [
-  "England",      // Premier League + Championship
-  "Spain",        // La Liga + La Liga 2
+  "England",      // Premier League + Championship + League One + League Two + National
+  "Spain",        // La Liga + La Liga 2 + Primera RFEF
   "Italy",        // Serie A + Serie B
-  "Germany",      // Bundesliga + 2. Bundesliga
-  "France",       // Ligue 1 + Ligue 2
-  "Netherlands",  // Eredivisie
-  "Portugal",     // Primeira Liga
-  "Turkey",       // Super Lig
-  "Belgium",      // Pro League
-  "Scotland",     // Premiership
+  "Germany",      // Bundesliga + 2. Bundesliga + 3. Liga
+  "France",       // Ligue 1 + Ligue 2 + National 1
+  "Netherlands",  // Eredivisie + Eerste Divisie
+  "Portugal",     // Primeira Liga + Liga Portugal 2
+  "Turkey",       // Super Lig + 1. Lig
+  "Belgium",      // Pro League + Challenger Pro League
+  "Scotland",     // Premiership + Championship
+  "Austria",      // Bundesliga + 2. Liga
+  "Switzerland",  // Super League
+  "Greece",       // Super League
+  "Denmark",      // Superliga
+  "Norway",       // Eliteserien
+  "Sweden",       // Allsvenskan
   "USA",          // MLS
   "Brazil",       // Serie A
   "Argentina",    // Liga Profesional

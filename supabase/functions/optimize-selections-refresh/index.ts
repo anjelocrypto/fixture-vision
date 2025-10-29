@@ -5,6 +5,7 @@ import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
 import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS } from "../_shared/config.ts";
+import { detectAvailableMarkets } from "../_shared/market_detection.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -188,8 +189,17 @@ serve(async (req) => {
 
       const bookmakers = oddsData.payload?.bookmakers || [];
 
-      // For each market, apply rules
-      const markets: StatMarket[] = ["goals", "corners", "cards", "fouls", "offsides"];
+      // Detect available markets in the odds data (lower leagues may not have all markets)
+      const availableMarkets = detectAvailableMarkets(oddsData.payload);
+      
+      // Only process markets we have odds for (goals, corners, cards are most common)
+      const allMarkets: StatMarket[] = ["goals", "corners", "cards", "fouls", "offsides"];
+      const markets = allMarkets.filter(m => {
+        // Always try goals, corners, cards - they're most common
+        if (m === "goals" || m === "corners" || m === "cards") return true;
+        // Skip fouls/offsides if not available (rare in lower leagues)
+        return availableMarkets.has(m);
+      });
 
       for (const market of markets) {
         const combinedValue = combined[market];

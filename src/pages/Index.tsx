@@ -28,8 +28,20 @@ const MOCK_COUNTRIES = [
   { id: 135, name: "Italy", flag: "🇮🇹", code: "IT" },
   { id: 78, name: "Germany", flag: "🇩🇪", code: "DE" },
   { id: 61, name: "France", flag: "🇫🇷", code: "FR" },
-  { id: 2, name: "Portugal", flag: "🇵🇹", code: "PT" },
-  { id: 1, name: "Brazil", flag: "🇧🇷", code: "BR" },
+  { id: 88, name: "Netherlands", flag: "🇳🇱", code: "NL" },
+  { id: 94, name: "Portugal", flag: "🇵🇹", code: "PT" },
+  { id: 203, name: "Turkey", flag: "🇹🇷", code: "TR" },
+  { id: 144, name: "Belgium", flag: "🇧🇪", code: "BE" },
+  { id: 179, name: "Scotland", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", code: "GB-SCT" },
+  { id: 218, name: "Austria", flag: "🇦🇹", code: "AT" },
+  { id: 207, name: "Switzerland", flag: "🇨🇭", code: "CH" },
+  { id: 197, name: "Greece", flag: "🇬🇷", code: "GR" },
+  { id: 119, name: "Denmark", flag: "🇩🇰", code: "DK" },
+  { id: 103, name: "Norway", flag: "🇳🇴", code: "NO" },
+  { id: 113, name: "Sweden", flag: "🇸🇪", code: "SE" },
+  { id: 253, name: "USA", flag: "🇺🇸", code: "US" },
+  { id: 71, name: "Brazil", flag: "🇧🇷", code: "BR" },
+  { id: 128, name: "Argentina", flag: "🇦🇷", code: "AR" },
 ];
 
 const Index = () => {
