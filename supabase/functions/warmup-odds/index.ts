@@ -141,7 +141,8 @@ serve(async (req) => {
         message: `Successfully warmed ${window_hours}h window: ${backfillData.fetched || 0} odds fetched, ${optimizeData.inserted || 0} selections created`
       },
       origin,
-      200
+      200,
+      req
     );
 
   } catch (error) {
@@ -152,7 +153,8 @@ serve(async (req) => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       origin,
-      500
+      500,
+      req
     );
   }
 });
