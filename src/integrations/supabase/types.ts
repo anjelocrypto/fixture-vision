@@ -56,6 +56,27 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_job_locks: {
+        Row: {
+          job_name: string
+          locked_at: string | null
+          locked_by: string | null
+          locked_until: string
+        }
+        Insert: {
+          job_name: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_until: string
+        }
+        Update: {
+          job_name?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_until?: string
+        }
+        Relationships: []
+      }
       fixtures: {
         Row: {
           created_at: string | null
@@ -502,6 +523,10 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_cron_lock: {
+        Args: { p_duration_minutes?: number; p_job_name: string }
+        Returns: boolean
+      }
       backfill_optimized_selections: {
         Args: never
         Returns: {
@@ -520,6 +545,7 @@ export type Database = {
         Returns: boolean
       }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
       try_use_feature: {
         Args: { feature_key: string }
         Returns: {

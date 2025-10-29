@@ -47,3 +47,9 @@ verify_jwt = true
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.cron-fetch-fixtures]
+verify_jwt = false
+
+[functions.cron-warmup-odds]
+verify_jwt = false
