@@ -1,6 +1,76 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fetchTeamLast5FixtureIds, computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { apiHeaders, API_BASE } from "../_shared/api.ts";
+import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES } from "../_shared/leagues.ts";
+
+
+// Simple delay helper
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+// Exponential backoff wrapper for fetch
+async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 5, baseDelayMs = 500): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        console.warn(`[stats-refresh] ${url} -> ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+        await sleep(delay);
+        attempt++;
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (attempt < retries) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        console.warn(`[stats-refresh] network error, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+        await sleep(delay);
+        attempt++;
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+// Fetch teams for a league-season from API-Football
+async function fetchTeamsByLeagueSeason(leagueId: number, season: number): Promise<number[]> {
+  const url = `${API_BASE}/teams?league=${leagueId}&season=${season}`;
+  const res = await fetchWithRetry(url, { headers: apiHeaders() });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error(`[stats-refresh] teams fetch failed for league ${leagueId}: ${res.status} ${text.slice(0,180)}`);
+    return [];
+  }
+  const data = await res.json().catch(() => ({} as any));
+  const ids = (data?.response ?? []).map((r: any) => r?.team?.id).filter((x: any) => Number.isInteger(x));
+  console.log(`[stats-refresh] league ${leagueId} (${LEAGUE_NAMES[leagueId] ?? "?"}) -> ${ids.length} teams from API`);
+  return ids;
+}
+
+// Compute with retry wrapper (covers downstream API calls)
+async function computeWithRetry(teamId: number) {
+  let attempt = 0;
+  while (true) {
+    try {
+      // First call inside compute is last5 fixture ids; we also fetch here to compare cache
+      const ids = await fetchTeamLast5FixtureIds(teamId);
+      return { ids, stats: await computeLastFiveAverages(teamId) };
+    } catch (e) {
+      if (attempt < 4) {
+        const delay = 800 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        console.warn(`[stats-refresh] compute team ${teamId} failed, retrying in ${delay}ms`);
+        await sleep(delay);
+        attempt++;
+        continue;
+      }
+      throw e;
+    }
+  }
+}
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
@@ -26,11 +96,15 @@ Deno.serve(async (req) => {
     // Parse request body for configurable params
     let window_hours = 120;
     let stats_ttl_hours = 24;
+    let force = false;
+    let season = new Date().getUTCFullYear();
     
     try {
       const body = await req.json();
       if (body.window_hours) window_hours = parseInt(body.window_hours);
       if (body.stats_ttl_hours) stats_ttl_hours = parseInt(body.stats_ttl_hours);
+      if (typeof body.force === 'boolean') force = body.force;
+      if (body.season) season = parseInt(body.season);
     } catch {
       // Use defaults if no body or invalid JSON
     }
@@ -81,7 +155,7 @@ Deno.serve(async (req) => {
     // Acquire mutex to prevent concurrent runs
     const { data: lockAcquired } = await supabase.rpc('acquire_cron_lock', {
       p_job_name: 'stats-refresh',
-      p_duration_minutes: 15
+      p_duration_minutes: 60
     });
 
     if (!lockAcquired) {
