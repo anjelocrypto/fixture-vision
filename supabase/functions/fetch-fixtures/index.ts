@@ -103,83 +103,76 @@ serve(async (req) => {
     const recentFixtureIds = new Set(existingFixtures?.map(f => f.id) || []);
     console.log(`[fetch-fixtures] ${recentFixtureIds.size} fixtures already fresh (updated within ${FIXTURE_TTL_HOURS}h)`);
 
-    // Fetch fixtures for next 3 days (0, 1, 2) across all allowed leagues
+    // Fetch fixtures per league using "next" to greatly reduce API calls and stay under timeout
     const allFixtures: any[] = [];
     
-    for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
-      const targetDate = new Date(now);
-      targetDate.setDate(targetDate.getDate() + dayOffset);
-      const dateStr = targetDate.toISOString().split('T')[0];
+    for (const leagueId of ALLOWED_LEAGUE_IDS) {
+      if (!perLeagueCounters[leagueId]) {
+        perLeagueCounters[leagueId] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
+      }
+      perLeagueCounters[leagueId].requested++;
       
-      console.log(`[fetch-fixtures] Day ${dayOffset}: ${dateStr} - scanning ${ALLOWED_LEAGUE_IDS.length} leagues`);
+      // Use the API-Football `next` parameter to fetch upcoming fixtures in one call per league
+      // This avoids per-date scans that can hit platform timeouts
+      const url = `${API_BASE}/fixtures?league=${leagueId}&next=100`;
       
-      for (const leagueId of ALLOWED_LEAGUE_IDS) {
-        if (!perLeagueCounters[leagueId]) {
-          perLeagueCounters[leagueId] = { requested: 0, returned: 0, in_window: 0, inserted: 0 };
+      try {
+        const response = await fetch(url, { headers: apiHeaders() });
+        apiCalls++;
+
+        if (!response.ok) {
+          console.error(`[fetch-fixtures] API error ${response.status} for league ${leagueId}`);
+          failureReasons[`api_${response.status}`] = (failureReasons[`api_${response.status}`] || 0) + 1;
+          continue;
         }
-        perLeagueCounters[leagueId].requested++;
+
+        const data = await response.json();
         
-        const season = getSeasonForLeague(leagueId);
-        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&date=${dateStr}`;
-        
-        try {
-          const response = await fetch(url, { headers: apiHeaders() });
-          apiCalls++;
-
-          if (!response.ok) {
-            console.error(`[fetch-fixtures] API error ${response.status} for league ${leagueId} on ${dateStr}`);
-            failureReasons[`api_${response.status}`] = (failureReasons[`api_${response.status}`] || 0) + 1;
-            continue;
-          }
-
-          const data = await response.json();
+        if (data.response && data.response.length > 0) {
+          perLeagueCounters[leagueId].returned += data.response.length;
           
-          if (data.response && data.response.length > 0) {
-            perLeagueCounters[leagueId].returned += data.response.length;
+          const validFixtures = data.response.filter((item: any) => {
+            // Must have valid structure
+            if (!item.fixture || !item.teams?.home || !item.teams?.away) {
+              failureReasons.invalid_structure = (failureReasons.invalid_structure || 0) + 1;
+              return false;
+            }
             
-            const validFixtures = data.response.filter((item: any) => {
-              // Must have valid structure
-              if (!item.fixture || !item.teams?.home || !item.teams?.away) {
-                failureReasons.invalid_structure = (failureReasons.invalid_structure || 0) + 1;
-                return false;
-              }
-              
-              // Must have timestamp
-              if (!item.fixture.timestamp) {
-                failureReasons.missing_timestamp = (failureReasons.missing_timestamp || 0) + 1;
-                return false;
-              }
-              
-              // Must be prematch only (NS = Not Started, TBD = To Be Defined)
-              if (!['NS', 'TBD'].includes(item.fixture.status.short)) {
-                return false;
-              }
-              
-              const fixtureTs = item.fixture.timestamp;
-              
-              // Strict window enforcement: [now, now+window_hours]
-              if (fixtureTs < nowTs || fixtureTs >= endTs) {
-                fixturesOutsideWindowDropped++;
-                return false;
-              }
-              
-              fixturesInWindowKept++;
-              perLeagueCounters[leagueId].in_window++;
-              leagueFixtureCounts[leagueId] = (leagueFixtureCounts[leagueId] || 0) + 1;
-              return true;
-            });
+            // Must have timestamp
+            if (!item.fixture.timestamp) {
+              failureReasons.missing_timestamp = (failureReasons.missing_timestamp || 0) + 1;
+              return false;
+            }
             
-            fixturesScannedTotal += data.response.length;
-            allFixtures.push(...validFixtures);
-          }
-
-          // Rate limiting: ~1300ms delay for ~46 RPM
-          await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
+            // Must be prematch only (NS = Not Started, TBD = To Be Defined)
+            if (!['NS', 'TBD'].includes(item.fixture.status.short)) {
+              return false;
+            }
+            
+            const fixtureTs = item.fixture.timestamp;
+            
+            // Strict window enforcement: [now, now+window_hours]
+            if (fixtureTs < nowTs || fixtureTs >= endTs) {
+              fixturesOutsideWindowDropped++;
+              return false;
+            }
+            
+            fixturesInWindowKept++;
+            perLeagueCounters[leagueId].in_window++;
+            leagueFixtureCounts[leagueId] = (leagueFixtureCounts[leagueId] || 0) + 1;
+            return true;
+          });
           
-        } catch (error) {
-          console.error(`[fetch-fixtures] Error fetching league ${leagueId} on ${dateStr}:`, error);
-          failureReasons.fetch_error = (failureReasons.fetch_error || 0) + 1;
+          fixturesScannedTotal += data.response.length;
+          allFixtures.push(...validFixtures);
         }
+
+        // Rate limiting: ~1300ms delay for ~46 RPM
+        await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
+        
+      } catch (error) {
+        console.error(`[fetch-fixtures] Error fetching league ${leagueId}:`, error);
+        failureReasons.fetch_error = (failureReasons.fetch_error || 0) + 1;
       }
     }
     
