@@ -1,4 +1,4 @@
-import { Search, Twitter, User, LogOut, Ticket, CreditCard, Sparkles } from "lucide-react";
+import { Search, Send, User, LogOut, Ticket, CreditCard, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -118,8 +118,15 @@ export function AppHeader() {
           <Button variant="ghost" size="icon" className="hidden sm:flex">
             <Search className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="hidden sm:flex">
-            <Twitter className="h-5 w-5" />
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="hidden sm:flex"
+            asChild
+          >
+            <a href="https://t.me/TICKETAIBET" target="_blank" rel="noopener noreferrer">
+              <Send className="h-5 w-5" />
+            </a>
           </Button>
           
           {session ? (
