@@ -2,22 +2,24 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
-// Helper to call edge functions with service role key
+// Helper to call edge functions with internal auth
 async function callEdgeFunction(name: string, body: unknown) {
   const baseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
   
-  if (!baseUrl || !serviceRoleKey) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  if (!baseUrl || !serviceRoleKey || !cronKey) {
+    throw new Error("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or CRON_INTERNAL_KEY");
   }
 
-  console.log(`[warmup-odds] Calling ${name} with service role auth`);
+  console.log(`[warmup-odds] Calling ${name} with internal auth`);
   
   const url = `${baseUrl}/functions/v1/${name}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${serviceRoleKey}`,
+      "x-cron-key": cronKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body ?? {}),
@@ -45,8 +47,9 @@ async function callEdgeFunction(name: string, body: unknown) {
 function triggerEdgeFunction(name: string, body: unknown) {
   const baseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!baseUrl || !serviceRoleKey) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
+  if (!baseUrl || !serviceRoleKey || !cronKey) {
+    throw new Error("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or CRON_INTERNAL_KEY");
   }
   const url = `${baseUrl}/functions/v1/${name}`;
   // Intentionally do not await – let the platform execute independently
@@ -54,6 +57,7 @@ function triggerEdgeFunction(name: string, body: unknown) {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${serviceRoleKey}`,
+      "x-cron-key": cronKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body ?? {}),
