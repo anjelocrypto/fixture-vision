@@ -32,6 +32,24 @@ export type Database = {
         }
         Relationships: []
       }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       countries: {
         Row: {
           code: string | null
@@ -536,6 +554,7 @@ export type Database = {
         }[]
       }
       ensure_trial_row: { Args: never; Returns: undefined }
+      get_cron_internal_key: { Args: never; Returns: string }
       get_trial_credits: { Args: never; Returns: number }
       has_role: {
         Args: {
