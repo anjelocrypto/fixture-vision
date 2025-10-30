@@ -617,12 +617,6 @@ export type Database = {
         }
         Relationships: []
       }
-      current_user_is_whitelisted: {
-        Row: {
-          is_whitelisted: boolean | null
-        }
-        Relationships: []
-      }
     }
     Functions: {
       acquire_cron_lock: {
