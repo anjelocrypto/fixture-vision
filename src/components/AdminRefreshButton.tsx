@@ -250,6 +250,10 @@ export const AdminRefreshButton = () => {
         backfill?: { scanned: number; fetched: number; skipped: number; failed: number };
         optimize?: { scanned: number; with_odds: number; inserted: number; skipped: number; duration_ms: number };
         message?: string;
+        statsResult?: string;
+        started?: boolean;
+        force?: boolean;
+        window_hours?: number;
       };
 
       console.log("Warmup result:", result);
@@ -258,13 +262,17 @@ export const AdminRefreshButton = () => {
         const errorMsg = result.error || "Unknown error";
         const statusInfo = result.status ? ` (status: ${result.status})` : "";
         const detailsInfo = result.details ? `\nDetails: ${JSON.stringify(result.details).substring(0, 100)}` : "";
-        
         console.error("Warmup failed:", { error: errorMsg, status: result.status, details: result.details });
         toast.error(`Warmup failed: ${errorMsg}${statusInfo}${detailsInfo}`);
         return;
       }
 
-      toast.success(result.message || "Warmup completed successfully");
+      // Interpret statsResult from warmup-odds
+      if ((result as any).statsResult === "already-running") {
+        toast.info("Stats refresh already running; warmup proceeding.");
+      } else {
+        toast.success(result.message || "Warmup queued; selections updating in background.");
+      }
 
     } catch (error) {
       console.error("Refresh error:", error);

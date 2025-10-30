@@ -155,17 +155,28 @@ serve(async (req) => {
 
     let statsStatus = "failed";
     if (statsResult.ok) {
-      // Check if it was skipped due to already running (mutex lock)
-      const reason = statsResult.data?.reason?.toLowerCase() || "";
-      if (statsResult.data?.skipped && reason.includes("already")) {
+      const sr = statsResult.data || {};
+      const reason = (sr.reason || sr.message || "").toLowerCase();
+      const normalized = (sr.statsResult || (sr.skipped && reason.includes("already") ? "already-running" : (sr.success ? "completed" : undefined)));
+      if (normalized === "already-running") {
         statsStatus = "already-running";
         console.log(`[warmup-odds] stats-refresh already running (mutex locked), proceeding with pipeline`);
-      } else if (statsResult.data?.success) {
+      } else if (sr.started === true) {
+        statsStatus = "started";
+        console.log(`[warmup-odds] stats-refresh started`);
+      } else if (sr.success) {
         statsStatus = "completed";
-        console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(statsResult.data).substring(0, 200)}`);
+        console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(sr).substring(0, 200)}`);
+      } else {
+        console.warn(`[warmup-odds] stats-refresh returned ok but unrecognized shape`, sr);
       }
     } else {
-      console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
+      if (statsResult.status === 409 || statsResult.status === 423) {
+        statsStatus = "already-running";
+        console.warn(`[warmup-odds] stats-refresh lock status ${statsResult.status}, treating as already-running`);
+      } else {
+        console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
+      }
     }
 
     // Step 2: Backfill odds (can run after stats)

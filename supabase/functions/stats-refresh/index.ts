@@ -171,14 +171,14 @@ Deno.serve(async (req) => {
       p_duration_minutes: 60
     });
 
-    if (!lockAcquired) {
       console.log("[stats-refresh] Another instance is already running, skipping");
       return jsonResponse({ 
         success: true, 
         skipped: true,
+        started: false,
+        statsResult: "already-running",
         reason: "Another stats-refresh is already running"
       }, origin, 200, req);
-    }
 
     // Get upcoming fixtures
     const now = new Date();
@@ -291,8 +291,8 @@ Deno.serve(async (req) => {
           const lastUpdate = new Date(cached.computed_at);
           if (lastUpdate > statsTTL) {
             skippedTTL++;
-            if (teamLeagueId && leagueStats.has(teamLeagueId)) {
-              leagueStats.get(teamLeagueId)!.skipped++;
+            if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+              leagueStats.get(teamLeagueId as number)!.skipped++;
             }
             continue;
           }
@@ -323,8 +323,8 @@ Deno.serve(async (req) => {
         });
 
         teamsRefreshed++;
-        if (teamLeagueId && leagueStats.has(teamLeagueId)) {
-          leagueStats.get(teamLeagueId)!.fetched++;
+        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+          leagueStats.get(teamLeagueId as number)!.fetched++;
         }
         
         if (teamsRefreshed % 20 === 0) {
@@ -333,8 +333,8 @@ Deno.serve(async (req) => {
       } catch (error) {
         console.error(`[stats-refresh] Failed to process team ${teamId}:`, error);
         failures++;
-        if (teamLeagueId && leagueStats.has(teamLeagueId)) {
-          leagueStats.get(teamLeagueId)!.errors++;
+        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+          leagueStats.get(teamLeagueId as number)!.errors++;
         }
       }
     }
