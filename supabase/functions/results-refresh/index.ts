@@ -75,27 +75,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // If not authorized via cron key, check user whitelist
+    // If not authorized via cron key, check Authorization header
     if (!isAuthorized && authHeader) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-      if (!anonKey) {
-        console.error("[results-refresh] Missing SUPABASE_ANON_KEY");
-        return errorResponse("Configuration error", origin, 500, req);
-      }
-
-      const userClient = createClient(
-        supabaseUrl,
-        anonKey,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-      
-      const { data: isWhitelisted, error: wlError } = await userClient
-        .rpc("is_user_whitelisted")
-        .single();
-      
-      if (!wlError && isWhitelisted) {
+      // Accept internal calls using service role bearer token
+      if (authHeader === `Bearer ${serviceRoleKey}`) {
         isAuthorized = true;
-        console.log("[results-refresh] Authorized via user whitelist");
+        console.log("[results-refresh] Authorized via service role bearer");
+      } else {
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+        if (!anonKey) {
+          console.error("[results-refresh] Missing SUPABASE_ANON_KEY");
+          return errorResponse("Configuration error", origin, 500, req);
+        }
+
+        const userClient = createClient(
+          supabaseUrl,
+          anonKey,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+        
+        const { data: isWhitelisted, error: wlError } = await userClient
+          .rpc("is_user_whitelisted")
+          .single();
+        
+        if (!wlError && isWhitelisted) {
+          isAuthorized = true;
+          console.log("[results-refresh] Authorized via user whitelist");
+        } else {
+          return errorResponse("Forbidden: Admin access required", origin, 403, req);
+        }
       }
     }
 

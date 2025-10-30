@@ -128,35 +128,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    // If not authorized via cron key, check user whitelist
+    // If not authorized via cron key, check Authorization header
     if (!isAuthorized && authHeader) {
-      if (!supabaseAnonKey) {
-        console.error("[stats-refresh] Missing SUPABASE_ANON_KEY");
-        return errorResponse("Configuration error", origin, 500, req);
+      // Accept internal calls using service role bearer token
+      if (authHeader === `Bearer ${supabaseKey}`) {
+        isAuthorized = true;
+        console.log("[stats-refresh] Authorized via service role bearer");
+      } else {
+        if (!supabaseAnonKey) {
+          console.error("[stats-refresh] Missing SUPABASE_ANON_KEY");
+          return errorResponse("Configuration error", origin, 500, req);
+        }
+
+        const userClient = createClient(
+          supabaseUrl,
+          supabaseAnonKey,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+
+        const { data: isWhitelisted, error: whitelistError } = await userClient
+          .rpc('is_user_whitelisted')
+          .single();
+
+        if (whitelistError) {
+          console.error("[stats-refresh] Whitelist check failed:", whitelistError.message);
+          return errorResponse("Auth check failed", origin, 401, req);
+        }
+
+        if (!isWhitelisted) {
+          console.error("[stats-refresh] User not whitelisted");
+          return errorResponse("Forbidden: Admin access required", origin, 403, req);
+        }
+
+        console.log("[stats-refresh] Authorized via whitelisted user");
+        isAuthorized = true;
       }
-
-      const userClient = createClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-
-      const { data: isWhitelisted, error: whitelistError } = await userClient
-        .rpc('is_user_whitelisted')
-        .single();
-
-      if (whitelistError) {
-        console.error("[stats-refresh] Whitelist check failed:", whitelistError.message);
-        return errorResponse("Auth check failed", origin, 401, req);
-      }
-
-      if (!isWhitelisted) {
-        console.error("[stats-refresh] User not whitelisted");
-        return errorResponse("Forbidden: Admin access required", origin, 403, req);
-      }
-
-      console.log("[stats-refresh] Authorized via whitelisted user");
-      isAuthorized = true;
     }
 
     if (!isAuthorized) {
@@ -165,20 +171,37 @@ Deno.serve(async (req) => {
 
     console.log(`[stats-refresh] Starting stats refresh job (${window_hours}h window, ${stats_ttl_hours}h TTL, force=${force})`);
 
-    // Acquire mutex to prevent concurrent runs
-    const { data: lockAcquired } = await supabase.rpc('acquire_cron_lock', {
+    const { data: lockAcquired, error: lockError } = await supabase.rpc('acquire_cron_lock', {
       p_job_name: 'stats-refresh',
       p_duration_minutes: 60
     });
 
-      console.log("[stats-refresh] Another instance is already running, skipping");
+    if (lockError) {
+      console.error('[stats-refresh] Failed to acquire lock:', lockError);
+      return errorResponse('Failed to acquire lock', origin, 500, req);
+    }
+
+    if (!lockAcquired) {
+      console.log('[stats-refresh] Another instance is already running, skipping');
+      // Optional: write lightweight log row for visibility
+      try {
+        await supabase.from('optimizer_run_logs').insert({
+          run_type: 'stats-refresh',
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          status: 'already-running',
+          notes: `window_hours=${window_hours}; ttl=${stats_ttl_hours}; force=${force}`,
+        });
+      } catch (_) {}
+
       return jsonResponse({ 
         success: true, 
         skipped: true,
         started: false,
-        statsResult: "already-running",
-        reason: "Another stats-refresh is already running"
+        statsResult: 'already-running',
+        reason: 'Another stats-refresh is already running'
       }, origin, 200, req);
+    }
 
     // Get upcoming fixtures
     const now = new Date();
@@ -384,6 +407,8 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       success: true,
+      started: true,
+      statsResult: 'completed',
       window_hours,
       stats_ttl_hours,
       teamsScanned,
