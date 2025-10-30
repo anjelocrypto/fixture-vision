@@ -57,45 +57,41 @@ Deno.serve(async (req: Request) => {
     // Create service role client (bypasses RLS for inserts)
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Authentication: X-CRON-KEY or user must be whitelisted
+    // Standardized auth: X-CRON-KEY or whitelisted user
     const cronKeyHeader = req.headers.get("x-cron-key");
     const authHeader = req.headers.get("authorization");
     
     let isAuthorized = false;
 
+    // Check X-CRON-KEY first
     if (cronKeyHeader) {
-      // Validate cron key
       const { data: dbKey, error: keyError } = await supabase
         .rpc("get_cron_internal_key")
         .single();
       
-      if (keyError || !dbKey) {
-        console.error("[results-refresh] Failed to fetch cron key:", keyError);
-        return errorResponse("Invalid cron key", origin, 401, req);
-      }
-      
-      if (cronKeyHeader === dbKey) {
+      if (!keyError && dbKey && cronKeyHeader === dbKey) {
         isAuthorized = true;
         console.log("[results-refresh] Authorized via X-CRON-KEY");
       }
-    } else if (authHeader) {
-      // Check if user is whitelisted
-      const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    }
+
+    // If not authorized via cron key, check user whitelist
+    if (!isAuthorized && authHeader) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-      
       if (!anonKey) {
         console.error("[results-refresh] Missing SUPABASE_ANON_KEY");
         return errorResponse("Configuration error", origin, 500, req);
       }
-      
+
       const userClient = createClient(
         supabaseUrl,
         anonKey,
-        { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+        { global: { headers: { Authorization: authHeader } } }
       );
       
       const { data: isWhitelisted, error: wlError } = await userClient
-        .rpc("is_user_whitelisted");
+        .rpc("is_user_whitelisted")
+        .single();
       
       if (!wlError && isWhitelisted) {
         isAuthorized = true;
@@ -104,7 +100,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!isAuthorized) {
-      return errorResponse("Unauthorized: missing or invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
+      return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
     // Parse request body
@@ -229,10 +225,10 @@ Deno.serve(async (req: Request) => {
           finished_at: new Date().toISOString(),
           goals_home: goalsHome,
           goals_away: goalsAway,
-          corners_home: cornersHome,
-          corners_away: cornersAway,
-          cards_home: cardsHome,
-          cards_away: cardsAway,
+          corners_home: cornersHome ?? undefined,
+          corners_away: cornersAway ?? undefined,
+          cards_home: cardsHome ?? undefined,
+          cards_away: cardsAway ?? undefined,
           status: apiFixture.fixture?.status?.short || "FT",
           source: "api-football",
           fetched_at: new Date().toISOString(),

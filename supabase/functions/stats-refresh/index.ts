@@ -110,28 +110,40 @@ Deno.serve(async (req) => {
       // Use defaults if no body or invalid JSON
     }
 
-    // Authentication: Either internal cron call or whitelisted admin
-    const authHeader = req.headers.get('authorization');
+    // Standardized auth: X-CRON-KEY or whitelisted user
     const cronKeyHeader = req.headers.get('x-cron-key');
+    const authHeader = req.headers.get('authorization');
     
     let isAuthorized = false;
 
-    // Check if it's an internal cron call
-    if (cronKeyHeader && cronKey && cronKeyHeader === cronKey) {
-      console.log("[stats-refresh] Authorized via CRON_INTERNAL_KEY");
-      isAuthorized = true;
-    } else if (authHeader) {
-      // Check if user is whitelisted admin - use anon key client with user JWT
-      const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    // Check X-CRON-KEY first (validate against DB, not env)
+    if (cronKeyHeader) {
+      const { data: dbKey, error: keyError } = await supabase
+        .rpc("get_cron_internal_key")
+        .single();
       
-      const supabaseUser = createClient(
+      if (!keyError && dbKey && cronKeyHeader === dbKey) {
+        isAuthorized = true;
+        console.log("[stats-refresh] Authorized via X-CRON-KEY");
+      }
+    }
+
+    // If not authorized via cron key, check user whitelist
+    if (!isAuthorized && authHeader) {
+      if (!supabaseAnonKey) {
+        console.error("[stats-refresh] Missing SUPABASE_ANON_KEY");
+        return errorResponse("Configuration error", origin, 500, req);
+      }
+
+      const userClient = createClient(
         supabaseUrl,
         supabaseAnonKey,
-        { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+        { global: { headers: { Authorization: authHeader } } }
       );
 
-      const { data: isWhitelisted, error: whitelistError } = await supabaseUser
-        .rpc('is_user_whitelisted');
+      const { data: isWhitelisted, error: whitelistError } = await userClient
+        .rpc('is_user_whitelisted')
+        .single();
 
       if (whitelistError) {
         console.error("[stats-refresh] Whitelist check failed:", whitelistError.message);
@@ -143,12 +155,12 @@ Deno.serve(async (req) => {
         return errorResponse("Forbidden: Admin access required", origin, 403, req);
       }
 
-      console.log("[stats-refresh] Authorized via whitelisted admin");
+      console.log("[stats-refresh] Authorized via whitelisted user");
       isAuthorized = true;
     }
 
     if (!isAuthorized) {
-      return errorResponse("Unauthorized: Missing credentials", origin, 401, req);
+      return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
     console.log(`[stats-refresh] Starting stats refresh job (${window_hours}h window, ${stats_ttl_hours}h TTL, force=${force})`);

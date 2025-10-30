@@ -82,37 +82,63 @@ serve(async (req) => {
   }
 
   try {
-    // Admin gate: verify user is whitelisted
-    const authHeader = req.headers.get("authorization") ?? "";
-    console.log("[warmup-odds] Auth header present:", !!authHeader);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      return errorResponse("Missing environment variables", origin, 500, req);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Standardized auth: X-CRON-KEY or whitelisted user
+    const cronKeyHeader = req.headers.get("x-cron-key");
+    const authHeader = req.headers.get("authorization");
     
-    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    let isAuthorized = false;
 
-    if (!jwt) {
-      console.error("[warmup-odds] No authorization token provided");
-      console.log("[warmup-odds] Headers:", Array.from(req.headers.entries()));
-      return errorResponse("authentication_required", origin, 401, req);
+    // Check X-CRON-KEY first
+    if (cronKeyHeader) {
+      const { data: dbKey, error: keyError } = await supabase
+        .rpc("get_cron_internal_key")
+        .single();
+      
+      if (!keyError && dbKey && cronKeyHeader === dbKey) {
+        isAuthorized = true;
+        console.log("[warmup-odds] Authorized via X-CRON-KEY");
+      }
     }
 
-    const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-    );
+    // If not authorized via cron key, check user whitelist
+    if (!isAuthorized && authHeader) {
+      const userClient = createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+        { global: { headers: { Authorization: authHeader } } }
+      );
 
-    const { data: isWhitelisted, error: whitelistError } = await supabaseUser.rpc("is_user_whitelisted");
+      const { data: isWhitelisted, error: whitelistError } = await userClient
+        .rpc("is_user_whitelisted")
+        .single();
 
-    if (whitelistError) {
-      console.error("[warmup-odds] is_user_whitelisted error:", whitelistError);
-      return errorResponse("auth_check_failed", origin, 401, req);
+      if (whitelistError) {
+        console.error("[warmup-odds] Whitelist check failed:", whitelistError);
+        return errorResponse("Auth check failed", origin, 401, req);
+      }
+
+      if (!isWhitelisted) {
+        console.warn("[warmup-odds] User not whitelisted");
+        return errorResponse("Forbidden: Admin access required", origin, 403, req);
+      }
+
+      console.log("[warmup-odds] Authorized via whitelisted user");
+      isAuthorized = true;
     }
 
-    if (!isWhitelisted) {
-      console.warn("[warmup-odds] Non-admin user attempted access");
-      return errorResponse("forbidden_admin_only", origin, 403, req);
+    if (!isAuthorized) {
+      return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
-
-    console.log("[warmup-odds] Admin access verified");
 
     const { window_hours = 48, force = false } = await req.json().catch(() => ({}));
     

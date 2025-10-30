@@ -18,34 +18,63 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    // Admin gate: verify user is whitelisted
-    const authHeader = req.headers.get('Authorization') ?? '';
-    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!jwt) {
-      console.error('[fetch-fixtures] No authorization token provided');
-      return errorResponse('authentication_required', origin, 401, req);
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      return errorResponse("Missing environment variables", origin, 500, req);
     }
 
-    const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-    );
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: isWhitelisted, error: whitelistError } = await supabaseUser.rpc('is_user_whitelisted');
+    // Standardized auth: X-CRON-KEY or whitelisted user
+    const cronKeyHeader = req.headers.get("x-cron-key");
+    const authHeader = req.headers.get("authorization");
     
-    if (whitelistError) {
-      console.error('[fetch-fixtures] is_user_whitelisted error:', whitelistError);
-      return errorResponse('auth_check_failed', origin, 401, req);
+    let isAuthorized = false;
+
+    // Check X-CRON-KEY first
+    if (cronKeyHeader) {
+      const { data: dbKey, error: keyError } = await supabase
+        .rpc("get_cron_internal_key")
+        .single();
+      
+      if (!keyError && dbKey && cronKeyHeader === dbKey) {
+        isAuthorized = true;
+        console.log("[fetch-fixtures] Authorized via X-CRON-KEY");
+      }
     }
 
-    if (!isWhitelisted) {
-      console.warn('[fetch-fixtures] Non-admin user attempted access');
-      return errorResponse('forbidden_admin_only', origin, 403, req);
+    // If not authorized via cron key, check user whitelist
+    if (!isAuthorized && authHeader) {
+      const userClient = createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: isWhitelisted, error: whitelistError } = await userClient
+        .rpc("is_user_whitelisted")
+        .single();
+
+      if (whitelistError) {
+        console.error("[fetch-fixtures] Whitelist check failed:", whitelistError);
+        return errorResponse("Auth check failed", origin, 401, req);
+      }
+
+      if (!isWhitelisted) {
+        console.warn("[fetch-fixtures] User not whitelisted");
+        return errorResponse("Forbidden: Admin access required", origin, 403, req);
+      }
+
+      console.log("[fetch-fixtures] Authorized via whitelisted user");
+      isAuthorized = true;
     }
 
-    console.log('[fetch-fixtures] Admin access verified');
+    if (!isAuthorized) {
+      return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
+    }
 
     const { window_hours = 120 } = await req.json();
     
@@ -64,11 +93,8 @@ serve(async (req) => {
       throw new Error("API_FOOTBALL_KEY not configured");
     }
 
-    // Initialize Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    // Use service role client for DB operations
+    const supabaseClient = supabase;
 
     // Acquire mutex to prevent overlapping runs triggered from UI
     const jobName = 'fetch-fixtures-admin';
