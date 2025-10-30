@@ -61,6 +61,7 @@ export const AdminRefreshButton = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFetchingFixtures, setIsFetchingFixtures] = useState(false);
   const [isRefreshingStats, setIsRefreshingStats] = useState(false);
+  const [isRefreshingResults, setIsRefreshingResults] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -274,6 +275,58 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handleRefreshResults = async (windowHours: number = 6) => {
+    setIsRefreshingResults(true);
+    
+    try {
+      toast.info(`Refreshing results for last ${windowHours}h...`);
+      
+      // Get current session to ensure we have a valid token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "results-refresh",
+        { 
+          body: { window_hours: windowHours },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Results refresh error:", error);
+        throw error;
+      }
+
+      const result = data as {
+        success: boolean;
+        window_hours?: number;
+        scanned: number;
+        inserted: number;
+        skipped: number;
+        errors: number;
+        duration_ms?: number;
+      };
+
+      console.log("Results refresh result:", result);
+      
+      const summary = `${result.scanned} scanned • ${result.inserted} inserted • ${result.skipped} skipped • ${result.errors} errors`;
+      toast.success(`Results refreshed: ${summary}`);
+
+    } catch (error) {
+      console.error("Results refresh error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Results refresh failed: ${errorMessage}`);
+    } finally {
+      setIsRefreshingResults(false);
+    }
+  };
+
   return (
     <div className="flex gap-2">
       <Button
@@ -365,6 +418,17 @@ export const AdminRefreshButton = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            onClick={() => handleRefreshResults(6)}
+            disabled={isRefreshingResults}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <CheckCircle2 className={`h-4 w-4 ${isRefreshingResults ? "animate-pulse" : ""}`} />
+            {isRefreshingResults ? "Refreshing..." : "Refresh Results (6h)"}
+          </Button>
         </>
       )}
     </div>

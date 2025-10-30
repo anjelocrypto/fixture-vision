@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.cron-warmup-odds]
 verify_jwt = false
+
+[functions.results-refresh]
+verify_jwt = false

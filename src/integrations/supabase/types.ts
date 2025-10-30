@@ -95,6 +95,62 @@ export type Database = {
         }
         Relationships: []
       }
+      fixture_results: {
+        Row: {
+          cards_away: number | null
+          cards_home: number | null
+          corners_away: number | null
+          corners_home: number | null
+          fetched_at: string
+          finished_at: string
+          fixture_id: number
+          goals_away: number
+          goals_home: number
+          kickoff_at: string
+          league_id: number
+          source: string
+          status: string
+        }
+        Insert: {
+          cards_away?: number | null
+          cards_home?: number | null
+          corners_away?: number | null
+          corners_home?: number | null
+          fetched_at?: string
+          finished_at?: string
+          fixture_id: number
+          goals_away: number
+          goals_home: number
+          kickoff_at: string
+          league_id: number
+          source?: string
+          status?: string
+        }
+        Update: {
+          cards_away?: number | null
+          cards_home?: number | null
+          corners_away?: number | null
+          corners_home?: number | null
+          fetched_at?: string
+          finished_at?: string
+          fixture_id?: number
+          goals_away?: number
+          goals_home?: number
+          kickoff_at?: string
+          league_id?: number
+          source?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fixture_results_fixture_id_fkey"
+            columns: ["fixture_id"]
+            isOneToOne: true
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fixtures: {
         Row: {
           created_at: string | null
@@ -533,6 +589,34 @@ export type Database = {
       }
     }
     Views: {
+      backtest_samples: {
+        Row: {
+          book_odds: number | null
+          bookmaker: string | null
+          cards_away: number | null
+          cards_home: number | null
+          combined_snapshot: Json | null
+          corners_away: number | null
+          corners_home: number | null
+          created_at: string | null
+          edge_pct: number | null
+          finished_at: string | null
+          fixture_id: number | null
+          goals_away: number | null
+          goals_home: number | null
+          hours_to_kickoff: number | null
+          kickoff_at: string | null
+          league_id: number | null
+          line: number | null
+          market: string | null
+          model_prob: number | null
+          result_win: boolean | null
+          sample_size: number | null
+          selection_id: string | null
+          side: string | null
+        }
+        Relationships: []
+      }
       current_user_is_whitelisted: {
         Row: {
           is_whitelisted: boolean | null
