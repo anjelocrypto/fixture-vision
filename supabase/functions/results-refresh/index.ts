@@ -80,15 +80,22 @@ Deno.serve(async (req: Request) => {
       }
     } else if (authHeader) {
       // Check if user is whitelisted
-      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || "");
-      userClient.auth.setSession({
-        access_token: authHeader.replace("Bearer ", ""),
-        refresh_token: "",
-      });
+      const jwt = authHeader.replace(/^Bearer\s+/i, "");
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+      
+      if (!anonKey) {
+        console.error("[results-refresh] Missing SUPABASE_ANON_KEY");
+        return errorResponse("Configuration error", origin, 500, req);
+      }
+      
+      const userClient = createClient(
+        supabaseUrl,
+        anonKey,
+        { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
       
       const { data: isWhitelisted, error: wlError } = await userClient
-        .rpc("is_user_whitelisted")
-        .single();
+        .rpc("is_user_whitelisted");
       
       if (!wlError && isWhitelisted) {
         isAuthorized = true;
