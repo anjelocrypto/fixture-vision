@@ -153,10 +153,18 @@ serve(async (req) => {
       force 
     });
 
-    if (!statsResult.ok) {
-      console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
+    let statsStatus = "failed";
+    if (statsResult.ok) {
+      // Check if it was skipped due to already running (mutex lock)
+      if (statsResult.data?.skipped && statsResult.data?.reason?.includes("already running")) {
+        statsStatus = "already-running";
+        console.log(`[warmup-odds] stats-refresh already running (mutex locked), proceeding with pipeline`);
+      } else if (statsResult.data?.success) {
+        statsStatus = "completed";
+        console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(statsResult.data).substring(0, 200)}`);
+      }
     } else {
-      console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(statsResult.data).substring(0, 200)}`);
+      console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
     }
 
     // Step 2: Backfill odds (can run after stats)
@@ -177,8 +185,8 @@ serve(async (req) => {
         started: true,
         window_hours,
         force,
-        statsResult: statsResult.ok ? "completed" : "failed",
-        message: `Warmup started for ${window_hours}h. Pipeline: stats (awaited) → odds → selections running in background.`,
+        statsResult: statsStatus,
+        message: `Warmup started for ${window_hours}h. Pipeline: stats (${statsStatus}) → odds → selections running in background.`,
       },
       origin,
       202,
