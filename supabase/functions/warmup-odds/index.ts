@@ -156,7 +156,8 @@ serve(async (req) => {
     let statsStatus = "failed";
     if (statsResult.ok) {
       // Check if it was skipped due to already running (mutex lock)
-      if (statsResult.data?.skipped && statsResult.data?.reason?.includes("already running")) {
+      const reason = statsResult.data?.reason?.toLowerCase() || "";
+      if (statsResult.data?.skipped && reason.includes("already")) {
         statsStatus = "already-running";
         console.log(`[warmup-odds] stats-refresh already running (mutex locked), proceeding with pipeline`);
       } else if (statsResult.data?.success) {
