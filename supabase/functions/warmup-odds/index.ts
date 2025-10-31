@@ -101,8 +101,7 @@ serve(async (req) => {
     // Check X-CRON-KEY first
     if (cronKeyHeader) {
       const { data: dbKey, error: keyError } = await supabase
-        .rpc("get_cron_internal_key")
-        .single();
+        .rpc("get_cron_internal_key");
       
       if (!keyError && dbKey && cronKeyHeader === dbKey) {
         isAuthorized = true;
@@ -119,8 +118,7 @@ serve(async (req) => {
       );
 
       const { data: isWhitelisted, error: whitelistError } = await userClient
-        .rpc("is_user_whitelisted")
-        .single();
+        .rpc("is_user_whitelisted");
 
       if (whitelistError) {
         console.error("[warmup-odds] Whitelist check failed:", whitelistError);
