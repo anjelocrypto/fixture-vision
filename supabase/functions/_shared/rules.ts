@@ -6,7 +6,7 @@ export type Ruleset = Record<StatMarket, Rule[]>;
 // ============================================
 // Ranges are INCLUSIVE on both ends (CLOSED intervals: lo ≤ x ≤ hi)
 // "none" (pick: null) means market is NOT ELIGIBLE in that range
-// Combined value = home_team_avg + away_team_avg (last 5 FT matches, simple average, no weighting)
+// Combined value = ((home_avg + away_avg) / 2) × multiplier (last 5 FT matches)
 export const RULES: Ruleset = {
   goals: [
     { range: [2.3, 3.2],  pick: { side: "over", line: 1.5 } },   // [2.3, 3.2] → Over 1.5

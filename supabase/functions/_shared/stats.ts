@@ -158,11 +158,11 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
 
 // Multipliers for combined stats (v2 formula)
 const METRIC_MULTIPLIERS = {
-  goals: 1.5,
-  corners: 1.7,
+  goals: 1.6,
+  corners: 1.75,
   offsides: 1.8,
   fouls: 1.8,
-  cards: 1.9,
+  cards: 1.8,
 } as const;
 
 // Sanity clamps
@@ -227,8 +227,8 @@ export function computeCombinedMetrics(
     // Apply bounds
     value = Math.max(bounds.min, Math.min(bounds.max, value));
     
-    // Round to 2 decimals
-    combined[metric] = Math.round(value * 100) / 100;
+    // Round to 1 decimal
+    combined[metric] = Math.round(value * 10) / 10;
   }
 
   console.log(
