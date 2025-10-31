@@ -2,30 +2,22 @@ export type StatMarket = "goals"|"corners"|"offsides"|"fouls"|"cards";
 export type Rule = { range: [number, number] | "gte"; pick: { side: "over"|"under", line: number } | null };
 export type Ruleset = Record<StatMarket, Rule[]>;
 
-// QUALIFICATION MATRIX v2_combined_matrix_v1
+// QUALIFICATION MATRIX v2_updated_ranges
 // ============================================
-// Ranges are INCLUSIVE on both ends (e.g., 2.7 ≤ x ≤ 4.0)
+// Ranges are INCLUSIVE on both ends (CLOSED intervals: lo ≤ x ≤ hi)
 // "none" (pick: null) means market is NOT ELIGIBLE in that range
 // Combined value = home_team_avg + away_team_avg (last 5 FT matches, simple average, no weighting)
 export const RULES: Ruleset = {
   goals: [
-    { range: [1.0, 2.0],  pick: { side: "over", line: 0.5 } },   // [1.0, 2.0] → Over 0.5
-    { range: [2.0, 2.7],  pick: { side: "over", line: 1.5 } },   // [2.0, 2.7] → Over 1.5
-    { range: [2.7, 4.0],  pick: { side: "over", line: 2.5 } },   // [2.7, 4.0] → Over 2.5
-    { range: [4.0, 5.0],  pick: { side: "over", line: 3.5 } },   // [4.0, 5.0] → Over 3.5
-    { range: [5.0, 6.0],  pick: { side: "over", line: 4.5 } },   // [5.0, 6.0] → Over 4.5
-    { range: "gte",       pick: { side: "over", line: 4.5 } },   // ≥6.0 → Over 4.5
+    { range: [2.3, 3.2],  pick: { side: "over", line: 1.5 } },   // [2.3, 3.2] → Over 1.5
+    { range: [3.3, 4.2],  pick: { side: "over", line: 2.5 } },   // [3.3, 4.2] → Over 2.5
+    { range: [4.3, 5.2],  pick: { side: "over", line: 3.5 } },   // [4.3, 5.2] → Over 3.5
+    { range: [5.3, 6.3],  pick: { side: "over", line: 4.5 } },   // [5.3, 6.3] → Over 4.5
   ],
   corners: [
-    { range: [7.0, 8.0],  pick: { side: "over", line: 7.5 } },   // [7.0, 8.0] → Over 7.5
-    { range: [8.0, 9.0],  pick: { side: "over", line: 7.5 } },   // [8.0, 9.0] → Over 7.5
-    { range: [9.0, 10.0], pick: { side: "over", line: 8.5 } },   // [9.0, 10.0] → Over 8.5
-    { range: [10.0, 11.0],pick: { side: "over", line: 8.5 } },   // [10.0, 11.0] → Over 8.5
-    { range: [11.0, 12.0],pick: { side: "over", line: 9.5 } },   // [11.0, 12.0] → Over 9.5
-    { range: [12.0, 13.0],pick: { side: "over", line: 9.5 } },   // [12.0, 13.0] → Over 9.5
-    { range: [14.0, 15.0],pick: { side: "over", line: 9.5 } },   // [14.0, 15.0] → Over 9.5
-    { range: [15.0, 16.0],pick: { side: "over", line: 10.5 } },  // [15.0, 16.0] → Over 10.5
-    { range: "gte",       pick: { side: "over", line: 10.5 } },  // ≥16.0 → Over 10.5
+    { range: [10, 12],    pick: { side: "over", line: 8.5 } },   // [10, 12] → Over 8.5
+    { range: [13, 15],    pick: { side: "over", line: 9.5 } },   // [13, 15] → Over 9.5
+    { range: [16, 18],    pick: { side: "over", line: 10.5 } },  // [16, 18] → Over 10.5
   ],
   offsides: [
     { range: [1.0, 2.0],  pick: null },                          // [1.0, 2.0] → none (not eligible)
@@ -64,7 +56,7 @@ export const RULES: Ruleset = {
 };
 
 // Current rules version identifier for data versioning
-export const RULES_VERSION = "v2_combined_matrix_v1";
+export const RULES_VERSION = "v2_updated_ranges_20251031";
 
 export function pickFromCombined(stat: StatMarket, combinedValue: number) {
   const rules = RULES[stat];
