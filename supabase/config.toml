@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.results-refresh]
 verify_jwt = false
+
+[functions.fetch-predictions]
+verify_jwt = false
+
+[functions.populate-winner-outcomes]
+verify_jwt = false

@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Pricing from "./pages/Pricing";
 import Account from "./pages/Account";
+import Winner from "./pages/Winner";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -46,6 +47,14 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Account />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/winner"
+                element={
+                  <ProtectedRoute>
+                    <Winner />
                   </ProtectedRoute>
                 }
               />

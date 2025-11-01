@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3 } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Mock countries data - comprehensive coverage
@@ -896,12 +896,20 @@ const Index = () => {
               {/* Filterizer Toggle */}
               <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                 <Button
-                  className="w-full gap-2"
+                  className="w-full gap-2 mb-2"
                   variant={showFilterizer ? "default" : "outline"}
                   onClick={() => setShowFilterizer(!showFilterizer)}
                 >
                   <Filter className="h-4 w-4" />
                   FILTERIZER
+                </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant="outline"
+                  onClick={() => navigate("/winner")}
+                >
+                  <Trophy className="h-4 w-4" />
+                  WINNER (1X2)
                 </Button>
               </div>
 
@@ -991,12 +999,20 @@ const Index = () => {
                 {/* Filterizer Toggle */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                   <Button
-                    className="w-full gap-2"
+                    className="w-full gap-2 mb-2"
                     variant={showFilterizer ? "default" : "outline"}
                     onClick={() => setShowFilterizer(!showFilterizer)}
                   >
                     <Filter className="h-4 w-4" />
                     FILTERIZER
+                  </Button>
+                  <Button
+                    className="w-full gap-2"
+                    variant="outline"
+                    onClick={() => navigate("/winner")}
+                  >
+                    <Trophy className="h-4 w-4" />
+                    WINNER (1X2)
                   </Button>
                 </div>
 

@@ -62,6 +62,8 @@ export const AdminRefreshButton = () => {
   const [isFetchingFixtures, setIsFetchingFixtures] = useState(false);
   const [isRefreshingStats, setIsRefreshingStats] = useState(false);
   const [isRefreshingResults, setIsRefreshingResults] = useState(false);
+  const [isFetchingPredictions, setIsFetchingPredictions] = useState(false);
+  const [isPopulatingOutcomes, setIsPopulatingOutcomes] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -335,6 +337,106 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handleFetchPredictions = async (windowHours: number = 72) => {
+    setIsFetchingPredictions(true);
+    
+    try {
+      toast.info(`Fetching predictions for ${windowHours}h window...`);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "fetch-predictions",
+        { 
+          body: { window_hours: windowHours, force: false },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Fetch predictions error:", error);
+        throw error;
+      }
+
+      const result = data as {
+        success: boolean;
+        scanned: number;
+        fetched: number;
+        upserted: number;
+        skipped: number;
+        failed: number;
+        duration_ms: number;
+      };
+
+      console.log("Fetch predictions result:", result);
+      
+      const summary = `${result.scanned} scanned • ${result.fetched} fetched • ${result.upserted} upserted • ${result.skipped} skipped • ${result.failed} failed`;
+      toast.success(`Predictions: ${summary}`);
+
+    } catch (error) {
+      console.error("Fetch predictions error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Fetch predictions failed: ${errorMessage}`);
+    } finally {
+      setIsFetchingPredictions(false);
+    }
+  };
+
+  const handlePopulateOutcomes = async (windowHours: number = 72) => {
+    setIsPopulatingOutcomes(true);
+    
+    try {
+      toast.info(`Populating winner outcomes for ${windowHours}h window...`);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "populate-winner-outcomes",
+        { 
+          body: { window_hours: windowHours },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Populate outcomes error:", error);
+        throw error;
+      }
+
+      const result = data as {
+        success: boolean;
+        scanned: number;
+        withOdds: number;
+        upserted: number;
+        skipped: number;
+        failed: number;
+        duration_ms: number;
+      };
+
+      console.log("Populate outcomes result:", result);
+      
+      const summary = `${result.scanned} scanned • ${result.withOdds} with odds • ${result.upserted} upserted • ${result.skipped} skipped • ${result.failed} failed`;
+      toast.success(`Winner outcomes: ${summary}`);
+
+    } catch (error) {
+      console.error("Populate outcomes error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Populate outcomes failed: ${errorMessage}`);
+    } finally {
+      setIsPopulatingOutcomes(false);
+    }
+  };
+
   return (
     <div className="flex gap-2">
       <Button
@@ -437,6 +539,29 @@ export const AdminRefreshButton = () => {
             <CheckCircle2 className={`h-4 w-4 ${isRefreshingResults ? "animate-pulse" : ""}`} />
             {isRefreshingResults ? "Refreshing..." : "Refresh Results (6h)"}
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isFetchingPredictions || isPopulatingOutcomes}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${(isFetchingPredictions || isPopulatingOutcomes) ? "animate-spin" : ""}`} />
+                Winner Pipeline
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleFetchPredictions(72)}>
+                📊 Fetch Predictions (72h)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handlePopulateOutcomes(72)}>
+                🎯 Populate Outcomes (72h)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </>
       )}
     </div>
