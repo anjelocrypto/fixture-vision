@@ -97,6 +97,10 @@ const Index = () => {
   const [showFilterizer, setShowFilterizer] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
+  const [filterizerOffset, setFilterizerOffset] = useState(0);
+  const [filterizerTotalQualified, setFilterizerTotalQualified] = useState(0);
+  const [filterizerHasMore, setFilterizerHasMore] = useState(false);
+  const [loadingMoreFilterizer, setLoadingMoreFilterizer] = useState(false);
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const [currentTicket, setCurrentTicket] = useState<any>(null);
   const [generatingTicket, setGeneratingTicket] = useState(false);
@@ -614,6 +618,7 @@ const Index = () => {
 
   const handleApplyFilters = async (filters: FilterCriteria) => {
     setFilterCriteria(filters);
+    setFilterizerOffset(0); // Reset pagination
 
     try {
       const session = await supabase.auth.getSession();
@@ -627,6 +632,9 @@ const Index = () => {
           side: filters.side,
           line: filters.line,
           minOdds: filters.minOdds,
+          showAllOdds: filters.showAllOdds,
+          limit: 50,
+          offset: 0,
           // Global by default: do not send countryCode/leagueIds unless explicitly chosen in Filterizer
         },
       });
@@ -634,10 +642,15 @@ const Index = () => {
       if (error) throw error;
 
       setFilteredFixtures(data.selections || []);
+      setFilterizerTotalQualified(data.total_qualified || data.count);
+      setFilterizerHasMore(data.pagination?.has_more || false);
 
+      const displayMode = filters.showAllOdds ? "All qualifying odds" : "Best per match";
+      const totalInfo = filters.showAllOdds && data.total_qualified ? ` (${data.total_qualified} total)` : "";
+      
       toast({
         title: "Filters Applied",
-        description: `Found ${data.count} selections matching your criteria (${filters.market} Over ${filters.line})`,
+        description: `${displayMode}: Found ${data.count} selections${totalInfo} (${filters.market} Over ${filters.line})`,
       });
     } catch (error: any) {
       console.error("Error applying filters:", error);
@@ -649,9 +662,53 @@ const Index = () => {
     }
   };
 
+  const handleLoadMoreFilterizer = async () => {
+    if (!filterCriteria || loadingMoreFilterizer || !filterizerHasMore) return;
+    
+    setLoadingMoreFilterizer(true);
+    const newOffset = filterizerOffset + 50;
+    
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      
+      const { data, error } = await supabase.functions.invoke("filterizer-query", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: {
+          date: format(selectedDate, "yyyy-MM-dd"),
+          market: filterCriteria.market,
+          side: filterCriteria.side,
+          line: filterCriteria.line,
+          minOdds: filterCriteria.minOdds,
+          showAllOdds: filterCriteria.showAllOdds,
+          limit: 50,
+          offset: newOffset,
+        },
+      });
+
+      if (error) throw error;
+
+      setFilteredFixtures(prev => [...prev, ...(data.selections || [])]);
+      setFilterizerOffset(newOffset);
+      setFilterizerHasMore(data.pagination?.has_more || false);
+    } catch (error: any) {
+      console.error("Error loading more:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load more results.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMoreFilterizer(false);
+    }
+  };
+
   const handleClearFilters = () => {
     setFilterCriteria(null);
     setFilteredFixtures([]);
+    setFilterizerOffset(0);
+    setFilterizerTotalQualified(0);
+    setFilterizerHasMore(false);
     setShowFilterizer(false);
   };
 
@@ -746,16 +803,30 @@ const Index = () => {
             )}
 
             {filterCriteria ? (
-              <SelectionsDisplay 
-                selections={filteredFixtures}
-                onSelectionClick={(selection) => {
-                  console.log("Selection clicked:", selection);
-                  toast({
-                    title: "Selection Details",
-                    description: `${selection.market} ${selection.side} ${selection.line} @ ${selection.odds}`,
-                  });
-                }}
-              />
+              <>
+                <SelectionsDisplay 
+                  selections={filteredFixtures}
+                  onSelectionClick={(selection) => {
+                    console.log("Selection clicked:", selection);
+                    toast({
+                      title: "Selection Details",
+                      description: `${selection.market} ${selection.side} ${selection.line} @ ${selection.odds}`,
+                    });
+                  }}
+                />
+                {filterizerHasMore && (
+                  <div className="flex justify-center py-6">
+                    <Button
+                      variant="outline"
+                      onClick={handleLoadMoreFilterizer}
+                      disabled={loadingMoreFilterizer}
+                      className="gap-2"
+                    >
+                      {loadingMoreFilterizer ? "Loading..." : `Load More (${filterizerTotalQualified - filteredFixtures.length} remaining)`}
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <CenterRail
                 selectedDate={selectedDate}

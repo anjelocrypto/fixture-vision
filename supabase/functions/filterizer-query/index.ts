@@ -20,6 +20,9 @@ const RequestSchema = z.object({
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number().int().positive()).optional(),
   live: z.boolean().optional(),
+  showAllOdds: z.boolean().optional(), // NEW: show all bookmaker odds instead of best per fixture
+  limit: z.number().int().positive().max(200).optional(), // pagination
+  offset: z.number().int().min(0).optional(), // pagination
 });
 
 serve(async (req) => {
@@ -77,7 +80,10 @@ serve(async (req) => {
       minOdds = 1.0, 
       countryCode, 
       leagueIds, 
-      live = false 
+      live = false,
+      showAllOdds = false,
+      limit = 50,
+      offset = 0
     } = validation.data;
 
     // Get the qualification range for this market/line combination
@@ -248,8 +254,12 @@ serve(async (req) => {
       query = query.eq("country_code", countryCode);
     }
 
-    // Sort by odds DESC so best per fixture is first, then kickoff
-    query = query.order("odds", { ascending: false }).order("utc_kickoff", { ascending: true });
+    // Sort by odds ASC when showing all, DESC when showing best per fixture
+    const oddsOrder = showAllOdds ? true : false; // ASC for all odds, DESC for best per fixture
+    query = query
+      .order("odds", { ascending: oddsOrder })
+      .order("utc_kickoff", { ascending: true })
+      .order("bookmaker", { ascending: true });
 
     const { data: selections, error: selectionsError } = await query;
 
@@ -304,18 +314,25 @@ serve(async (req) => {
     const qualifiedCount = rows.length;
     console.log(`[filterizer-query] Stage 2: qualified=${qualifiedCount} (dropped: not_qualified=${qualifiedDropped}, suspicious=${suspiciousDropped})`);
 
-    // Dedupe: keep best odds per (fixture, market) - use composite key for consistency with ticket creator
-    const bestByFixtureMarket = new Map<string, any>();
-    for (const row of rows) {
-      const key = `${row.fixture_id}|${row.market}`;
-      const prev = bestByFixtureMarket.get(key);
-      if (!prev || Number(row.odds) > Number(prev.odds)) {
-        bestByFixtureMarket.set(key, row);
+    // Dedupe or keep all based on showAllOdds
+    let deduped: any[];
+    if (showAllOdds) {
+      // Keep all odds, apply pagination
+      deduped = rows.slice(offset, offset + limit);
+      console.log(`[filterizer-query] Stage 3: showAllOdds=true, paginated=${deduped.length} (total=${qualifiedCount}, offset=${offset}, limit=${limit})`);
+    } else {
+      // Dedupe: keep best odds per (fixture, market)
+      const bestByFixtureMarket = new Map<string, any>();
+      for (const row of rows) {
+        const key = `${row.fixture_id}|${row.market}`;
+        const prev = bestByFixtureMarket.get(key);
+        if (!prev || Number(row.odds) > Number(prev.odds)) {
+          bestByFixtureMarket.set(key, row);
+        }
       }
+      deduped = Array.from(bestByFixtureMarket.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
+      console.log(`[filterizer-query] Stage 3: dedup=${deduped.length} (removed ${qualifiedCount - deduped.length} duplicate bookmakers)`);
     }
-    const deduped = Array.from(bestByFixtureMarket.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
-    
-    console.log(`[filterizer-query] Stage 3: dedup=${deduped.length} (removed ${qualifiedCount - deduped.length} duplicate bookmakers)`);
 
     // Fetch fixture metadata for enrichment
     const fixtureIds = deduped.map((row: any) => row.fixture_id);
@@ -384,10 +401,12 @@ serve(async (req) => {
       JSON.stringify({
         selections: enriched,
         count: enriched.length,
+        total_qualified: qualifiedCount, // Total before pagination
         scope: scopeType,
         scope_count: scopeCount || 0,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
-        filters: { market, side, line, minOdds, rulesVersion: RULES_VERSION },
+        filters: { market, side, line, minOdds, showAllOdds, rulesVersion: RULES_VERSION },
+        pagination: { limit, offset, has_more: showAllOdds && (offset + limit < qualifiedCount) },
         debug: {
           counters: {
             in_window: inWindow || 0,

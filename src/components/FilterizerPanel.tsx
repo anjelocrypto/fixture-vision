@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { X, Filter } from "lucide-react";
+import { X, Filter, List, TrendingUp } from "lucide-react";
 
 interface FilterizerPanelProps {
   onApplyFilters: (filters: FilterCriteria) => void;
@@ -17,6 +17,7 @@ export interface FilterCriteria {
   side: "over" | "under"; // currently fixed to 'over' in UI
   line: number;
   minOdds: number;
+  showAllOdds: boolean; // NEW: show all bookmaker odds
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -45,6 +46,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
+  const [showAllOdds, setShowAllOdds] = useState<boolean>(true); // Default to show all odds
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -62,6 +64,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       side: "over",
       line: selectedLine,
       minOdds,
+      showAllOdds,
     };
     onApplyFilters(filters);
   };
@@ -70,6 +73,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setSelectedMarket("goals");
     setSelectedLine(2.5);
     setMinOdds(1.50);
+    setShowAllOdds(true);
     onClearFilters();
   };
 
@@ -91,8 +95,38 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       </div>
 
       <div className="space-y-6">
-        {/* Market Selection */}
+        {/* View Toggle */}
         <div className="space-y-3">
+          <Label className="text-sm font-medium">Display Mode</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant={showAllOdds ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowAllOdds(true)}
+              className="gap-2"
+            >
+              <List className="h-4 w-4" />
+              All Qualifying Odds
+            </Button>
+            <Button
+              variant={!showAllOdds ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowAllOdds(false)}
+              className="gap-2"
+            >
+              <TrendingUp className="h-4 w-4" />
+              Best per Match
+            </Button>
+          </div>
+          {showAllOdds && (
+            <p className="text-xs text-muted-foreground">
+              Showing every bookmaker line, sorted by odds (low to high)
+            </p>
+          )}
+        </div>
+
+        {/* Market Selection */}
+        <div className="space-y-3 pt-4 border-t">
           <Label className="text-sm font-medium">Select Market</Label>
           <div className="grid grid-cols-2 gap-2">
             {MARKET_OPTIONS.map((market) => (
