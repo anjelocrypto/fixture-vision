@@ -125,4 +125,46 @@ All colors MUST be HSL.
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
   }
+
+  /* Prose styles for legal documents */
+  .prose {
+    @apply text-foreground;
+  }
+
+  .prose h1 {
+    @apply text-foreground font-bold;
+  }
+
+  .prose h2 {
+    @apply text-foreground font-semibold;
+    scroll-margin-top: 2rem;
+  }
+
+  .prose h3 {
+    @apply text-foreground font-semibold;
+  }
+
+  .prose p {
+    @apply text-foreground/90 leading-relaxed mb-4;
+  }
+
+  .prose ul {
+    @apply list-disc pl-6 mb-4 space-y-2;
+  }
+
+  .prose li {
+    @apply text-foreground/90;
+  }
+
+  .prose strong {
+    @apply text-foreground font-semibold;
+  }
+
+  .prose a {
+    @apply text-primary hover:text-primary/80 underline;
+  }
+
+  .prose section {
+    @apply mb-8;
+  }
 }

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Check, ArrowLeft } from "lucide-react";
+import Footer from "@/components/Footer";
 
 const PLANS = [
   {
@@ -119,95 +120,98 @@ const Pricing = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-12 max-w-6xl">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
-          className="mb-8"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to App
-        </Button>
+    <div className="min-h-screen bg-background flex flex-col">
+      <div className="flex-1">
+        <div className="container mx-auto px-4 py-12 max-w-6xl">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/")}
+            className="mb-8"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to App
+          </Button>
 
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
-          <p className="text-muted-foreground text-lg">
-            Unlock professional analytics and tools for informed decisions
-          </p>
-        </div>
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
+            <p className="text-muted-foreground text-lg">
+              Unlock professional analytics and tools for informed decisions
+            </p>
+          </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          {PLANS.map((plan) => (
-            <Card
-              key={plan.id}
-              className={`relative ${
-                plan.recommended
-                  ? "border-primary shadow-lg scale-105"
-                  : ""
-              }`}
-            >
-              {plan.recommended && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground px-4 py-1">
-                    RECOMMENDED
-                  </Badge>
-                </div>
-              )}
-              {plan.badge && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-secondary text-secondary-foreground px-4 py-1">
-                    {plan.badge}
-                  </Badge>
-                </div>
-              )}
-              <CardHeader className="text-center pt-8">
-                <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                <CardDescription>{plan.description}</CardDescription>
-                <div className="mt-4">
-                  <div className="text-4xl font-bold">{plan.price}</div>
-                  {plan.usdApprox && (
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {plan.usdApprox}
-                    </div>
-                  )}
-                  <div className="text-sm text-muted-foreground mt-2">
-                    {plan.interval}
+          <div className="grid md:grid-cols-3 gap-8">
+            {PLANS.map((plan) => (
+              <Card
+                key={plan.id}
+                className={`relative ${
+                  plan.recommended
+                    ? "border-primary shadow-lg scale-105"
+                    : ""
+                }`}
+              >
+                {plan.recommended && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-primary text-primary-foreground px-4 py-1">
+                      RECOMMENDED
+                    </Badge>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  className="w-full mb-6"
-                  size="lg"
-                  variant={plan.recommended ? "default" : "outline"}
-                  onClick={() => handleSelectPlan(plan.id)}
-                  disabled={loading === plan.id}
-                >
-                  {loading === plan.id ? "Loading..." : "Get Started"}
-                </Button>
-                <ul className="space-y-3">
-                  {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                      <span className="text-sm">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                )}
+                {plan.badge && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-secondary text-secondary-foreground px-4 py-1">
+                      {plan.badge}
+                    </Badge>
+                  </div>
+                )}
+                <CardHeader className="text-center pt-8">
+                  <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                  <CardDescription>{plan.description}</CardDescription>
+                  <div className="mt-4">
+                    <div className="text-4xl font-bold">{plan.price}</div>
+                    {plan.usdApprox && (
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {plan.usdApprox}
+                      </div>
+                    )}
+                    <div className="text-sm text-muted-foreground mt-2">
+                      {plan.interval}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    className="w-full mb-6"
+                    size="lg"
+                    variant={plan.recommended ? "default" : "outline"}
+                    onClick={() => handleSelectPlan(plan.id)}
+                    disabled={loading === plan.id}
+                  >
+                    {loading === plan.id ? "Loading..." : "Get Started"}
+                  </Button>
+                  <ul className="space-y-3">
+                    {plan.features.map((feature, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-        <div className="text-center mt-12 text-sm text-muted-foreground">
-          <p>
-            All plans include full access to our analytics tools. Cancel anytime.
-          </p>
-          <p className="mt-2">
-            Secure payment processing powered by Stripe
-          </p>
+          <div className="text-center mt-12 text-sm text-muted-foreground">
+            <p>
+              All plans include full access to our analytics tools. Cancel anytime.
+            </p>
+            <p className="mt-2">
+              Secure payment processing powered by Stripe
+            </p>
+          </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };
