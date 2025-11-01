@@ -14,14 +14,16 @@ interface RequestBody {
 serve(async (req) => {
   const origin = req.headers.get("origin");
 
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return handlePreflight(origin, req);
   }
 
   const startTime = Date.now();
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
     // Verify cron key or admin JWT
     const cronKey = req.headers.get("x-cron-key");
     const validCronKey = Deno.env.get("CRON_INTERNAL_KEY");
@@ -32,24 +34,37 @@ serve(async (req) => {
       isAuthorized = true;
       console.log("[fetch-predictions] Authorized via cron key");
     } else if (authHeader) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-      if (authError || !user) {
-        console.error("[fetch-predictions] Auth failed:", authError?.message);
-        return errorResponse("Unauthorized", origin, 401, req);
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+        if (authError || !user) {
+          console.error("[fetch-predictions] Auth failed:", authError?.message);
+          return errorResponse("Unauthorized", origin, 401, req);
+        }
+        const { data: roleData } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
+        if (!roleData) {
+          return errorResponse("Admin access required", origin, 403, req);
+        }
+        isAuthorized = true;
+        console.log("[fetch-predictions] Authorized via admin JWT");
+      } catch (authErr) {
+        console.error("[fetch-predictions] Auth error:", authErr);
+        return errorResponse("Authentication error", origin, 401, req);
       }
-      const { data: roleData } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
-      if (!roleData) {
-        return errorResponse("Admin access required", origin, 403, req);
-      }
-      isAuthorized = true;
-      console.log("[fetch-predictions] Authorized via admin JWT");
     }
 
     if (!isAuthorized) {
       return errorResponse("Unauthorized", origin, 401, req);
     }
 
-    const body: RequestBody = await req.json().catch(() => ({}));
+    let body: RequestBody = {};
+    try {
+      if (req.method === "POST") {
+        body = await req.json();
+      }
+    } catch (e) {
+      console.warn("[fetch-predictions] Failed to parse body:", e);
+    }
+    
     const windowHours = body.window_hours ?? 72;
     const force = body.force ?? false;
 
@@ -165,6 +180,7 @@ serve(async (req) => {
     }, origin, 200, req);
   } catch (err) {
     console.error("[fetch-predictions] Unhandled error:", err);
-    return errorResponse(err instanceof Error ? err.message : "Unknown error", origin, 500, req);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return errorResponse(message, origin, 500, req);
   }
 });
