@@ -480,7 +480,15 @@ export type Database = {
           outcome?: string
           utc_kickoff?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outcome_selections_fixture_fk"
+            columns: ["fixture_id"]
+            isOneToOne: false
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       predictions_cache: {
         Row: {
@@ -712,7 +720,15 @@ export type Database = {
           rk: number | null
           utc_kickoff: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outcome_selections_fixture_fk"
+            columns: ["fixture_id"]
+            isOneToOne: false
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
