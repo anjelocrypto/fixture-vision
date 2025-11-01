@@ -46,7 +46,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
-  const [showAllOdds, setShowAllOdds] = useState<boolean>(true); // Default to show all odds
+  const [showAllOdds, setShowAllOdds] = useState<boolean>(false); // Default to best per match
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -73,7 +73,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setSelectedMarket("goals");
     setSelectedLine(2.5);
     setMinOdds(1.50);
-    setShowAllOdds(true);
+    setShowAllOdds(false);
     onClearFilters();
   };
 
@@ -100,15 +100,6 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
           <Label className="text-sm font-medium">Display Mode</Label>
           <div className="grid grid-cols-2 gap-2">
             <Button
-              variant={showAllOdds ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowAllOdds(true)}
-              className="gap-2"
-            >
-              <List className="h-4 w-4" />
-              All Qualifying Odds
-            </Button>
-            <Button
               variant={!showAllOdds ? "default" : "outline"}
               size="sm"
               onClick={() => setShowAllOdds(false)}
@@ -117,10 +108,23 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
               <TrendingUp className="h-4 w-4" />
               Best per Match
             </Button>
+            <Button
+              variant={showAllOdds ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowAllOdds(true)}
+              className="gap-2"
+            >
+              <List className="h-4 w-4" />
+              All Qualifying Odds
+            </Button>
           </div>
-          {showAllOdds && (
+          {!showAllOdds ? (
             <p className="text-xs text-muted-foreground">
-              Showing every bookmaker line, sorted by odds (low to high)
+              One fixture per match, showing best available odds (high to low)
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Every bookmaker line, sorted by odds (low to high)
             </p>
           )}
         </div>

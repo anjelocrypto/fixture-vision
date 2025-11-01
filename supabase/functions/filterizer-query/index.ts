@@ -254,11 +254,14 @@ serve(async (req) => {
       query = query.eq("country_code", countryCode);
     }
 
-    // Sort by odds ASC when showing all, DESC when showing best per fixture
+    // Sort strategy:
+    // - showAllOdds=true: sort by odds ASC (lowest first)
+    // - showAllOdds=false: sort by odds DESC (highest first) for best-per-fixture mode
     const oddsOrder = showAllOdds ? true : false; // ASC for all odds, DESC for best per fixture
     query = query
       .order("odds", { ascending: oddsOrder })
       .order("utc_kickoff", { ascending: true })
+      .order("fixture_id", { ascending: true })
       .order("bookmaker", { ascending: true });
 
     const { data: selections, error: selectionsError } = await query;
@@ -321,17 +324,18 @@ serve(async (req) => {
       deduped = rows.slice(offset, offset + limit);
       console.log(`[filterizer-query] Stage 3: showAllOdds=true, paginated=${deduped.length} (total=${qualifiedCount}, offset=${offset}, limit=${limit})`);
     } else {
-      // Dedupe: keep best odds per (fixture, market)
-      const bestByFixtureMarket = new Map<string, any>();
+      // Dedupe: keep best odds per fixture (already sorted DESC by odds, so first = best)
+      const bestByFixture = new Map<number, any>();
       for (const row of rows) {
-        const key = `${row.fixture_id}|${row.market}`;
-        const prev = bestByFixtureMarket.get(key);
-        if (!prev || Number(row.odds) > Number(prev.odds)) {
-          bestByFixtureMarket.set(key, row);
+        const fixtureId = row.fixture_id;
+        if (!bestByFixture.has(fixtureId)) {
+          bestByFixture.set(fixtureId, row);
         }
       }
-      deduped = Array.from(bestByFixtureMarket.values()).sort((a, b) => new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime());
-      console.log(`[filterizer-query] Stage 3: dedup=${deduped.length} (removed ${qualifiedCount - deduped.length} duplicate bookmakers)`);
+      const uniqueFixtures = Array.from(bestByFixture.values());
+      // Apply pagination after dedup
+      deduped = uniqueFixtures.slice(offset, offset + limit);
+      console.log(`[filterizer-query] Stage 3: dedup=${uniqueFixtures.length} unique fixtures (removed ${qualifiedCount - uniqueFixtures.length} duplicate bookmakers), paginated=${deduped.length}`);
     }
 
     // Fetch fixture metadata for enrichment
