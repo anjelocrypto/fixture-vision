@@ -8,6 +8,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 interface RequestBody {
   window_hours?: number;
+  batch_size?: number;
+  offset?: number;
 }
 
 serve(async (req) => {
@@ -65,11 +67,21 @@ serve(async (req) => {
     }
     
     const windowHours = body.window_hours ?? 72;
+    const batchSize = body.batch_size ?? 50; // Process max 50 fixtures per call
+    const offset = body.offset ?? 0;
 
-    console.log(`[populate-winner-outcomes] Starting: window=${windowHours}h`);
+    console.log(`[populate-winner-outcomes] Starting: window=${windowHours}h, batch=${batchSize}, offset=${offset}`);
 
-    // Get fixtures with predictions
+    // Get fixtures with predictions (with pagination)
     const windowEnd = Date.now() / 1000 + windowHours * 3600;
+    
+    // First get total count
+    const { count: totalCount } = await supabase
+      .from("fixtures")
+      .select("id", { count: "exact", head: true })
+      .gte("timestamp", Math.floor(Date.now() / 1000))
+      .lte("timestamp", Math.floor(windowEnd));
+
     const { data: fixtures, error: fixturesError } = await supabase
       .from("fixtures")
       .select(`
@@ -79,14 +91,17 @@ serve(async (req) => {
         predictions_cache!inner(home_prob, away_prob)
       `)
       .gte("timestamp", Math.floor(Date.now() / 1000))
-      .lte("timestamp", Math.floor(windowEnd));
+      .lte("timestamp", Math.floor(windowEnd))
+      .order("timestamp", { ascending: true })
+      .range(offset, offset + batchSize - 1);
 
     if (fixturesError) {
       console.error("[populate-winner-outcomes] Fixtures query error:", fixturesError);
       return errorResponse("Failed to fetch fixtures", origin, 500, req);
     }
 
-    console.log(`[populate-winner-outcomes] Found ${fixtures.length} fixtures with predictions`);
+    const hasMore = (offset + batchSize) < (totalCount || 0);
+    console.log(`[populate-winner-outcomes] Found ${fixtures.length} fixtures in batch (total: ${totalCount}, hasMore: ${hasMore})`);
 
     let scanned = 0;
     let withOdds = 0;
@@ -201,6 +216,9 @@ serve(async (req) => {
       skipped,
       failed,
       duration_ms: duration,
+      total_fixtures: totalCount || 0,
+      has_more: hasMore,
+      next_offset: hasMore ? offset + batchSize : null,
     }, origin, 200, req);
   } catch (err) {
     console.error("[populate-winner-outcomes] Unhandled error:", err);

@@ -398,35 +398,62 @@ export const AdminRefreshButton = () => {
         throw new Error("Not authenticated. Please log in again.");
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        "populate-winner-outcomes",
-        { 
-          body: { window_hours: windowHours },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
+      let offset = 0;
+      let hasMore = true;
+      let totalScanned = 0;
+      let totalUpserted = 0;
+      let batchCount = 0;
+
+      while (hasMore) {
+        batchCount++;
+        
+        const { data, error } = await supabase.functions.invoke(
+          "populate-winner-outcomes",
+          { 
+            body: { window_hours: windowHours, batch_size: 50, offset },
+            headers: {
+              Authorization: `Bearer ${session.access_token}`
+            }
           }
+        );
+
+        if (error) {
+          console.error("Populate outcomes error:", error);
+          throw error;
         }
-      );
 
-      if (error) {
-        console.error("Populate outcomes error:", error);
-        throw error;
+        const result = data as {
+          success: boolean;
+          scanned: number;
+          withOdds: number;
+          upserted: number;
+          skipped: number;
+          failed: number;
+          duration_ms: number;
+          total_fixtures: number;
+          has_more: boolean;
+          next_offset: number | null;
+        };
+
+        console.log(`Batch ${batchCount} result:`, result);
+        
+        totalScanned += result.scanned;
+        totalUpserted += result.upserted;
+        hasMore = result.has_more;
+        offset = result.next_offset || 0;
+
+        // Show progress
+        toast.info(`Batch ${batchCount}: ${result.upserted} outcomes added (${totalScanned}/${result.total_fixtures} fixtures processed)`, {
+          duration: 2000,
+        });
+
+        // If there are more batches, wait a bit before next call
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-
-      const result = data as {
-        success: boolean;
-        scanned: number;
-        withOdds: number;
-        upserted: number;
-        skipped: number;
-        failed: number;
-        duration_ms: number;
-      };
-
-      console.log("Populate outcomes result:", result);
       
-      const summary = `${result.scanned} scanned • ${result.withOdds} with odds • ${result.upserted} upserted • ${result.skipped} skipped • ${result.failed} failed`;
-      toast.success(`Winner outcomes: ${summary}`);
+      toast.success(`Complete! ${totalUpserted} outcomes from ${totalScanned} fixtures across ${batchCount} batches`);
 
     } catch (error) {
       console.error("Populate outcomes error:", error);
