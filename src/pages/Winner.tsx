@@ -113,9 +113,7 @@ const Winner = () => {
     }
   };
 
-  useEffect(() => {
-    fetchResults();
-  }, [outcome, minOdds, minProbability]);
+  // Results are only fetched when user clicks Generate button
 
   const sortedResults = [...results].sort((a, b) => {
     if (sortBy === "edge") return (b.edge_pct || 0) - (a.edge_pct || 0);
@@ -239,6 +237,19 @@ const Winner = () => {
                   Probability
                 </Button>
               </div>
+            </div>
+
+            {/* Generate Button */}
+            <div className="pt-2">
+              <Button
+                onClick={fetchResults}
+                disabled={loading}
+                className="w-full"
+                size="lg"
+              >
+                <Target className="mr-2 h-5 w-5" />
+                {loading ? "Generating..." : "Generate Results"}
+              </Button>
             </div>
           </div>
         </Card>

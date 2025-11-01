@@ -488,6 +488,13 @@ export type Database = {
             referencedRelation: "fixtures"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "outcome_selections_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
         ]
       }
       predictions_cache: {
@@ -726,6 +733,13 @@ export type Database = {
             columns: ["fixture_id"]
             isOneToOne: false
             referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outcome_selections_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
             referencedColumns: ["id"]
           },
         ]
