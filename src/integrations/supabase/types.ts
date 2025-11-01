@@ -440,6 +440,86 @@ export type Database = {
         }
         Relationships: []
       }
+      outcome_selections: {
+        Row: {
+          bookmaker: string
+          computed_at: string
+          edge_pct: number | null
+          fixture_id: number
+          id: number
+          league_id: number
+          market_type: string
+          model_prob: number | null
+          odds: number
+          outcome: string
+          utc_kickoff: string
+        }
+        Insert: {
+          bookmaker: string
+          computed_at?: string
+          edge_pct?: number | null
+          fixture_id: number
+          id?: number
+          league_id: number
+          market_type: string
+          model_prob?: number | null
+          odds: number
+          outcome: string
+          utc_kickoff: string
+        }
+        Update: {
+          bookmaker?: string
+          computed_at?: string
+          edge_pct?: number | null
+          fixture_id?: number
+          id?: number
+          league_id?: number
+          market_type?: string
+          model_prob?: number | null
+          odds?: number
+          outcome?: string
+          utc_kickoff?: string
+        }
+        Relationships: []
+      }
+      predictions_cache: {
+        Row: {
+          advice: string | null
+          away_prob: number | null
+          cached_at: string
+          draw_prob: number | null
+          fixture_id: number
+          home_prob: number | null
+          league_id: number
+        }
+        Insert: {
+          advice?: string | null
+          away_prob?: number | null
+          cached_at?: string
+          draw_prob?: number | null
+          fixture_id: number
+          home_prob?: number | null
+          league_id: number
+        }
+        Update: {
+          advice?: string | null
+          away_prob?: number | null
+          cached_at?: string
+          draw_prob?: number | null
+          fixture_id?: number
+          home_prob?: number | null
+          league_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictions_cache_fixture_fk"
+            columns: ["fixture_id"]
+            isOneToOne: true
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stats_cache: {
         Row: {
           cards: number
@@ -614,6 +694,23 @@ export type Database = {
           sample_size: number | null
           selection_id: string | null
           side: string | null
+        }
+        Relationships: []
+      }
+      best_outcome_prices: {
+        Row: {
+          bookmaker: string | null
+          computed_at: string | null
+          edge_pct: number | null
+          fixture_id: number | null
+          id: number | null
+          league_id: number | null
+          market_type: string | null
+          model_prob: number | null
+          odds: number | null
+          outcome: string | null
+          rk: number | null
+          utc_kickoff: string | null
         }
         Relationships: []
       }
