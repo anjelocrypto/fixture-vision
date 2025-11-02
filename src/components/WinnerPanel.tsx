@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -38,6 +39,7 @@ interface OutcomeSelection {
 type SortOption = "edge" | "odds" | "probability";
 
 export function WinnerPanel({ onClose }: WinnerPanelProps) {
+  const { t } = useTranslation(['winner']);
   const { toast } = useToast();
   const [outcome, setOutcome] = useState<"home" | "away">("home");
   const [minOdds, setMinOdds] = useState([1.4]);
@@ -90,13 +92,13 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
       
       if (!data || data.length === 0) {
         toast({
-          title: "No matches found",
-          description: "Try adjusting your filters (lower Min Probability or Min Odds).",
+          title: t('winner:no_matches_title'),
+          description: t('winner:no_matches_description'),
         });
       } else {
         toast({
-          title: "Results loaded",
-          description: `Found ${data.length} matching selections`,
+          title: t('winner:results_loaded'),
+          description: t('winner:results_count', { count: data.length }),
         });
       }
     } catch (error: any) {
@@ -123,7 +125,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <Trophy className="h-5 w-5" />
-            Winner Predictions (1X2)
+            {t('winner:title')}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕
@@ -133,7 +135,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
       <CardContent className="space-y-4">
         {/* Outcome Selector */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Outcome</label>
+          <label className="text-sm font-medium">{t('winner:outcome')}</label>
           <ToggleGroup
             type="single"
             value={outcome}
@@ -141,10 +143,10 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
             className="justify-start"
           >
             <ToggleGroupItem value="home" className="flex-1">
-              1 (Home Win)
+              {t('winner:home_win')}
             </ToggleGroupItem>
             <ToggleGroupItem value="away" className="flex-1">
-              2 (Away Win)
+              {t('winner:away_win')}
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
@@ -152,7 +154,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         {/* Min Odds Slider */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <label className="text-sm font-medium">Minimum Odds</label>
+            <label className="text-sm font-medium">{t('winner:minimum_odds')}</label>
             <Badge variant="secondary">{minOdds[0].toFixed(2)}</Badge>
           </div>
           <Slider
@@ -168,7 +170,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         {/* Min Probability Slider */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <label className="text-sm font-medium">Minimum Probability</label>
+            <label className="text-sm font-medium">{t('winner:minimum_probability')}</label>
             <Badge variant="secondary">{minProbability[0]}%</Badge>
           </div>
           <Slider
@@ -180,13 +182,13 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
             className="w-full"
           />
           <p className="text-xs text-muted-foreground">
-            Note: API data often caps around 50%. Higher thresholds may yield fewer results.
+            {t('winner:probability_note')}
           </p>
         </div>
 
         {/* Sort By */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Sort By</label>
+          <label className="text-sm font-medium">{t('winner:sort_by')}</label>
           <ToggleGroup
             type="single"
             value={sortBy}
@@ -194,13 +196,13 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
             className="justify-start"
           >
             <ToggleGroupItem value="edge" className="flex-1">
-              Edge
+              {t('winner:sort_edge')}
             </ToggleGroupItem>
             <ToggleGroupItem value="odds" className="flex-1">
-              Odds
+              {t('winner:sort_odds')}
             </ToggleGroupItem>
             <ToggleGroupItem value="probability" className="flex-1">
-              Probability
+              {t('winner:sort_probability')}
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
@@ -215,10 +217,10 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading...
+                {t('winner:loading')}
               </>
             ) : (
-              "Generate Results"
+              t('winner:generate_results')
             )}
           </Button>
           {results.length > 0 && (
@@ -237,7 +239,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         {results.length > 0 && (
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             <div className="text-sm font-medium text-muted-foreground">
-              {results.length} results
+              {results.length} {t('winner:results')}
             </div>
             {results.map((selection) => {
               const fixture = selection.fixtures;
@@ -281,19 +283,19 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-4 gap-2 text-xs">
                       <div>
-                        <div className="text-muted-foreground">Outcome</div>
+                        <div className="text-muted-foreground">{t('winner:stats_outcome')}</div>
                         <div className="font-semibold">{displayOutcome}</div>
                       </div>
                       <div>
-                        <div className="text-muted-foreground">Odds</div>
+                        <div className="text-muted-foreground">{t('winner:stats_odds')}</div>
                         <div className="font-semibold">{selection.odds.toFixed(2)}</div>
                       </div>
                       <div>
-                        <div className="text-muted-foreground">Probability</div>
+                        <div className="text-muted-foreground">{t('winner:stats_probability')}</div>
                         <div className="font-semibold">{(selection.model_prob * 100).toFixed(0)}%</div>
                       </div>
                       <div>
-                        <div className="text-muted-foreground">Edge</div>
+                        <div className="text-muted-foreground">{t('winner:stats_edge')}</div>
                         <div className={`font-semibold ${selection.edge_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {(selection.edge_pct * 100).toFixed(1)}%
                         </div>
@@ -303,7 +305,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
                     {/* Bookmaker & Add Button */}
                     <div className="flex items-center justify-between pt-2">
                       <div className="text-xs text-muted-foreground">
-                        via {selection.bookmaker}
+                        {t('winner:via_bookmaker', { bookmaker: selection.bookmaker })}
                       </div>
                       <AddToTicketButton leg={leg} size="sm" variant="default" />
                     </div>
@@ -317,7 +319,7 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         {/* Empty State */}
         {!loading && results.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            Click "Generate Results" to find winner predictions
+            {t('winner:empty_state')}
           </div>
         )}
       </CardContent>
