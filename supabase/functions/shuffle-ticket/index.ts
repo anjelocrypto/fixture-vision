@@ -159,18 +159,21 @@ serve(async (req) => {
       );
     }
 
-    // Weighted random sampling
-    // Weight = 0.6 * normalized(edge_pct) + 0.4 * normalized(odds)
+    // Initialize RNG first (use provided seed or timestamp)
+    const usedSeed = seed ?? Date.now();
+    const rng = seededRandom(usedSeed);
+    
+    // Add randomness to weights to prevent deterministic selection
     const withWeights = unlocked.map((sel: any) => {
       const edge = sel.edge_pct || 0;
       const odds = sel.odds || 1.5;
-      return { ...sel, weight: (0.6 * Math.max(0, edge)) + (0.4 * (odds / 10)) };
+      
+      // 65% edge, 25% odds, 10% random variation
+      const baseWeight = (0.65 * Math.max(0, edge)) + (0.25 * (odds / 10));
+      const randomBoost = 0.10 * rng();
+      
+      return { ...sel, weight: baseWeight + randomBoost };
     });
-
-    // Seeded random for reproducibility (if provided)
-    let rng = seed !== undefined 
-      ? seededRandom(seed)
-      : () => Math.random();
 
     // Fisher-Yates shuffle with weights
     const shuffled = weightedShuffle(withWeights, rng);

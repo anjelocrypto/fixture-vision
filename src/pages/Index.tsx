@@ -632,7 +632,7 @@ const Index = () => {
 
   // Shuffle existing ticket with same parameters
   const shuffleTicket = async (lockedLegIds: string[]) => {
-    if (!lastTicketParams) {
+    if (!lastTicketParams || !currentTicket) {
       toast({
         title: "Cannot shuffle",
         description: "No ticket parameters available",
@@ -656,49 +656,96 @@ const Index = () => {
         .sort()
         .join("|");
 
-      const { data, error } = await supabase.functions.invoke("shuffle-ticket", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: {
-          lockedLegIds,
-          targetLegs: lastTicketParams.maxLegs || 8,
-          minOdds: 1.25,
-          maxOdds: 5.0,
-          includeMarkets: lastTicketParams.includeMarkets || ["goals", "corners", "cards"],
-          countryCode: lastTicketParams.countryCode,
-          leagueIds: lastTicketParams.leagueIds,
-          previousTicketHash: ticketHash,
-        },
-      });
+      // Use actual leg count, not maxLegs
+      const actualLegCount = currentTicket.legs.length;
+      const poolMinimum = actualLegCount * 2;
+      
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastResult = null;
 
-      if (error) {
-        throw error;
-      }
+      // Retry loop: try up to 3 times with different seeds if we get same ticket
+      while (attempts < maxAttempts) {
+        attempts++;
+        
+        // Use timestamp-based seed for randomization
+        const seed = Date.now() + attempts * 1000;
 
-      if (!data || data.error) {
-        toast({
-          title: data?.error || "Cannot shuffle",
-          description: data?.message || "Failed to generate new ticket",
-          variant: "destructive",
+        const { data, error } = await supabase.functions.invoke("shuffle-ticket", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: {
+            lockedLegIds,
+            targetLegs: actualLegCount,
+            minOdds: lastTicketParams.targetMin || 1.25,
+            maxOdds: lastTicketParams.targetMax || 5.0,
+            includeMarkets: lastTicketParams.includeMarkets || ["goals", "corners", "cards"],
+            countryCode: lastTicketParams.countryCode,
+            leagueIds: lastTicketParams.leagueIds,
+            previousTicketHash: ticketHash,
+            seed,
+          },
         });
-        return;
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data || data.error) {
+          toast({
+            title: data?.error || "Cannot shuffle",
+            description: data?.message || "Failed to generate new ticket",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        lastResult = data;
+
+        // If we got a different ticket, success!
+        if (data.is_different) {
+          const ticketData = {
+            mode: "shuffle",
+            legs: data.legs,
+            total_odds: data.total_odds,
+            estimated_win_prob: data.estimated_win_prob,
+            generated_at: data.generated_at,
+          };
+
+          setCurrentTicket(ticketData);
+
+          toast({
+            title: "Ticket shuffled!",
+            description: `New combination from ${data.pool_size} candidates`,
+          });
+          return;
+        }
+
+        // If pool is too small to retry, break
+        if (data.pool_size < poolMinimum) {
+          break;
+        }
+
+        // Otherwise, try again with new seed
+        console.log(`[shuffle] Attempt ${attempts}: same ticket, retrying...`);
       }
 
-      const ticketData = {
-        mode: "shuffle",
-        legs: data.legs,
-        total_odds: data.total_odds,
-        estimated_win_prob: data.estimated_win_prob,
-        generated_at: data.generated_at,
-      };
+      // If we exhausted retries, show the result anyway with appropriate message
+      if (lastResult) {
+        const ticketData = {
+          mode: "shuffle",
+          legs: lastResult.legs,
+          total_odds: lastResult.total_odds,
+          estimated_win_prob: lastResult.estimated_win_prob,
+          generated_at: lastResult.generated_at,
+        };
 
-      setCurrentTicket(ticketData);
+        setCurrentTicket(ticketData);
 
-      toast({
-        title: data.is_different ? "Ticket shuffled!" : "Ticket regenerated",
-        description: data.is_different
-          ? `New combination with ${data.total_odds.toFixed(2)}x odds (pool: ${data.pool_size})`
-          : "Generated same result (small pool)",
-      });
+        toast({
+          title: "Small pool",
+          description: `Results may repeat with ${lastResult.pool_size} candidates. Try loosening filters for more variety.`,
+        });
+      }
     } catch (error: any) {
       console.error("Error shuffling ticket:", error);
       toast({
