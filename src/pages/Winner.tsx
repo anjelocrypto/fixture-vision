@@ -50,9 +50,9 @@ const Winner = () => {
       const now = new Date();
       const in72h = new Date(now.getTime() + 72 * 60 * 60 * 1000);
 
-      // Query outcome_selections with fixtures joined for team names
+      // Query best_outcome_prices (deduplicated best odds per fixture)
       const { data, error } = await supabase
-        .from("outcome_selections")
+        .from("best_outcome_prices")
         .select(`
           *,
           fixtures!inner(
