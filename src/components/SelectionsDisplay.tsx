@@ -1,12 +1,14 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { formatDateWithLocale } from "@/lib/i18nFormatters";
 import { TrendingUp, Users, Trophy, Bug } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { AddToTicketButton } from "./AddToTicketButton";
 import { TicketLeg } from "@/stores/useTicket";
+import { useTranslation } from "react-i18next";
 
 interface Selection {
   id: string;
@@ -43,6 +45,7 @@ interface SelectionsDisplayProps {
 }
 
 export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDisplayProps) {
+  const { i18n } = useTranslation();
   const [showDebug, setShowDebug] = useState(false);
   
   if (!selections || selections.length === 0) {
@@ -124,7 +127,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                 <div className="text-sm text-muted-foreground space-y-1 mb-3">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">
-                      {format(kickoff, "MMM d, HH:mm")}
+                      {formatDateWithLocale(kickoff, "MMM d, HH:mm", i18n.language)}
                     </span>
                     {selection.bookmaker && (
                       <span className="text-xs">• {selection.bookmaker}</span>

@@ -13,9 +13,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, RefreshCw, Copy, Ticket } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateWithLocale } from "@/lib/i18nFormatters";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 interface MyTicketDrawerProps {
   open: boolean;
@@ -25,6 +27,7 @@ interface MyTicketDrawerProps {
 export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const { legs, stake, setStake, removeLeg, clear, refreshOdds } = useTicket();
   const { toast } = useToast();
+  const { i18n } = useTranslation();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -58,7 +61,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
 
   const handleCopy = () => {
     const ticketText = legs.map((leg, i) => 
-      `${i + 1}. ${leg.homeTeam} vs ${leg.awayTeam}\n   ${leg.market.toUpperCase()} ${leg.side} ${leg.line} @ ${leg.odds.toFixed(2)} (${leg.bookmaker})\n   Kickoff: ${format(new Date(leg.kickoffUtc), "MMM d, HH:mm")}`
+      `${i + 1}. ${leg.homeTeam} vs ${leg.awayTeam}\n   ${leg.market.toUpperCase()} ${leg.side} ${leg.line} @ ${leg.odds.toFixed(2)} (${leg.bookmaker})\n   Kickoff: ${formatDateWithLocale(new Date(leg.kickoffUtc), "MMM d, HH:mm", i18n.language)}`
     ).join('\n\n');
 
     const summary = `\n\nTotal Odds: ${totalOdds.toFixed(2)}\nStake: ${stake}\nPotential Return: ${potentialReturn.toFixed(2)}`;
@@ -144,7 +147,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                           {leg.homeTeam} <span className="text-muted-foreground">vs</span> {leg.awayTeam}
                         </h4>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(leg.kickoffUtc), "MMM d, HH:mm")}
+                          {formatDateWithLocale(new Date(leg.kickoffUtc), "MMM d, HH:mm", i18n.language)}
                         </p>
                       </div>
 

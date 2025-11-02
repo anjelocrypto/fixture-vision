@@ -1,6 +1,51 @@
 /**
  * Locale formatting helpers for dates, numbers, and odds
  */
+import { format as dateFnsFormat } from 'date-fns';
+import { ka } from 'date-fns/locale';
+
+// Custom Georgian locale with abbreviated months
+const kaCustom = {
+  ...ka,
+  localize: {
+    ...ka.localize,
+    month: (month: number) => {
+      const months = ['იანვარი', 'თებერვალი', 'მარტი', 'აპრილი', 'მაისი', 'ივნისი', 'ივლისი', 'აგვისტო', 'სექტემბერი', 'ოქტომბერი', 'ნოემბერი', 'დეკემბერი'];
+      return months[month];
+    },
+  },
+  formatLong: {
+    ...ka.formatLong,
+    date: () => 'MMM d',
+  },
+};
+
+export const formatDateWithLocale = (
+  date: Date | number,
+  formatStr: string,
+  lang: string
+): string => {
+  if (lang === 'ka') {
+    // For Georgian, use custom abbreviated months
+    const monthsShort = ['იან', 'თებ', 'მარ', 'აპრ', 'მაი', 'ივნ', 'ივლ', 'აგვ', 'სექ', 'ოქტ', 'ნოვ', 'დეკ'];
+    
+    if (formatStr === 'MMM d') {
+      const d = typeof date === 'number' ? new Date(date) : date;
+      return `${monthsShort[d.getMonth()]} ${d.getDate()}`;
+    }
+    
+    if (formatStr === 'MMM d, HH:mm') {
+      const d = typeof date === 'number' ? new Date(date) : date;
+      const hours = d.getHours().toString().padStart(2, '0');
+      const minutes = d.getMinutes().toString().padStart(2, '0');
+      return `${monthsShort[d.getMonth()]} ${d.getDate()}, ${hours}:${minutes}`;
+    }
+    
+    return dateFnsFormat(date, formatStr, { locale: kaCustom });
+  }
+  
+  return dateFnsFormat(date, formatStr);
+};
 
 export const getLocaleForFormatting = (lang: string): string => {
   switch (lang) {

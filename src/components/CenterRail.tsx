@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { format, addDays } from "date-fns";
+import { formatDateWithLocale } from "@/lib/i18nFormatters";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -47,7 +48,7 @@ export function CenterRail({
   loading,
   onAnalyze,
 }: CenterRailProps) {
-  const { t } = useTranslation(['fixtures']);
+  const { t, i18n } = useTranslation(['fixtures']);
   // Show only upcoming 8 days: today + next 7 days
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -68,7 +69,7 @@ export function CenterRail({
             }
             className="rounded-full shrink-0 min-w-[80px] h-10 sm:h-9"
           >
-            <span className="text-xs sm:text-sm">{format(date, "MMM d")}</span>
+            <span className="text-xs sm:text-sm">{formatDateWithLocale(date, "MMM d", i18n.language)}</span>
           </Button>
         ))}
       </div>
@@ -101,7 +102,7 @@ export function CenterRail({
       ) : fixtures.length === 0 ? (
         <Card className="p-8 text-center space-y-4">
           <div>
-            <p className="text-lg font-medium mb-2">No matches on {format(selectedDate, "MMM d")}</p>
+            <p className="text-lg font-medium mb-2">No matches on {formatDateWithLocale(selectedDate, "MMM d", i18n.language)}</p>
             <p className="text-muted-foreground text-sm">
               {league?.name} has no matches scheduled for this date
             </p>
@@ -122,7 +123,7 @@ export function CenterRail({
                   {/* Time */}
                   <div className="text-xs sm:text-sm text-muted-foreground">
                     {format(new Date(fixture.timestamp * 1000), "HH:mm")} •{" "}
-                    {format(new Date(fixture.timestamp * 1000), "MMM d")}
+                    {formatDateWithLocale(new Date(fixture.timestamp * 1000), "MMM d", i18n.language)}
                   </div>
 
                   {/* Teams */}
