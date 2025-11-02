@@ -42,6 +42,20 @@ export function LeftRail({
   const { t } = useTranslation(['filters']);
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
+  // Helper function to translate country names
+  const getCountryName = (countryName: string) => {
+    const translationKey = `filters:countries.${countryName}`;
+    const translated = t(translationKey);
+    return translated !== translationKey ? translated : countryName;
+  };
+
+  // Helper function to translate league names
+  const getLeagueName = (leagueName: string) => {
+    const translationKey = `filters:leagues.${leagueName}`;
+    const translated = t(translationKey);
+    return translated !== translationKey ? translated : leagueName;
+  };
+
   return (
     <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col h-full">
       <div className="p-3 sm:p-4 border-b border-border shrink-0">
@@ -56,7 +70,7 @@ export function LeftRail({
       </div>
       
       <div className="px-4 py-3 border-b border-border shrink-0">
-        <h3 className="text-sm font-medium text-muted-foreground">Region</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">{t('filters:region')}</h3>
       </div>
 
       {/* Countries Section - Fixed height with scroll */}
@@ -74,7 +88,7 @@ export function LeftRail({
               }`}
             >
               <span className="text-2xl">{country.flag}</span>
-              <span className="text-sm font-medium">{country.name}</span>
+              <span className="text-sm font-medium">{getCountryName(country.name)}</span>
             </button>
           ))}
         </div>
@@ -85,7 +99,7 @@ export function LeftRail({
         <div className="flex-1 flex flex-col min-h-0 border-t border-border">
           <div className="px-4 py-3 shrink-0 bg-card/50 backdrop-blur-sm">
             <h3 className="text-sm font-medium text-muted-foreground">
-              {selectedCountryData?.name} Leagues
+              {selectedCountryData ? getCountryName(selectedCountryData.name) : ''} {t('filters:leagues')}
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -123,7 +137,7 @@ export function LeftRail({
                     {league.logo && (
                       <img src={league.logo} alt="" className="w-5 h-5 object-contain shrink-0" />
                     )}
-                    <span className="text-xs font-medium truncate">{league.name}</span>
+                    <span className="text-xs font-medium truncate">{getLeagueName(league.name)}</span>
                   </button>
                 ))
               )}
