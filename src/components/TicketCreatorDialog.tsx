@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ const MARKETS = [
 ];
 
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
+  const { t } = useTranslation(['ticket']);
   const [targetMin, setTargetMin] = useState(18);
   const [targetMax, setTargetMax] = useState(20);
   const [includeMarkets, setIncludeMarkets] = useState(["goals", "corners", "cards"]);
@@ -65,16 +67,16 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
     const errors: string[] = [];
     
     if (includeMarkets.length === 0) {
-      errors.push("Select at least one market");
+      errors.push(t('ticket:validation_select_market'));
     }
     if (targetMin >= targetMax) {
-      errors.push("Min odds must be less than max odds");
+      errors.push(t('ticket:validation_min_max_odds'));
     }
     if (minLegs > maxLegs) {
-      errors.push("Min legs must be less than or equal to max legs");
+      errors.push(t('ticket:validation_min_max_legs'));
     }
     if (targetMin < 1.01) {
-      errors.push("Min odds must be at least 1.01");
+      errors.push(t('ticket:validation_min_odds_value'));
     }
     
     return errors;
@@ -114,20 +116,20 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
-            AI Ticket Creator
+            {t('ticket:title')}
           </DialogTitle>
           <DialogDescription>
-            Create an optimized betting ticket mixing fixtures and markets from all leagues in the next 48 hours based on statistical analysis and real-time odds.
+            {t('ticket:description')}
           </DialogDescription>
           <div className="mt-3 space-y-1">
             <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2">
-              <span className="font-semibold">Per-leg odds:</span> 1.25–5.00 (enforced)
+              {t('ticket:per_leg_odds_note')}
             </p>
             <p className="text-xs text-muted-foreground border-l-2 border-destructive/30 pl-2">
-              <span className="font-semibold">Total odds target:</span> Hard constraint (exact match only)
+              {t('ticket:total_odds_note')}
             </p>
             <p className="text-xs text-muted-foreground border-l-2 border-accent/30 pl-2">
-              <span className="font-semibold">Legs:</span> We'll try 5–15 legs and search for combos inside your target. Results vary per attempt.
+              {t('ticket:legs_note')}
             </p>
           </div>
         </DialogHeader>
@@ -135,7 +137,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
         <div className="space-y-6">
           {/* Target Odds Range */}
           <div>
-            <Label className="mb-3 block">Target Total Odds</Label>
+            <Label className="mb-3 block">{t('ticket:target_total_odds')}</Label>
             <div className="grid grid-cols-5 gap-2 mb-3">
               {PRESET_RANGES.map((preset) => (
                 <Button
@@ -152,7 +154,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="targetMin" className="text-xs text-muted-foreground">
-                  Min Odds
+                  {t('ticket:min_odds')}
                 </Label>
                 <Input
                   id="targetMin"
@@ -165,7 +167,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
               </div>
               <div>
                 <Label htmlFor="targetMax" className="text-xs text-muted-foreground">
-                  Max Odds
+                  {t('ticket:max_odds')}
                 </Label>
                 <Input
                   id="targetMax"
@@ -181,7 +183,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
 
           {/* Markets */}
           <div>
-            <Label className="mb-3 block">Include Markets</Label>
+            <Label className="mb-3 block">{t('ticket:include_markets')}</Label>
             <div className="grid grid-cols-2 gap-3">
               {MARKETS.map((market) => (
                 <div key={market.id} className="flex items-center space-x-2">
@@ -207,10 +209,10 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
               <Radio className="h-4 w-4 text-muted-foreground" />
               <div>
                 <Label htmlFor="liveOdds" className="text-sm font-medium cursor-pointer">
-                  Use Live Odds
+                  {t('ticket:use_live_odds')}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Fetch real-time odds for in-play fixtures (if available)
+                  {t('ticket:use_live_odds_description')}
                 </p>
               </div>
             </div>
@@ -223,11 +225,11 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
 
           {/* Legs Range */}
           <div>
-            <Label className="mb-3 block">Number of Legs</Label>
+            <Label className="mb-3 block">{t('ticket:number_of_legs')}</Label>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="minLegs" className="text-xs text-muted-foreground">
-                  Min
+                  {t('ticket:min')}
                 </Label>
                 <Input
                   id="minLegs"
@@ -240,7 +242,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
               </div>
               <div>
                 <Label htmlFor="maxLegs" className="text-xs text-muted-foreground">
-                  Max
+                  {t('ticket:max')}
                 </Label>
                 <Input
                   id="maxLegs"
@@ -263,12 +265,12 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             {generating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
+                {t('ticket:generating')}
               </>
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate Ticket
+                {t('ticket:generate_ticket')}
               </>
             )}
           </Button>
