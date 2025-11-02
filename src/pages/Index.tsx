@@ -1040,7 +1040,7 @@ const Index = () => {
                   onClick={() => setTicketCreatorOpen(true)}
                 >
                   <Sparkles className="h-4 w-4" />
-                  AI Ticket Creator
+                  {t('common:ai_ticket_creator')}
                 </Button>
               </div>
 
@@ -1215,7 +1215,7 @@ const Index = () => {
           onClick={() => setTicketCreatorOpen(true)}
         >
           <Sparkles className="h-5 w-5" />
-          <span className="text-sm font-semibold">AI Ticket</span>
+          <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
         </Button>
       </div>
 

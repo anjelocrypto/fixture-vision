@@ -43,7 +43,7 @@
   "trial_expired": "საცდელი ვადა გავიდა",
   "filterizer": "ფილტრიზერი",
   "winner_1x2": "გამარჯვებული (1X2)",
-  "ai_ticket_creator": "AI ბილეთის გენერატორი",
+  "ai_ticket_creator": "AI ბილეთის შემქმნელი",
   "load_more": "მეტის ჩატვირთვა",
   "loading_more": "იტვირთება...",
   "remaining": "დარჩა {{count}}"
