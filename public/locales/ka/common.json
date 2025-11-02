@@ -40,5 +40,11 @@
   "premium_badge_monthly": "პრემიუმი",
   "premium_badge_annual": "წლიური",
   "free_uses_left": "დარჩა {{count}} უფასო გამოყენება",
-  "trial_expired": "საცდელი ვადა გავიდა"
+  "trial_expired": "საცდელი ვადა გავიდა",
+  "filterizer": "ფილტრიზერი",
+  "winner_1x2": "გამარჯვებული (1X2)",
+  "ai_ticket_creator": "AI ტიკეტის გენერატორი",
+  "load_more": "მეტის ჩატვირთვა",
+  "loading_more": "იტვირთება...",
+  "remaining": "დარჩა {{count}}"
 }

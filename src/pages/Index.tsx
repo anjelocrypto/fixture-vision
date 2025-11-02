@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { formatMarketLabel } from "@/lib/i18nFormatters";
 
 // Mock countries data - comprehensive coverage
 const MOCK_COUNTRIES = [
@@ -84,6 +86,7 @@ const MOCK_COUNTRIES = [
 const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation(['fixtures', 'filterizer', 'optimizer']);
   const queryClient = useQueryClient();
   const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
@@ -919,8 +922,8 @@ const Index = () => {
             
             <h2 className="text-base sm:text-xl font-semibold truncate">
               {filterCriteria 
-                ? `Optimized Selections: ${filterCriteria.market} Over ${filterCriteria.line}` 
-                : "All Fixtures"}
+                ? `${t('optimizer:title')}: ${formatMarketLabel(filterCriteria.market, i18n.language)} ${t('filterizer:select_line').split('(')[0].trim()} ${filterCriteria.line}` 
+                : t('fixtures:all_fixtures')}
             </h2>
             
             <div className="flex gap-2 shrink-0">
@@ -970,7 +973,7 @@ const Index = () => {
                       disabled={loadingMoreFilterizer}
                       className="gap-2"
                     >
-                      {loadingMoreFilterizer ? "Loading..." : `Load More (${filterizerTotalQualified - filteredFixtures.length} remaining)`}
+                      {loadingMoreFilterizer ? t('common:loading_more') : `${t('common:load_more')} (${t('common:remaining', { count: filterizerTotalQualified - filteredFixtures.length })})`}
                     </Button>
                   </div>
                 )}
@@ -994,7 +997,7 @@ const Index = () => {
             <>
               {/* Bet Optimizer (Quick) */}
               <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-                <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+                <div className="text-sm font-semibold mb-2">{t('optimizer:title')}</div>
                 <div className="grid grid-cols-3 gap-2">
                   <Button
                     size="sm"
@@ -1052,7 +1055,7 @@ const Index = () => {
                   }}
                 >
                   <Filter className="h-4 w-4" />
-                  FILTERIZER
+                  {t('common:filterizer')}
                 </Button>
                 <Button
                   className="w-full gap-2"
@@ -1063,7 +1066,7 @@ const Index = () => {
                   }}
                 >
                   <Trophy className="h-4 w-4" />
-                  WINNER (1X2)
+                  {t('common:winner_1x2')}
                 </Button>
               </div>
 
@@ -1091,7 +1094,7 @@ const Index = () => {
               <div className="flex flex-col h-full">
                 {/* Bet Optimizer (Quick) */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-                  <div className="text-sm font-semibold mb-2">Bet Optimizer</div>
+                  <div className="text-sm font-semibold mb-2">{t('optimizer:title')}</div>
                   <div className="grid grid-cols-3 gap-2">
                     <Button
                       size="sm"
@@ -1146,7 +1149,7 @@ const Index = () => {
                     }}
                   >
                     <Sparkles className="h-4 w-4" />
-                    AI Ticket Creator
+                    {t('common:ai_ticket_creator')}
                   </Button>
                 </div>
 
@@ -1162,7 +1165,7 @@ const Index = () => {
                     }}
                   >
                     <Filter className="h-4 w-4" />
-                    FILTERIZER
+                    {t('common:filterizer')}
                   </Button>
                   <Button
                     className="w-full gap-2"
@@ -1174,7 +1177,7 @@ const Index = () => {
                     }}
                   >
                     <Trophy className="h-4 w-4" />
-                    WINNER (1X2)
+                    {t('common:winner_1x2')}
                   </Button>
                 </div>
 

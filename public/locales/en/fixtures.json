@@ -1,0 +1,8 @@
+{
+  "all_fixtures": "All Fixtures",
+  "analyze": "Analyse",
+  "loading": "Loading fixtures...",
+  "no_fixtures": "No fixtures found",
+  "no_fixtures_description": "No matches scheduled for this league on {{date}}",
+  "today": "Today"
+}

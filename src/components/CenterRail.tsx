@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { format, addDays } from "date-fns";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Fixture {
   id: number;
@@ -46,6 +47,7 @@ export function CenterRail({
   loading,
   onAnalyze,
 }: CenterRailProps) {
+  const { t } = useTranslation(['fixtures']);
   // Show only upcoming 8 days: today + next 7 days
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -162,7 +164,7 @@ export function CenterRail({
                   className="rounded-full w-full sm:w-auto h-10 sm:h-9"
                   size="sm"
                 >
-                  Analyse
+                  {t('fixtures:analyze')}
                 </Button>
               </div>
             </Card>

@@ -40,5 +40,11 @@
   "premium_badge_monthly": "Premium",
   "premium_badge_annual": "Annual",
   "free_uses_left": "{{count}} free uses left",
-  "trial_expired": "Trial expired"
+  "trial_expired": "Trial expired",
+  "filterizer": "FILTERIZER",
+  "winner_1x2": "WINNER (1X2)",
+  "ai_ticket_creator": "AI Ticket Creator",
+  "load_more": "Load More",
+  "loading_more": "Loading...",
+  "remaining": "{{count}} remaining"
 }

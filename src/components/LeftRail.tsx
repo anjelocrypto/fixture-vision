@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Country {
   id: number;
@@ -38,16 +39,17 @@ export function LeftRail({
   leaguesError = false,
   onCountryHover
 }: LeftRailProps) {
+  const { t } = useTranslation(['filters']);
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
   return (
     <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col h-full">
       <div className="p-3 sm:p-4 border-b border-border shrink-0">
-        <h2 className="text-base sm:text-lg font-semibold mb-3">Filters</h2>
+        <h2 className="text-base sm:text-lg font-semibold mb-3">{t('filters:title')}</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
-            placeholder="Search countries/leagues..." 
+            placeholder={t('filters:search_placeholder')}
             className="pl-9 bg-secondary/50 text-sm"
           />
         </div>
