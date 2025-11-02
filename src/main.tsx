@@ -1,4 +1,4 @@
-import { StrictMode, Suspense } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
@@ -12,8 +12,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>}>
-      <App />
-    </Suspense>
+    <App />
   </StrictMode>
 );
