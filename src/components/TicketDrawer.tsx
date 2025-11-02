@@ -1,7 +1,7 @@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, TrendingUp, Target, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import { Copy, TrendingUp, Target, AlertCircle, Sparkles, Loader2, Shuffle, Lock, Unlock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddToTicketButton } from "./AddToTicketButton";
 import { TicketLeg as MyTicketLeg } from "@/stores/useTicket";
@@ -47,12 +47,16 @@ interface TicketDrawerProps {
   onOpenChange: (open: boolean) => void;
   ticket: TicketData | null;
   loading: boolean;
+  onShuffle?: (lockedLegIds: string[]) => Promise<void>;
+  canShuffle?: boolean;
 }
 
-export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDrawerProps) {
+export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, canShuffle = false }: TicketDrawerProps) {
   const { toast } = useToast();
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
+  const [lockedLegIds, setLockedLegIds] = useState<Set<string>>(new Set());
+  const [shuffling, setShuffling] = useState(false);
 
   const copyTicket = () => {
     if (!ticket) return;
@@ -75,6 +79,48 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
       title: "Ticket copied!",
       description: "Betting ticket copied to clipboard",
     });
+  };
+
+  const toggleLockLeg = (legId: string) => {
+    setLockedLegIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(legId)) {
+        newSet.delete(legId);
+      } else {
+        newSet.add(legId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleShuffle = async () => {
+    if (!onShuffle || !ticket) return;
+    
+    if (lockedLegIds.size === ticket.legs.length) {
+      toast({
+        title: "All legs locked",
+        description: "Unlock at least one leg to shuffle",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShuffling(true);
+    try {
+      await onShuffle(Array.from(lockedLegIds));
+      toast({
+        title: "Ticket shuffled!",
+        description: "Generated new selections with same constraints",
+      });
+    } catch (error) {
+      toast({
+        title: "Shuffle failed",
+        description: error instanceof Error ? error.message : "Failed to shuffle ticket",
+        variant: "destructive",
+      });
+    } finally {
+      setShuffling(false);
+    }
   };
 
   const analyzeWithGemini = async () => {
@@ -192,29 +238,54 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
 
             {/* Legs */}
             <div className="space-y-3">
-              <div className="text-sm font-medium">Selections ({ticket.legs.length} legs)</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium">Selections ({ticket.legs.length} legs)</div>
+                {canShuffle && lockedLegIds.size > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {lockedLegIds.size} locked
+                  </Badge>
+                )}
+              </div>
               {ticket.legs.map((leg, index) => {
                 // Parse the pick to extract side and line (e.g., "Over 2.5" -> side: "over", line: 2.5)
                 const pickLower = leg.pick.toLowerCase();
                 const side = pickLower.includes('over') ? 'over' : pickLower.includes('under') ? 'under' : 'over';
                 const lineMatch = leg.pick.match(/(\d+\.?\d*)/);
                 const line = lineMatch ? parseFloat(lineMatch[1]) : (leg.line || 2.5);
+                const legId = `${leg.fixture_id}-${leg.market}-${side}-${line}`;
+                const isLocked = lockedLegIds.has(legId);
                 
                 return (
                   <div
                     key={`${leg.fixture_id}-${index}`}
-                    className="bg-card border rounded-lg p-4 space-y-2"
+                    className={`bg-card border rounded-lg p-4 space-y-2 transition-colors ${isLocked ? 'border-primary/50 bg-primary/5' : ''}`}
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 flex-1">
                         <div className="text-sm font-medium">
                           {leg.home_team} vs {leg.away_team}
                         </div>
                         <div className="text-xs text-muted-foreground">{leg.league}</div>
                       </div>
-                      <Badge variant="outline" className="ml-2">
-                        #{index + 1}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {canShuffle && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => toggleLockLeg(legId)}
+                          >
+                            {isLocked ? (
+                              <Lock className="h-3.5 w-3.5 text-primary" />
+                            ) : (
+                              <Unlock className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </Button>
+                        )}
+                        <Badge variant="outline">
+                          #{index + 1}
+                        </Badge>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t">
@@ -246,7 +317,7 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
                     <div className="pt-2 border-t">
                       <AddToTicketButton
                         leg={{
-                          id: `${leg.fixture_id}-${leg.market}-${side}-${line}`,
+                          id: legId,
                           fixtureId: leg.fixture_id,
                           leagueId: 0, // Not available in generated ticket
                           countryCode: undefined,
@@ -282,10 +353,23 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading }: TicketDraw
 
             {/* Actions */}
             <div className="space-y-2">
-              <Button onClick={copyTicket} className="w-full gap-2" variant="outline">
-                <Copy className="h-4 w-4" />
-                Copy Ticket
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button onClick={copyTicket} className="gap-2" variant="outline">
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+                
+                {canShuffle && onShuffle && (
+                  <Button onClick={handleShuffle} className="gap-2" disabled={shuffling}>
+                    {shuffling ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Shuffle className="h-4 w-4" />
+                    )}
+                    Shuffle
+                  </Button>
+                )}
+              </div>
               
               <div className="grid grid-cols-2 gap-2">
                 <Button 

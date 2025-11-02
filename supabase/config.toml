@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.populate-winner-outcomes]
 verify_jwt = false
+
+[functions.shuffle-ticket]
+verify_jwt = true

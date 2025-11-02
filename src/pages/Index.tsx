@@ -108,6 +108,8 @@ const Index = () => {
   const [generatingTicket, setGeneratingTicket] = useState(false);
   const [leftSheetOpen, setLeftSheetOpen] = useState(false);
   const [rightSheetOpen, setRightSheetOpen] = useState(false);
+  const [lastTicketParams, setLastTicketParams] = useState<any>(null);
+  const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
 
   const SEASON = 2025;
 
@@ -371,8 +373,6 @@ const Index = () => {
     }
   };
 
-  const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
-
   // OLD Bet Optimizer (Safe/Standard/Risky)
   const generateQuickTicket = async (mode: "safe" | "standard" | "risky") => {
     setGeneratingTicket(true);
@@ -598,6 +598,18 @@ const Index = () => {
         fallback_to_prematch: data.fallback_to_prematch,
       };
 
+      // Store params for shuffle
+      setLastTicketParams({
+        targetMin: params.targetMin,
+        targetMax: params.targetMax,
+        includeMarkets: params.includeMarkets,
+        minLegs: params.minLegs,
+        maxLegs: params.maxLegs,
+        useLiveOdds: params.useLiveOdds,
+        countryCode: selectedCountry ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
+        leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
+      });
+
       setCurrentTicket(ticketData);
       setTicketDrawerOpen(true);
       setTicketCreatorOpen(false);
@@ -613,6 +625,87 @@ const Index = () => {
     } catch (error: any) {
       console.error("Error generating AI ticket:", error);
       throw error; // Re-throw so dialog can catch it
+    } finally {
+      setGeneratingTicket(false);
+    }
+  };
+
+  // Shuffle existing ticket with same parameters
+  const shuffleTicket = async (lockedLegIds: string[]) => {
+    if (!lastTicketParams) {
+      toast({
+        title: "Cannot shuffle",
+        description: "No ticket parameters available",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingTicket(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      const ticketHash = currentTicket?.legs
+        ?.map((l: any) => {
+          const side = l.pick.toLowerCase().includes('over') ? 'over' : 'under';
+          const lineMatch = l.pick.match(/(\d+\.?\d*)/);
+          const line = lineMatch ? parseFloat(lineMatch[1]) : 2.5;
+          return `${l.fixture_id}-${l.market}-${side}-${line}`;
+        })
+        .sort()
+        .join("|");
+
+      const { data, error } = await supabase.functions.invoke("shuffle-ticket", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: {
+          lockedLegIds,
+          targetLegs: lastTicketParams.maxLegs || 8,
+          minOdds: 1.25,
+          maxOdds: 5.0,
+          includeMarkets: lastTicketParams.includeMarkets || ["goals", "corners", "cards"],
+          countryCode: lastTicketParams.countryCode,
+          leagueIds: lastTicketParams.leagueIds,
+          previousTicketHash: ticketHash,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data || data.error) {
+        toast({
+          title: data?.error || "Cannot shuffle",
+          description: data?.message || "Failed to generate new ticket",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const ticketData = {
+        mode: "shuffle",
+        legs: data.legs,
+        total_odds: data.total_odds,
+        estimated_win_prob: data.estimated_win_prob,
+        generated_at: data.generated_at,
+      };
+
+      setCurrentTicket(ticketData);
+
+      toast({
+        title: data.is_different ? "Ticket shuffled!" : "Ticket regenerated",
+        description: data.is_different
+          ? `New combination with ${data.total_odds.toFixed(2)}x odds (pool: ${data.pool_size})`
+          : "Generated same result (small pool)",
+      });
+    } catch (error: any) {
+      console.error("Error shuffling ticket:", error);
+      toast({
+        title: "Shuffle failed",
+        description: error.message || "Failed to shuffle ticket",
+        variant: "destructive",
+      });
     } finally {
       setGeneratingTicket(false);
     }
@@ -1087,6 +1180,8 @@ const Index = () => {
         onOpenChange={setTicketDrawerOpen}
         ticket={currentTicket}
         loading={generatingTicket}
+        onShuffle={shuffleTicket}
+        canShuffle={!!lastTicketParams && currentTicket?.mode !== "near-miss"}
       />
     </div>
   );
