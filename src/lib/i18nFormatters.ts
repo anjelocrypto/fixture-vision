@@ -27,7 +27,7 @@ export const formatDateWithLocale = (
 ): string => {
   if (lang === 'ka') {
     // For Georgian, use custom abbreviated months
-    const monthsShort = ['იან', 'თებ', 'მარ', 'აპრ', 'მაი', 'ივნ', 'ივლ', 'აგვ', 'სექ', 'ოქტ', 'ნოვ', 'დეკ'];
+    const monthsShort = ['იან', 'თებ', 'მარ', 'აპრ', 'მაი', 'ივნ', 'ივლ', 'აგვ', 'სექ', 'ოქტ', 'ნოე', 'დეკ'];
     
     if (formatStr === 'MMM d') {
       const d = typeof date === 'number' ? new Date(date) : date;
