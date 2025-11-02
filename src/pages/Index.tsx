@@ -4,6 +4,7 @@ import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
 import { RightRail } from "@/components/RightRail";
 import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
+import { WinnerPanel } from "@/components/WinnerPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -95,6 +96,7 @@ const Index = () => {
   const [valueAnalysis, setValueAnalysis] = useState<any>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [showFilterizer, setShowFilterizer] = useState(false);
+  const [showWinner, setShowWinner] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -802,6 +804,12 @@ const Index = () => {
               </PaywallGate>
             )}
 
+            {showWinner && (
+              <PaywallGate feature="Winner Predictions">
+                <WinnerPanel onClose={() => setShowWinner(false)} />
+              </PaywallGate>
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -893,20 +901,26 @@ const Index = () => {
                 </Button>
               </div>
 
-              {/* Filterizer Toggle */}
+              {/* Filterizer & Winner Toggles */}
               <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                 <Button
                   className="w-full gap-2 mb-2"
                   variant={showFilterizer ? "default" : "outline"}
-                  onClick={() => setShowFilterizer(!showFilterizer)}
+                  onClick={() => {
+                    setShowFilterizer(!showFilterizer);
+                    if (!showFilterizer) setShowWinner(false); // Close Winner if opening Filterizer
+                  }}
                 >
                   <Filter className="h-4 w-4" />
                   FILTERIZER
                 </Button>
                 <Button
                   className="w-full gap-2"
-                  variant="outline"
-                  onClick={() => navigate("/winner")}
+                  variant={showWinner ? "default" : "outline"}
+                  onClick={() => {
+                    setShowWinner(!showWinner);
+                    if (!showWinner) setShowFilterizer(false); // Close Filterizer if opening Winner
+                  }}
                 >
                   <Trophy className="h-4 w-4" />
                   WINNER (1X2)
@@ -996,20 +1010,28 @@ const Index = () => {
                   </Button>
                 </div>
 
-                {/* Filterizer Toggle */}
+                {/* Filterizer & Winner Toggles */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                   <Button
                     className="w-full gap-2 mb-2"
                     variant={showFilterizer ? "default" : "outline"}
-                    onClick={() => setShowFilterizer(!showFilterizer)}
+                    onClick={() => {
+                      setShowFilterizer(!showFilterizer);
+                      if (!showFilterizer) setShowWinner(false);
+                      setRightSheetOpen(false);
+                    }}
                   >
                     <Filter className="h-4 w-4" />
                     FILTERIZER
                   </Button>
                   <Button
                     className="w-full gap-2"
-                    variant="outline"
-                    onClick={() => navigate("/winner")}
+                    variant={showWinner ? "default" : "outline"}
+                    onClick={() => {
+                      setShowWinner(!showWinner);
+                      if (!showWinner) setShowFilterizer(false);
+                      setRightSheetOpen(false);
+                    }}
                   >
                     <Trophy className="h-4 w-4" />
                     WINNER (1X2)

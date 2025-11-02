@@ -9,10 +9,10 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Pricing from "./pages/Pricing";
 import Account from "./pages/Account";
-import Winner from "./pages/Winner";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import { Navigate } from "react-router-dom";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,14 +50,8 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/winner"
-                element={
-                  <ProtectedRoute>
-                    <Winner />
-                  </ProtectedRoute>
-                }
-              />
+              {/* Redirect /winner to main page (Winner is now integrated) */}
+              <Route path="/winner" element={<Navigate to="/" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

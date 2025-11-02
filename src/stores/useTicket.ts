@@ -9,15 +9,15 @@ export type TicketLeg = {
   homeTeam: string;
   awayTeam: string;
   kickoffUtc: string;
-  market: 'goals' | 'corners' | 'cards' | 'offsides' | 'fouls';
-  side: 'over' | 'under';
-  line: number;
+  market: 'goals' | 'corners' | 'cards' | 'offsides' | 'fouls' | '1x2';
+  side: 'over' | 'under' | 'home' | 'away' | 'draw';
+  line: number | string;
   odds: number;
   bookmaker: string;
   rulesVersion: string;
   combinedAvg?: number;
   isLive: boolean;
-  source: 'filterizer' | 'ticket_creator' | 'bet_optimizer';
+  source: 'filterizer' | 'ticket_creator' | 'bet_optimizer' | 'winner';
 };
 
 export type TicketState = {
