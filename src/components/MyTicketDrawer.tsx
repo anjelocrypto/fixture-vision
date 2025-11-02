@@ -27,7 +27,7 @@ interface MyTicketDrawerProps {
 export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const { legs, stake, setStake, removeLeg, clear, refreshOdds } = useTicket();
   const { toast } = useToast();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation('common');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -45,13 +45,13 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
     try {
       await refreshOdds();
       toast({
-        title: "Odds refreshed",
-        description: "All odds have been updated to the latest values.",
+        title: t('odds_refreshed'),
+        description: t('odds_updated_description'),
       });
     } catch (error) {
       toast({
-        title: "Refresh failed",
-        description: "Could not refresh odds. Please try again.",
+        title: t('refresh_failed'),
+        description: t('refresh_failed_description'),
         variant: "destructive",
       });
     } finally {
@@ -68,16 +68,16 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
 
     navigator.clipboard.writeText(ticketText + summary);
     toast({
-      title: "Copied to clipboard",
-      description: "Ticket details copied successfully.",
+      title: t('copied_to_clipboard'),
+      description: t('ticket_copied_description'),
     });
   };
 
   const handleClear = () => {
     clear();
     toast({
-      title: "Ticket cleared",
-      description: "All selections removed from your ticket.",
+      title: t('ticket_cleared'),
+      description: t('ticket_cleared_description'),
     });
   };
 
@@ -94,13 +94,13 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Ticket className="h-5 w-5" />
-            My Ticket
+            {t('my_ticket_title')}
             {legs.length > 0 && (
-              <Badge variant="secondary">{legs.length} leg{legs.length !== 1 ? 's' : ''}</Badge>
+              <Badge variant="secondary">{t(legs.length === 1 ? 'legs' : 'legs_plural', { count: legs.length })}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>
-            Build your betting ticket from selections across the app
+            {t('build_ticket_description')}
           </SheetDescription>
         </SheetHeader>
 
@@ -108,9 +108,9 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
           {legs.length === 0 ? (
             <div className="text-center py-12">
               <Ticket className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-lg font-medium mb-2">Your ticket is empty</p>
+              <p className="text-lg font-medium mb-2">{t('ticket_empty')}</p>
               <p className="text-sm text-muted-foreground">
-                Add selections from anywhere using the ticket + button
+                {t('add_selections_prompt')}
               </p>
             </div>
           ) : (
@@ -125,11 +125,11 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                   className="flex-1"
                 >
                   <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh Odds
+                  {t('refresh_odds')}
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleCopy} className="flex-1">
                   <Copy className="h-4 w-4 mr-2" />
-                  Copy
+                  {t('copy')}
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleClear}>
                   <Trash2 className="h-4 w-4" />
@@ -144,7 +144,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                       {/* Fixture */}
                       <div>
                         <h4 className="font-semibold text-sm leading-tight">
-                          {leg.homeTeam} <span className="text-muted-foreground">vs</span> {leg.awayTeam}
+                          {leg.homeTeam} <span className="text-muted-foreground">{t('vs')}</span> {leg.awayTeam}
                         </h4>
                         <p className="text-xs text-muted-foreground mt-1">
                           {formatDateWithLocale(new Date(leg.kickoffUtc), "MMM d, HH:mm", i18n.language)}
@@ -161,7 +161,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                         </Badge>
                         {leg.isLive && (
                           <Badge variant="destructive" className="text-xs">
-                            LIVE
+                            {t('live')}
                           </Badge>
                         )}
                       </div>
@@ -176,7 +176,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                         </div>
                         {leg.combinedAvg && (
                           <div className="text-right text-xs text-muted-foreground">
-                            Combined: {leg.combinedAvg.toFixed(2)}
+                            {t('combined')}: {leg.combinedAvg.toFixed(2)}
                           </div>
                         )}
                       </div>
@@ -189,7 +189,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                         className="w-full text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-3 w-3 mr-2" />
-                        Remove
+                        {t('remove')}
                       </Button>
                     </div>
                   </Card>
@@ -201,7 +201,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="stake" className="text-sm">
-                      Stake
+                      {t('stake')}
                     </Label>
                     <Input
                       id="stake"
@@ -216,11 +216,11 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
 
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Odds:</span>
+                      <span className="text-muted-foreground">{t('total_odds')}</span>
                       <span className="font-bold tabular-nums">{totalOdds.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-lg font-bold">
-                      <span>Potential Return:</span>
+                      <span>{t('potential_return')}</span>
                       <span className="text-primary tabular-nums">{potentialReturn.toFixed(2)}</span>
                     </div>
                   </div>
@@ -229,8 +229,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
 
               {/* Note */}
               <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-                <strong>Note:</strong> All odds are within the qualified range [1.25-5.00]. 
-                Odds refresh automatically when you open this drawer.
+                <strong>{t('note')}</strong> {t('odds_range_note')}
               </div>
             </>
           )}

@@ -3,6 +3,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TicketPlus, TicketCheck } from "lucide-react";
 import { useTicket, TicketLeg } from "@/stores/useTicket";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface AddToTicketButtonProps {
   leg: TicketLeg;
@@ -13,6 +14,7 @@ interface AddToTicketButtonProps {
 export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: AddToTicketButtonProps) {
   const { addLeg, removeLeg, hasLeg } = useTicket();
   const { toast } = useToast();
+  const { t } = useTranslation('common');
   const isAdded = hasLeg(leg.fixtureId, leg.market);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -21,13 +23,13 @@ export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: Add
     if (isAdded) {
       removeLeg(leg.id);
       toast({
-        title: "Removed from ticket",
-        description: `${leg.market} ${leg.side} ${leg.line} removed`,
+        title: t('removed_from_ticket'),
+        description: `${leg.market} ${leg.side} ${leg.line} ${t('remove').toLowerCase()}`,
       });
     } else {
       addLeg(leg);
       toast({
-        title: "Added to ticket",
+        title: t('added_to_ticket'),
         description: `${leg.market} ${leg.side} ${leg.line} @ ${leg.odds.toFixed(2)}`,
       });
     }
@@ -47,13 +49,13 @@ export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: Add
           {isAdded ? <TicketCheck className="h-4 w-4" /> : <TicketPlus className="h-4 w-4" />}
           {showText && (
             <span className="ml-2">
-              {isAdded ? "Added" : "Add to Ticket"}
+              {isAdded ? t('ticket_added', { defaultValue: 'Added' }) : t('add_to_ticket', { defaultValue: 'Add to Ticket' })}
             </span>
           )}
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {isAdded ? "Remove from My Ticket" : "Add to My Ticket"}
+        {isAdded ? t('remove_from_ticket', { defaultValue: 'Remove from My Ticket' }) : t('add_to_my_ticket', { defaultValue: 'Add to My Ticket' })}
       </TooltipContent>
     </Tooltip>
   );
