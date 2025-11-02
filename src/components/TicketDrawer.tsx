@@ -8,6 +8,7 @@ import { TicketLeg as MyTicketLeg } from "@/stores/useTicket";
 import { GeminiAnalysis } from "./GeminiAnalysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface TicketLeg {
   fixture_id: number;
@@ -53,6 +54,7 @@ interface TicketDrawerProps {
 
 export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, canShuffle = false }: TicketDrawerProps) {
   const { toast } = useToast();
+  const { i18n } = useTranslation();
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [lockedLegIds, setLockedLegIds] = useState<Set<string>>(new Set());
@@ -131,7 +133,10 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
 
     try {
       const { data, error } = await supabase.functions.invoke('analyze-ticket', {
-        body: { ticket }
+        body: { 
+          ticket,
+          language: i18n.language 
+        }
       });
 
       if (error) throw error;

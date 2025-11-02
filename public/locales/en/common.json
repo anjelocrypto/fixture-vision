@@ -77,5 +77,10 @@
   "add_to_ticket": "Add to Ticket",
   "add_to_my_ticket": "Add to My Ticket",
   "remove_from_ticket": "Remove from My Ticket",
-  "ticket_added": "Added"
+  "ticket_added": "Added",
+  "gemini_analysis": "Gemini Analysis",
+  "overall_summary": "Overall Summary",
+  "confidence_high": "High",
+  "confidence_medium": "Medium",
+  "confidence_low": "Low"
 }

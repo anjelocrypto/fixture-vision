@@ -1,6 +1,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface MatchAnalysis {
   match_title: string;
@@ -15,10 +16,12 @@ interface GeminiAnalysisProps {
 }
 
 export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps) {
+  const { t } = useTranslation('common');
+  
   const getConfidenceBadgeVariant = (level: string) => {
     const lowerLevel = level.toLowerCase();
-    if (lowerLevel.includes('high')) return 'default';
-    if (lowerLevel.includes('low')) return 'destructive';
+    if (lowerLevel.includes('high') || lowerLevel.includes('მაღალი')) return 'default';
+    if (lowerLevel.includes('low') || lowerLevel.includes('დაბალი')) return 'destructive';
     return 'secondary';
   };
 
@@ -26,12 +29,12 @@ export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps)
     <div className="space-y-4 mt-6 border-t pt-6">
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="h-5 w-5 text-primary" />
-        <h3 className="text-lg font-semibold">Gemini Analysis</h3>
+        <h3 className="text-lg font-semibold">{t('gemini_analysis')}</h3>
       </div>
 
       {/* Overall Summary */}
       <div className="bg-muted/50 rounded-lg p-4">
-        <div className="text-sm font-medium mb-2 text-muted-foreground">Overall Summary</div>
+        <div className="text-sm font-medium mb-2 text-muted-foreground">{t('overall_summary')}</div>
         <p className="text-sm">{overallSummary}</p>
       </div>
 

@@ -77,5 +77,10 @@
   "add_to_ticket": "ბილეთში დამატება",
   "add_to_my_ticket": "ჩემს ბილეთში დამატება",
   "remove_from_ticket": "ბილეთიდან წაშლა",
-  "ticket_added": "დამატებულია"
+  "ticket_added": "დამატებულია",
+  "gemini_analysis": "Gemini ანალიზი",
+  "overall_summary": "საერთო შეჯამება",
+  "confidence_high": "მაღალი",
+  "confidence_medium": "საშუალო",
+  "confidence_low": "დაბალი"
 }
