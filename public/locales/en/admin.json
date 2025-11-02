@@ -1,0 +1,15 @@
+{
+  "fetch_fixtures": "Fetch Fixtures",
+  "fetching": "Fetching...",
+  "fetching_attempts": "Fetching ({{attempt}}/5)...",
+  "run_warmup": "Run Warmup (120h)?",
+  "warmup": "Warmup",
+  "refresh_stats": "Refresh Stats",
+  "refresh_results": "Refresh Results",
+  "fetch_predictions": "Fetch Predictions",
+  "populate_outcomes": "Populate Outcomes",
+  "window_24h": "24h",
+  "window_48h": "48h",
+  "window_72h": "72h",
+  "window_120h": "120h"
+}

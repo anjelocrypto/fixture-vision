@@ -1,0 +1,14 @@
+{
+  "title": "ფილტრიზერი",
+  "active": "აქტიური",
+  "select_market": "აირჩიეთ ბაზარი",
+  "select_line": "აირჩიეთ ხაზი (მეტი)",
+  "min_odds": "მინ. კოეფიციენტი",
+  "apply_filters": "ფილტრების გამოყენება",
+  "clear": "გასუფთავება",
+  "market_goals": "გოლები",
+  "market_corners": "კუთხეები",
+  "market_cards": "ბარათები",
+  "market_fouls": "დარღვევები",
+  "market_offsides": "ოფსაიდები"
+}

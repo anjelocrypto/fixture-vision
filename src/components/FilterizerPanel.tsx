@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { X, Filter } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { formatMarketLabel } from "@/lib/i18nFormatters";
 
 interface FilterizerPanelProps {
   onApplyFilters: (filters: FilterCriteria) => void;
@@ -43,6 +45,7 @@ const MARKET_OPTIONS = [
 ];
 
 export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: FilterizerPanelProps) {
+  const { t, i18n } = useTranslation(['filterizer']);
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
@@ -80,10 +83,10 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Filter className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold">Filterizer</h3>
+          <h3 className="text-lg font-semibold">{t('filterizer:title')}</h3>
           {isActive && (
             <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">
-              Active
+              {t('filterizer:active')}
             </span>
           )}
         </div>
@@ -95,7 +98,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       <div className="space-y-6">
         {/* Market Selection */}
         <div className="space-y-3">
-          <Label className="text-sm font-medium">Select Market</Label>
+          <Label className="text-sm font-medium">{t('filterizer:select_market')}</Label>
           <div className="grid grid-cols-2 gap-2">
             {MARKET_OPTIONS.map((market) => (
               <Button
@@ -105,7 +108,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
                 onClick={() => handleMarketSelect(market.id)}
                 className="capitalize"
               >
-                {market.label}
+                {formatMarketLabel(market.label, i18n.language)}
               </Button>
             ))}
           </div>
@@ -114,7 +117,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         {/* Line Selection (Pills) */}
         {currentMarketOption && (
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Select Line (Over)</Label>
+            <Label className="text-sm font-medium">{t('filterizer:select_line')}</Label>
             <div className="flex flex-wrap gap-2">
               {currentMarketOption.lines.map((line) => (
                 <Badge
@@ -133,7 +136,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         {/* Min Odds Slider */}
         <div className="space-y-3 pt-4 border-t">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Min Odds</Label>
+            <Label className="text-sm font-medium">{t('filterizer:min_odds')}</Label>
             <span className="text-sm font-semibold text-primary tabular-nums">
               {minOdds.toFixed(2)}
             </span>
@@ -158,10 +161,10 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
             onClick={handleApply} 
             className="flex-1"
           >
-            Apply Filters
+            {t('filterizer:apply_filters')}
           </Button>
           <Button variant="outline" onClick={handleClear} className="flex-1">
-            Clear
+            {t('filterizer:clear')}
           </Button>
         </div>
       </div>

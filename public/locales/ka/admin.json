@@ -1,0 +1,15 @@
+{
+  "fetch_fixtures": "მატჩების მოპოვება",
+  "fetching": "მიმდინარეობს...",
+  "fetching_attempts": "მიმდინარეობს ({{attempt}}/5)...",
+  "run_warmup": "გაშვება (120სთ)?",
+  "warmup": "გახურება",
+  "refresh_stats": "სტატისტიკის განახლება",
+  "refresh_results": "შედეგების განახლება",
+  "fetch_predictions": "პროგნოზების მოპოვება",
+  "populate_outcomes": "შედეგების შევსება",
+  "window_24h": "24სთ",
+  "window_48h": "48სთ",
+  "window_72h": "72სთ",
+  "window_120h": "120სთ"
+}

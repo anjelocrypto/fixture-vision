@@ -10,10 +10,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import Footer from "@/components/Footer";
+import { useTranslation } from "react-i18next";
 
 export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation(['common']);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,8 +26,8 @@ export default function Auth() {
     
     if (!acceptedTerms) {
       toast({
-        title: "Terms required",
-        description: "Please accept the Terms of Service to continue",
+        title: t('common:terms_required'),
+        description: t('common:terms_accept_message'),
         variant: "destructive",
       });
       return;
@@ -45,14 +47,14 @@ export default function Auth() {
       if (error) throw error;
 
       toast({
-        title: "Success!",
-        description: "Account created. You're now signed in.",
+        title: t('common:success'),
+        description: t('common:signup_success'),
       });
       
       navigate("/");
     } catch (error: any) {
       toast({
-        title: "Signup failed",
+        title: t('common:signup_failed'),
         description: error.message,
         variant: "destructive",
       });
@@ -74,14 +76,14 @@ export default function Auth() {
       if (error) throw error;
 
       toast({
-        title: "Welcome back!",
-        description: "Successfully signed in.",
+        title: t('common:welcome_back'),
+        description: t('common:success_signed_in'),
       });
 
       navigate("/");
     } catch (error: any) {
       toast({
-        title: "Sign in failed",
+        title: t('common:signin_failed'),
         description: error.message,
         variant: "destructive",
       });
@@ -99,20 +101,20 @@ export default function Auth() {
               <span className="text-primary animate-glow">TICKET AI</span>
             </CardTitle>
             <CardDescription className="text-center">
-              Sign in to generate optimized betting tickets
+              {t('common:generate_optimized_betting_tickets')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signin" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Sign In</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                <TabsTrigger value="signin">{t('common:sign_in')}</TabsTrigger>
+                <TabsTrigger value="signup">{t('common:sign_up')}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signin-email">Email</Label>
+                    <Label htmlFor="signin-email">{t('common:email')}</Label>
                     <Input
                       id="signin-email"
                       type="email"
@@ -124,7 +126,7 @@ export default function Auth() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signin-password">Password</Label>
+                    <Label htmlFor="signin-password">{t('common:password')}</Label>
                     <Input
                       id="signin-password"
                       type="password"
@@ -138,7 +140,7 @@ export default function Auth() {
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign In
+                    {t('common:sign_in')}
                   </Button>
                 </form>
               </TabsContent>
@@ -146,7 +148,7 @@ export default function Auth() {
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
+                    <Label htmlFor="signup-email">{t('common:email')}</Label>
                     <Input
                       id="signup-email"
                       type="email"
@@ -158,7 +160,7 @@ export default function Auth() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
+                    <Label htmlFor="signup-password">{t('common:password')}</Label>
                     <Input
                       id="signup-password"
                       type="password"
@@ -170,7 +172,7 @@ export default function Auth() {
                       minLength={6}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Must be at least 6 characters
+                      {t('common:password_min_length')}
                     </p>
                   </div>
                   <div className="flex items-start space-x-2">
@@ -184,19 +186,19 @@ export default function Auth() {
                       htmlFor="terms"
                       className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      I agree to the{" "}
+                      {t('common:i_agree_to')}{" "}
                       <Link to="/legal/terms" className="text-primary hover:underline" target="_blank">
-                        Terms of Service
+                        {t('common:terms_of_service')}
                       </Link>
-                      {" "}and{" "}
+                      {" "}{t('common:and')}{" "}
                       <Link to="/legal/privacy" className="text-primary hover:underline" target="_blank">
-                        Privacy Policy
+                        {t('common:privacy_policy')}
                       </Link>
                     </label>
                   </div>
                   <Button type="submit" className="w-full" disabled={loading || !acceptedTerms}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Account
+                    {t('common:create_account')}
                   </Button>
                 </form>
               </TabsContent>

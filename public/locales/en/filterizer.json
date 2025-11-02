@@ -1,0 +1,14 @@
+{
+  "title": "Filterizer",
+  "active": "Active",
+  "select_market": "Select Market",
+  "select_line": "Select Line (Over)",
+  "min_odds": "Min Odds",
+  "apply_filters": "Apply Filters",
+  "clear": "Clear",
+  "market_goals": "Goals",
+  "market_corners": "Corners",
+  "market_cards": "Cards",
+  "market_fouls": "Fouls",
+  "market_offsides": "Offsides"
+}

@@ -11,6 +11,8 @@ import { LastFetchBadge } from "./LastFetchBadge";
 import { useTicket } from "@/stores/useTicket";
 import { MyTicketDrawer } from "./MyTicketDrawer";
 import { useAccess } from "@/hooks/useAccess";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { useTranslation } from "react-i18next";
 
 const sports = [
   { name: "Football", active: true },
@@ -23,6 +25,7 @@ const sports = [
 export function AppHeader() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation(['common']);
   const [session, setSession] = useState<Session | null>(null);
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const { legs, loadFromStorage, loadFromServer } = useTicket();
@@ -54,8 +57,8 @@ export function AppHeader() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast({
-      title: "Signed out",
-      description: "You've been successfully signed out.",
+      title: t('common:sign_out'),
+      description: t('common:success_signed_out'),
     });
     navigate("/auth");
   };
@@ -97,6 +100,9 @@ export function AppHeader() {
 
         {/* Right Utils - Simplified on mobile */}
         <div className="flex items-center gap-1 sm:gap-3">
+          {/* Language Switcher */}
+          <LanguageSwitcher />
+          
           {/* My Ticket Button */}
           <Button 
             variant="ghost" 
@@ -151,31 +157,31 @@ export function AppHeader() {
                 {hasAccess && entitlement && (
                   <DropdownMenuItem disabled className="text-xs font-medium">
                     <Sparkles className="mr-2 h-3 w-3" />
-                    {entitlement.plan === "day_pass" ? "Day Pass" : 
-                     entitlement.plan === "premium_monthly" ? "Premium" : "Annual"}
+                    {entitlement.plan === "day_pass" ? t('common:premium_badge_day_pass') : 
+                     entitlement.plan === "premium_monthly" ? t('common:premium_badge_monthly') : t('common:premium_badge_annual')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/account")}>
                   <CreditCard className="mr-2 h-4 w-4" />
-                  Account & Billing
+                  {t('common:account_billing')}
                 </DropdownMenuItem>
                 {!hasAccess && (
                   <DropdownMenuItem onClick={() => navigate("/pricing")}>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Upgrade to Premium
+                    {t('common:upgrade_to_premium')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
-                  Sign Out
+                  {t('common:sign_out')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
             <Button variant="default" size="sm" onClick={() => navigate("/auth")}>
-              Sign In
+              {t('common:sign_in')}
             </Button>
           )}
         </div>
