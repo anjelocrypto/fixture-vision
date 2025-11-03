@@ -142,61 +142,31 @@ serve(async (req) => {
     
     console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup (force=${force})`);
 
-    // Execute pipeline in proper sequence to avoid browser 60s CORS timeout
+    // Execute pipeline in proper sequence - all fire-and-forget to avoid browser timeout
     // Step 1: Refresh stats first (teams need stats for selections)
-    console.log(`[warmup-odds] Step 1: Calling stats-refresh (${window_hours}h, force=${force})`);
-    const statsResult = await callEdgeFunction("stats-refresh", { 
+    console.log(`[warmup-odds] Step 1: Triggering stats-refresh (${window_hours}h, force=${force})`);
+    triggerEdgeFunction("stats-refresh", { 
       window_hours, 
       stats_ttl_hours: 24,
       force 
     });
 
-    let statsStatus = "failed";
-    if (statsResult.ok) {
-      const sr = statsResult.data || {};
-      const reason = (sr.reason || sr.message || "").toLowerCase();
-      const normalized = (sr.statsResult || (sr.skipped && reason.includes("already") ? "already-running" : (sr.success ? "completed" : undefined)));
-      if (normalized === "already-running") {
-        statsStatus = "already-running";
-        console.log(`[warmup-odds] stats-refresh already running (mutex locked), proceeding with pipeline`);
-      } else if (sr.started === true) {
-        statsStatus = "started";
-        console.log(`[warmup-odds] stats-refresh started`);
-      } else if (sr.success) {
-        statsStatus = "completed";
-        console.log(`[warmup-odds] stats-refresh completed: ${JSON.stringify(sr).substring(0, 200)}`);
-      } else {
-        console.warn(`[warmup-odds] stats-refresh returned ok but unrecognized shape`, sr);
-      }
-    } else {
-      if (statsResult.status === 409 || statsResult.status === 423) {
-        statsStatus = "already-running";
-        console.warn(`[warmup-odds] stats-refresh lock status ${statsResult.status}, treating as already-running`);
-      } else {
-        console.error(`[warmup-odds] stats-refresh failed: ${statsResult.status}`, statsResult.data);
-      }
-    }
-
-    // Step 2: Backfill odds (can run after stats)
+    // Step 2: Backfill odds (can run after stats start)
     console.log(`[warmup-odds] Step 2: Triggering backfill-odds (${window_hours}h)`);
     triggerEdgeFunction("backfill-odds", { window_hours });
-
-    // Small delay to let odds start populating
-    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Step 3: Generate optimized selections (needs both stats and odds)
     console.log(`[warmup-odds] Step 3: Triggering optimize-selections-refresh (${window_hours}h)`);
     triggerEdgeFunction("optimize-selections-refresh", { window_hours });
 
-    // Respond immediately – progress can be observed via badges/logs
+    // Respond immediately – all steps running in background
     return jsonResponse(
       {
         success: true,
         started: true,
         window_hours,
         force,
-        statsResult: statsStatus,
-        message: `Warmup started for ${window_hours}h. Pipeline: stats (${statsStatus}) → odds → selections running in background.`,
+        message: `Warmup pipeline started for ${window_hours}h. Stats → Odds → Selections running in background. Monitor progress via logs or badges.`,
       },
       origin,
       202,
