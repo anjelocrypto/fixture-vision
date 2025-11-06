@@ -23,65 +23,79 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
 
+// Helper function to convert country code to flag emoji
+const getCountryFlag = (code: string): string => {
+  if (code === "WORLD") return "🌍";
+  if (code === "GB") return "🏴󠁧󠁢󠁥󠁮󠁧󠁿"; // England
+  if (code === "GB-SCT") return "🏴󠁧󠁢󠁳󠁣󠁴󠁿"; // Scotland
+  
+  // Convert ISO country code to regional indicator symbols
+  const codePoints = code
+    .toUpperCase()
+    .split('')
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+};
+
 // Mock countries data - comprehensive coverage
 const MOCK_COUNTRIES = [
-  { id: 0, name: "World", flag: "🌍", code: "WORLD" },
+  { id: 0, name: "World", code: "WORLD" },
   // Western Europe
-  { id: 39, name: "England", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", code: "GB" },
-  { id: 140, name: "Spain", flag: "🇪🇸", code: "ES" },
-  { id: 135, name: "Italy", flag: "🇮🇹", code: "IT" },
-  { id: 78, name: "Germany", flag: "🇩🇪", code: "DE" },
-  { id: 61, name: "France", flag: "🇫🇷", code: "FR" },
-  { id: 88, name: "Netherlands", flag: "🇳🇱", code: "NL" },
-  { id: 94, name: "Portugal", flag: "🇵🇹", code: "PT" },
-  { id: 144, name: "Belgium", flag: "🇧🇪", code: "BE" },
-  { id: 179, name: "Scotland", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", code: "GB-SCT" },
-  { id: 218, name: "Austria", flag: "🇦🇹", code: "AT" },
-  { id: 207, name: "Switzerland", flag: "🇨🇭", code: "CH" },
-  { id: 197, name: "Greece", flag: "🇬🇷", code: "GR" },
-  { id: 119, name: "Denmark", flag: "🇩🇰", code: "DK" },
-  { id: 103, name: "Norway", flag: "🇳🇴", code: "NO" },
-  { id: 113, name: "Sweden", flag: "🇸🇪", code: "SE" },
+  { id: 39, name: "England", code: "GB" },
+  { id: 140, name: "Spain", code: "ES" },
+  { id: 135, name: "Italy", code: "IT" },
+  { id: 78, name: "Germany", code: "DE" },
+  { id: 61, name: "France", code: "FR" },
+  { id: 88, name: "Netherlands", code: "NL" },
+  { id: 94, name: "Portugal", code: "PT" },
+  { id: 144, name: "Belgium", code: "BE" },
+  { id: 179, name: "Scotland", code: "GB-SCT" },
+  { id: 218, name: "Austria", code: "AT" },
+  { id: 207, name: "Switzerland", code: "CH" },
+  { id: 197, name: "Greece", code: "GR" },
+  { id: 119, name: "Denmark", code: "DK" },
+  { id: 103, name: "Norway", code: "NO" },
+  { id: 113, name: "Sweden", code: "SE" },
   // Eastern Europe
-  { id: 203, name: "Turkey", flag: "🇹🇷", code: "TR" },
-  { id: 106, name: "Poland", flag: "🇵🇱", code: "PL" },
-  { id: 345, name: "Czech Republic", flag: "🇨🇿", code: "CZ" },
-  { id: 283, name: "Romania", flag: "🇷🇴", code: "RO" },
-  { id: 210, name: "Croatia", flag: "🇭🇷", code: "HR" },
-  { id: 286, name: "Serbia", flag: "🇷🇸", code: "RS" },
-  { id: 172, name: "Bulgaria", flag: "🇧🇬", code: "BG" },
-  { id: 271, name: "Hungary", flag: "🇭🇺", code: "HU" },
-  { id: 333, name: "Ukraine", flag: "🇺🇦", code: "UA" },
-  { id: 235, name: "Russia", flag: "🇷🇺", code: "RU" },
+  { id: 203, name: "Turkey", code: "TR" },
+  { id: 106, name: "Poland", code: "PL" },
+  { id: 345, name: "Czech Republic", code: "CZ" },
+  { id: 283, name: "Romania", code: "RO" },
+  { id: 210, name: "Croatia", code: "HR" },
+  { id: 286, name: "Serbia", code: "RS" },
+  { id: 172, name: "Bulgaria", code: "BG" },
+  { id: 271, name: "Hungary", code: "HU" },
+  { id: 333, name: "Ukraine", code: "UA" },
+  { id: 235, name: "Russia", code: "RU" },
   // Americas
-  { id: 253, name: "USA", flag: "🇺🇸", code: "US" },
-  { id: 262, name: "Mexico", flag: "🇲🇽", code: "MX" },
-  { id: 71, name: "Brazil", flag: "🇧🇷", code: "BR" },
-  { id: 128, name: "Argentina", flag: "🇦🇷", code: "AR" },
-  { id: 239, name: "Colombia", flag: "🇨🇴", code: "CO" },
-  { id: 265, name: "Chile", flag: "🇨🇱", code: "CL" },
-  { id: 274, name: "Uruguay", flag: "🇺🇾", code: "UY" },
-  { id: 250, name: "Paraguay", flag: "🇵🇾", code: "PY" },
-  { id: 242, name: "Ecuador", flag: "🇪🇨", code: "EC" },
+  { id: 253, name: "USA", code: "US" },
+  { id: 262, name: "Mexico", code: "MX" },
+  { id: 71, name: "Brazil", code: "BR" },
+  { id: 128, name: "Argentina", code: "AR" },
+  { id: 239, name: "Colombia", code: "CO" },
+  { id: 265, name: "Chile", code: "CL" },
+  { id: 274, name: "Uruguay", code: "UY" },
+  { id: 250, name: "Paraguay", code: "PY" },
+  { id: 242, name: "Ecuador", code: "EC" },
   // Asia & Oceania
-  { id: 98, name: "Japan", flag: "🇯🇵", code: "JP" },
-  { id: 292, name: "South Korea", flag: "🇰🇷", code: "KR" },
-  { id: 188, name: "Australia", flag: "🇦🇺", code: "AU" },
-  { id: 17, name: "China", flag: "🇨🇳", code: "CN" },
-  { id: 307, name: "Saudi Arabia", flag: "🇸🇦", code: "SA" },
-  { id: 301, name: "UAE", flag: "🇦🇪", code: "AE" },
-  { id: 305, name: "Qatar", flag: "🇶🇦", code: "QA" },
+  { id: 98, name: "Japan", code: "JP" },
+  { id: 292, name: "South Korea", code: "KR" },
+  { id: 188, name: "Australia", code: "AU" },
+  { id: 17, name: "China", code: "CN" },
+  { id: 307, name: "Saudi Arabia", code: "SA" },
+  { id: 301, name: "UAE", code: "AE" },
+  { id: 305, name: "Qatar", code: "QA" },
   // Africa
-  { id: 288, name: "South Africa", flag: "🇿🇦", code: "ZA" },
-  { id: 233, name: "Egypt", flag: "🇪🇬", code: "EG" },
-  { id: 200, name: "Morocco", flag: "🇲🇦", code: "MA" },
-  { id: 185, name: "Algeria", flag: "🇩🇿", code: "DZ" },
-  { id: 202, name: "Tunisia", flag: "🇹🇳", code: "TN" },
+  { id: 288, name: "South Africa", code: "ZA" },
+  { id: 233, name: "Egypt", code: "EG" },
+  { id: 200, name: "Morocco", code: "MA" },
+  { id: 185, name: "Algeria", code: "DZ" },
+  { id: 202, name: "Tunisia", code: "TN" },
   // Other
-  { id: 383, name: "Israel", flag: "🇮🇱", code: "IL" },
-  { id: 165, name: "Iceland", flag: "🇮🇸", code: "IS" },
-  { id: 244, name: "Finland", flag: "🇫🇮", code: "FI" },
-];
+  { id: 383, name: "Israel", code: "IL" },
+  { id: 165, name: "Iceland", code: "IS" },
+  { id: 244, name: "Finland", code: "FI" },
+].map(country => ({ ...country, flag: getCountryFlag(country.code) }));
 
 const Index = () => {
   const { toast } = useToast();

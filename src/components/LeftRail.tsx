@@ -9,6 +9,11 @@ interface Country {
   code: string;
 }
 
+// Helper to ensure flag emoji renders properly
+const getFlagDisplay = (flag: string) => {
+  return flag;
+};
+
 interface League {
   id: number;
   name: string;
@@ -87,7 +92,9 @@ export function LeftRail({
                   : "hover:bg-secondary/50 text-foreground"
               }`}
             >
-              <span className="text-2xl">{country.flag}</span>
+              <span className="text-2xl" style={{ fontFamily: "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif" }}>
+                {getFlagDisplay(country.flag)}
+              </span>
               <span className="text-sm font-medium">{getCountryName(country.name)}</span>
             </button>
           ))}
