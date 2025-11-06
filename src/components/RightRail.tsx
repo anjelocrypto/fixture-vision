@@ -75,9 +75,9 @@ function StatRow({ label, value }: { label: string; value: number }) {
   }, [value]);
 
   return (
-    <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-bold tabular-nums">{displayValue.toFixed(1)}</span>
+    <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 min-w-0 gap-2">
+      <span className="text-sm text-muted-foreground truncate">{label}</span>
+      <span className="text-sm font-bold tabular-nums shrink-0">{displayValue.toFixed(1)}</span>
     </div>
   );
 }
@@ -105,24 +105,24 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
   }
 
   return (
-    <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+    <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto overflow-x-hidden">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : analysis ? (
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           {/* Header */}
-          <Card className="p-4 bg-primary/5 border-primary/20">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold">AI Analysis</h3>
-              <Badge variant="outline" className="border-primary/30 text-primary">
+          <Card className="p-4 bg-primary/5 border-primary/20 min-w-0">
+            <div className="flex items-center justify-between mb-3 min-w-0">
+              <h3 className="text-lg font-semibold truncate">AI Analysis</h3>
+              <Badge variant="outline" className="border-primary/30 text-primary shrink-0 ml-2">
                 BETAI 0.2
               </Badge>
             </div>
             
             {/* Status Chips */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 min-w-0">
               {(analysis.home.sample_size < 5 || analysis.away.sample_size < 5) && (
                 <div className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-1 rounded-full border border-amber-500/20">
                   <AlertTriangle className="h-3 w-3" />
@@ -143,41 +143,41 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
 
           {/* Suggested Markets */}
           {suggested_markets.length > 0 ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Suggested Markets</h4>
-                <Badge variant="secondary" className="text-xs">Value</Badge>
+            <div className="space-y-3 min-w-0">
+              <div className="flex items-center justify-between min-w-0">
+                <h4 className="text-sm font-semibold truncate">Suggested Markets</h4>
+                <Badge variant="secondary" className="text-xs shrink-0 ml-2">Value</Badge>
               </div>
               
               {suggested_markets.slice(0, 4).map((market, idx) => (
-                <Card key={idx} className="p-3 bg-card/50 hover:bg-card transition-colors">
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium capitalize">
+                <Card key={idx} className="p-3 bg-card/50 hover:bg-card transition-colors min-w-0">
+                  <div className="space-y-2 min-w-0">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="space-y-0.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <div className="text-sm font-medium capitalize truncate">
                             {market.market} {market.side} {market.line}
                           </div>
                           {market.normalized_sum && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0">
                               Σ={market.normalized_sum.toFixed(2)}
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground truncate">
                           {market.bookmaker}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold">@{market.odds.toFixed(2)}</div>
-                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-bold whitespace-nowrap">@{market.odds.toFixed(2)}</div>
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20 whitespace-nowrap">
                           +{(market.edge * 100).toFixed(1)}%
                         </Badge>
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-between pt-1.5 border-t text-xs">
-                      <div className="text-muted-foreground">
+                    <div className="flex items-center justify-between pt-1.5 border-t text-xs gap-2 min-w-0">
+                      <div className="text-muted-foreground truncate flex-1 min-w-0">
                         Model {(market.model_prob * 100).toFixed(0)}% vs Book {(market.book_prob * 100).toFixed(0)}%
                       </div>
                       <Button
@@ -203,10 +203,10 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           )}
 
           {/* Home Team */}
-          <Card className="p-4">
-            <div className="flex items-center gap-3 mb-4">
-              {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8" />}
-              <h4 className="font-semibold">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
+          <Card className="p-4 min-w-0">
+            <div className="flex items-center gap-3 mb-4 min-w-0">
+              {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8 shrink-0" />}
+              <h4 className="font-semibold truncate">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
             </div>
             <div className="space-y-1">
               <StatRow label="Goals" value={analysis.home.goals} />
@@ -218,10 +218,10 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           </Card>
 
           {/* Away Team */}
-          <Card className="p-4">
-            <div className="flex items-center gap-3 mb-4">
-              {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8" />}
-              <h4 className="font-semibold">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
+          <Card className="p-4 min-w-0">
+            <div className="flex items-center gap-3 mb-4 min-w-0">
+              {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8 shrink-0" />}
+              <h4 className="font-semibold truncate">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
             </div>
             <div className="space-y-1">
               <StatRow label="Goals" value={analysis.away.goals} />
@@ -233,8 +233,8 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           </Card>
 
           {/* Combined Stats */}
-          <Card className="p-4 border-primary/30">
-            <h4 className="font-semibold mb-3 text-primary">Combined Stats</h4>
+          <Card className="p-4 border-primary/30 min-w-0">
+            <h4 className="font-semibold mb-3 text-primary truncate">Combined Stats</h4>
             <div className="space-y-1">
               <StatRow label="Goals" value={analysis.combined.goals} />
               <StatRow label="Cards" value={analysis.combined.cards} />
