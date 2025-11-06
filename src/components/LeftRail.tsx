@@ -1,5 +1,5 @@
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface Country {
@@ -9,9 +9,11 @@ interface Country {
   code: string;
 }
 
-// Helper to ensure flag emoji renders properly
-const getFlagDisplay = (flag: string) => {
-  return flag;
+// Build a reliable flag image URL from ISO code (uses flagcdn)
+const getFlagSrc = (code?: string) => {
+  if (!code || code === 'WORLD') return null;
+  const normalized = code.toLowerCase();
+  return `https://flagcdn.com/24x18/${normalized}.png`;
 };
 
 interface League {
@@ -56,7 +58,7 @@ export function LeftRail({
 
   // Helper function to translate league names
   const getLeagueName = (leagueName: string) => {
-    const translationKey = `filters:leagues.${leagueName}`;
+    const translationKey = `filters:league_names.${leagueName}`;
     const translated = t(translationKey);
     return translated !== translationKey ? translated : leagueName;
   };
@@ -92,9 +94,15 @@ export function LeftRail({
                   : "hover:bg-secondary/50 text-foreground"
               }`}
             >
-              <span className="text-2xl" style={{ fontFamily: "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif" }}>
-                {getFlagDisplay(country.flag)}
-              </span>
+              {(() => {
+                const src = getFlagSrc(country.code);
+                if (src) {
+                  return (
+                    <img src={src} alt={`${country.name} flag`} className="w-5 h-5 rounded-sm object-cover shadow-sm" loading="lazy" />
+                  );
+                }
+                return <Globe className="w-5 h-5 text-muted-foreground" aria-label="World" />;
+              })()}
               <span className="text-sm font-medium">{getCountryName(country.name)}</span>
             </button>
           ))}

@@ -41,7 +41,7 @@ const getCountryFlag = (code: string): string => {
 const MOCK_COUNTRIES = [
   { id: 0, name: "World", code: "WORLD" },
   // Western Europe
-  { id: 39, name: "England", code: "GB" },
+  { id: 39, name: "England", code: "GB-ENG" },
   { id: 140, name: "Spain", code: "ES" },
   { id: 135, name: "Italy", code: "IT" },
   { id: 78, name: "Germany", code: "DE" },
