@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Calendar, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Calendar, CheckCircle2, Globe } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -465,21 +465,26 @@ export const AdminRefreshButton = () => {
   };
 
   return (
-    <div className="flex gap-2">
-      <Button
-        onClick={handleFetchFixtures}
-        disabled={isFetchingFixtures}
-        variant="outline"
-        size="sm"
-        className="gap-2 relative"
-      >
-        <Calendar className={`h-4 w-4 ${isFetchingFixtures ? "animate-pulse" : ""}`} />
-        {isFetchingFixtures
-          ? currentAttempt > 0
-            ? `Fetching (${currentAttempt}/5)...`
-            : "Fetching..."
-          : "Fetch Fixtures"}
-      </Button>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-2">
+        <Globe className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground font-medium">Admin: All Countries</span>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleFetchFixtures}
+          disabled={isFetchingFixtures}
+          variant="outline"
+          size="sm"
+          className="gap-2 relative"
+        >
+          <Calendar className={`h-4 w-4 ${isFetchingFixtures ? "animate-pulse" : ""}`} />
+          {isFetchingFixtures
+            ? currentAttempt > 0
+              ? `Fetching (${currentAttempt}/5)...`
+              : "Fetching..."
+            : "Fetch Fixtures"}
+        </Button>
 
       {showWarmupPrompt && (
         <Button
@@ -591,6 +596,7 @@ export const AdminRefreshButton = () => {
           </DropdownMenu>
         </>
       )}
+      </div>
     </div>
   );
 };
