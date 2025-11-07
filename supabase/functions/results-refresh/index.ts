@@ -137,6 +137,45 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true, mode: "cleanup", retention_months: retentionMonths }, origin, 200, req);
     }
 
+    // AUTO-CLEANUP: Remove selections for past/finished fixtures (defensive)
+    console.log("[results-refresh] Auto-cleanup: removing past/finished selections");
+    const cleanupStart = Date.now();
+    
+    // Delete from optimized_selections where fixture is past or not NS/TBD
+    const { data: pastFixtures, error: pastFixturesError } = await supabase
+      .from("fixtures")
+      .select("id")
+      .or(`timestamp.lt.${Math.floor(Date.now() / 1000)},status.not.in.(NS,TBD)`);
+    
+    if (!pastFixturesError && pastFixtures && pastFixtures.length > 0) {
+      const pastFixtureIds = pastFixtures.map((f: any) => f.id);
+      console.log(`[results-refresh] Found ${pastFixtureIds.length} past/finished fixtures to clean`);
+      
+      // Delete from optimized_selections
+      const { error: deleteOptError } = await supabase
+        .from("optimized_selections")
+        .delete()
+        .in("fixture_id", pastFixtureIds);
+      
+      if (deleteOptError) {
+        console.warn("[results-refresh] Failed to clean optimized_selections:", deleteOptError);
+      }
+      
+      // Delete from outcome_selections
+      const { error: deleteOutError } = await supabase
+        .from("outcome_selections")
+        .delete()
+        .in("fixture_id", pastFixtureIds);
+      
+      if (deleteOutError) {
+        console.warn("[results-refresh] Failed to clean outcome_selections:", deleteOutError);
+      }
+      
+      console.log(`[results-refresh] Auto-cleanup completed in ${Date.now() - cleanupStart}ms`);
+    } else {
+      console.log("[results-refresh] No past/finished fixtures to clean");
+    }
+
     // Fetch mode: get finished fixtures
     const startTime = Date.now();
     const windowStart = new Date(Date.now() - windowHours * 3600 * 1000);

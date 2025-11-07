@@ -765,6 +765,92 @@ export type Database = {
           },
         ]
       }
+      v_best_outcome_prices_prematch: {
+        Row: {
+          bookmaker: string | null
+          computed_at: string | null
+          edge_pct: number | null
+          fixture_id: number | null
+          id: number | null
+          league_id: number | null
+          market_type: string | null
+          model_prob: number | null
+          odds: number | null
+          outcome: string | null
+          rk: number | null
+          utc_kickoff: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outcome_selections_fixture_fk"
+            columns: ["fixture_id"]
+            isOneToOne: false
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outcome_selections_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_outcomes_prematch: {
+        Row: {
+          bookmaker: string | null
+          computed_at: string | null
+          edge_pct: number | null
+          fixture_id: number | null
+          id: number | null
+          league_id: number | null
+          market_type: string | null
+          model_prob: number | null
+          odds: number | null
+          outcome: string | null
+          utc_kickoff: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outcome_selections_fixture_fk"
+            columns: ["fixture_id"]
+            isOneToOne: false
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outcome_selections_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_selections_prematch: {
+        Row: {
+          bookmaker: string | null
+          combined_snapshot: Json | null
+          computed_at: string | null
+          country_code: string | null
+          edge_pct: number | null
+          fixture_id: number | null
+          id: string | null
+          is_live: boolean | null
+          league_id: number | null
+          line: number | null
+          market: string | null
+          model_prob: number | null
+          odds: number | null
+          rules_version: string | null
+          sample_size: number | null
+          side: string | null
+          source: string | null
+          utc_kickoff: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       acquire_cron_lock: {

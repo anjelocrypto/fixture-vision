@@ -63,9 +63,9 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
         orderBy = "model_prob.desc,edge_pct.desc";
       }
 
-      // Query best_outcome_prices (deduplicated best odds per fixture)
+      // Query pre-match view (automatically filters out live/finished matches)
       const { data, error } = await supabase
-        .from("best_outcome_prices")
+        .from("v_best_outcome_prices_prematch")
         .select(`
           *,
           fixtures!inner(

@@ -231,9 +231,9 @@ serve(async (req) => {
     }
     const { count: minOddsKept } = await oddsScope;
 
-    // Final data query applying all filters
+    // Final data query applying all filters - USE PRE-MATCH VIEW for automatic status filtering
     let query = supabaseClient
-      .from("optimized_selections")
+      .from("v_selections_prematch")
       .select("*")
       .eq("market", market)
       .eq("side", side)
