@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
     // Find fixtures that are finished but not yet in fixture_results
     const { data: fixtures, error: fixturesError } = await supabase
       .from("fixtures")
-      .select("id, league_id, timestamp, status")
+      .select("id, league_id, timestamp, status, fixture_results(fixture_id)")
       .in("status", ["FT", "AET", "PEN"])
       .gte("timestamp", Math.floor(lookbackLimit.getTime() / 1000))
       .is("fixture_results.fixture_id", null);
