@@ -797,7 +797,9 @@ const Index = () => {
           includeModelOnly: filters.includeModelOnly ?? true, // Default to true
           limit: 50,
           offset: 0,
-          // Global by default: do not send countryCode/leagueIds unless explicitly chosen in Filterizer
+          // Respect country/league selection from left rail
+          countryCode: selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
+          leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
         },
       });
 
@@ -846,6 +848,9 @@ const Index = () => {
           includeModelOnly: filterCriteria.includeModelOnly ?? true,
           limit: 50,
           offset: newOffset,
+          // Respect country/league selection from left rail (pagination)
+          countryCode: selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
+          leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
         },
       });
 
