@@ -71,7 +71,36 @@ serve(async (req) => {
     // Handle rate limiting
     if (response.status === 429) {
       const retryAfter = response.headers.get("Retry-After") || "60";
-      console.error(`[fetch-leagues] Rate limited. Retry after ${retryAfter}s`);
+      console.warn(`[fetch-leagues] Rate limited. Retry after ${retryAfter}s - attempting stale cache fallback`);
+
+      // Fallback to any cached leagues (ignore 24h freshness)
+      let fallbackLeagues: any[] = [];
+      if (cachedCountry) {
+        const { data: staleById } = await supabaseClient
+          .from("leagues")
+          .select("*")
+          .eq("season", season)
+          .eq("country_id", cachedCountry.id)
+          .order("created_at", { ascending: false });
+        fallbackLeagues = staleById || [];
+      } else {
+        const { data: staleByName } = await supabaseClient
+          .from("leagues")
+          .select("*")
+          .eq("season", season)
+          .eq("country_name", country)
+          .order("created_at", { ascending: false });
+        fallbackLeagues = staleByName || [];
+      }
+
+      if (fallbackLeagues.length > 0) {
+        console.log(`[fetch-leagues] Returning ${fallbackLeagues.length} leagues from stale cache due to rate limit`);
+        return new Response(
+          JSON.stringify({ leagues: fallbackLeagues, stale: true, retry_after: retryAfter }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify({ 
           error: "API rate limit exceeded",
