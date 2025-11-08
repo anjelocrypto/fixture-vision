@@ -38,14 +38,21 @@ async function delay(ms: number) {
 }
 
 serve(async (req) => {
+  console.log("[verify-team-totals] Request received, method:", req.method);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log("[verify-team-totals] Starting verification...");
+    
     // Auth check
     const authHeader = req.headers.get("authorization");
+    console.log("[verify-team-totals] Auth header present:", !!authHeader);
+    
     if (!authHeader) {
+      console.error("[verify-team-totals] No auth header");
       return new Response(
         JSON.stringify({ error: "Authentication required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
@@ -58,8 +65,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    console.log("[verify-team-totals] Getting user from token...");
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    console.log("[verify-team-totals] User fetch result:", { userId: user?.id, error: authError?.message });
+    
     if (authError || !user) {
+      console.error("[verify-team-totals] Auth error:", authError);
       return new Response(
         JSON.stringify({ error: "Invalid authentication" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
@@ -67,8 +78,12 @@ serve(async (req) => {
     }
 
     // Check if admin
-    const { data: isAdmin } = await supabaseClient.rpc("is_user_whitelisted");
+    console.log("[verify-team-totals] Checking admin status for user:", user.id);
+    const { data: isAdmin, error: adminError } = await supabaseClient.rpc("is_user_whitelisted");
+    console.log("[verify-team-totals] Admin check result:", { isAdmin, error: adminError?.message });
+    
     if (!isAdmin) {
+      console.error("[verify-team-totals] User is not admin");
       return new Response(
         JSON.stringify({ error: "Admin access required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 }
@@ -292,11 +307,16 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("[verify-team-totals] Error:", error);
+    console.error("[verify-team-totals] Caught error:", {
+      message: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error
+    });
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
+        details: "Check edge function logs for more information"
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
