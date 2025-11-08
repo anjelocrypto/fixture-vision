@@ -6,6 +6,8 @@
 const ALLOWED_ORIGINS = [
   'https://ticketai.bet',
   'https://www.ticketai.bet',
+  'https://fixtozirispt.net',
+  'https://www.fixtozirispt.net',
   'https://fixture-vision.lovable.app',
   'http://localhost:3000',
   'http://localhost:5173',
