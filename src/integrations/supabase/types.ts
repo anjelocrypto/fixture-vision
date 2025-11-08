@@ -301,7 +301,7 @@ export type Database = {
           line: number
           market: string
           model_prob: number | null
-          odds: number
+          odds: number | null
           rules_version: string | null
           sample_size: number | null
           side: string
@@ -321,7 +321,7 @@ export type Database = {
           line: number
           market: string
           model_prob?: number | null
-          odds: number
+          odds?: number | null
           rules_version?: string | null
           sample_size?: number | null
           side: string
@@ -341,7 +341,7 @@ export type Database = {
           line?: number
           market?: string
           model_prob?: number | null
-          odds?: number
+          odds?: number | null
           rules_version?: string | null
           sample_size?: number | null
           side?: string
