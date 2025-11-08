@@ -186,7 +186,7 @@ serve(async (req) => {
       const bookmakers = oddsData?.payload?.bookmakers || [];
 
       // Detect available markets in the odds data (lower leagues may not have all markets)
-      const availableMarkets = detectAvailableMarkets(oddsData.payload);
+      const availableMarkets = hasOdds ? detectAvailableMarkets(oddsData?.payload) : new Set();
       
       // Only process markets we have odds for (goals, corners, cards are most common)
       const allMarkets: StatMarket[] = ["goals", "corners", "cards", "fouls", "offsides"];
