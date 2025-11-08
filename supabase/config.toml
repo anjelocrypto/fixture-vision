@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.shuffle-ticket]
 verify_jwt = true
+
+[functions.verify-team-totals]
+verify_jwt = true

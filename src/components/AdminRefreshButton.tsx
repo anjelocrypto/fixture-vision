@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Calendar, CheckCircle2, Globe } from "lucide-react";
+import { RefreshCw, Calendar, CheckCircle2, Globe, Search } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -64,6 +64,7 @@ export const AdminRefreshButton = () => {
   const [isRefreshingResults, setIsRefreshingResults] = useState(false);
   const [isFetchingPredictions, setIsFetchingPredictions] = useState(false);
   const [isPopulatingOutcomes, setIsPopulatingOutcomes] = useState(false);
+  const [isVerifyingTeamTotals, setIsVerifyingTeamTotals] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -464,6 +465,54 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handleVerifyTeamTotals = async () => {
+    setIsVerifyingTeamTotals(true);
+    
+    try {
+      toast.info("🔍 Verifying team totals market coverage... (this may take 3-5 mins)");
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "verify-team-totals",
+        { 
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Team totals verification error:", error);
+        throw error;
+      }
+
+      console.log("===== TEAM TOTALS VERIFICATION REPORT =====");
+      console.log(JSON.stringify(data, null, 2));
+      console.log("==========================================");
+      
+      const summary = data.summary;
+      toast.success(
+        `Team Totals Report Ready!\n` +
+        `📊 ${summary.fixtures_scanned}/${summary.total_fixtures_next_120h} fixtures scanned\n` +
+        `🏠 ${summary.home_o15_coverage_pct}% have Home O1.5\n` +
+        `✈️ ${summary.away_o15_coverage_pct}% have Away O1.5\n` +
+        `Check console for full report`,
+        { duration: 10000 }
+      );
+
+    } catch (error) {
+      console.error("Team totals verification error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Verification failed: ${errorMessage}`);
+    } finally {
+      setIsVerifyingTeamTotals(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-2">
@@ -594,6 +643,17 @@ export const AdminRefreshButton = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            onClick={handleVerifyTeamTotals}
+            disabled={isVerifyingTeamTotals}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <Search className={`h-4 w-4 ${isVerifyingTeamTotals ? "animate-pulse" : ""}`} />
+            {isVerifyingTeamTotals ? "Verifying..." : "Verify Team Totals"}
+          </Button>
         </>
       )}
       </div>
