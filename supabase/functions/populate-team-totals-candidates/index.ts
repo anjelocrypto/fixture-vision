@@ -22,6 +22,8 @@ interface Last5Result {
 }
 
 const RATE_DELAY_MS = 1000; // ~50 rpm with margin
+const MAX_PROCESSING_TIME_MS = 130000; // 130 seconds (leave 20s buffer before timeout)
+const MAX_FIXTURES_PER_RUN = 50; // Limit fixtures to prevent timeout
 
 async function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -187,7 +189,15 @@ serve(async (req) => {
       return errorResponse("Failed to fetch fixtures", origin, 500, req);
     }
 
-    console.log(`[team-totals] Found ${fixtures.length} upcoming fixtures`);
+    // Limit fixtures to prevent timeout
+    const totalFixtures = fixtures.length;
+    const processFixtures = fixtures.slice(0, MAX_FIXTURES_PER_RUN);
+    
+    if (totalFixtures > MAX_FIXTURES_PER_RUN) {
+      console.log(`[team-totals] Found ${totalFixtures} fixtures, processing first ${MAX_FIXTURES_PER_RUN} to prevent timeout`);
+    } else {
+      console.log(`[team-totals] Found ${totalFixtures} upcoming fixtures`);
+    }
 
     let scannedFixtures = 0;
     let inserted = 0;
@@ -200,7 +210,14 @@ serve(async (req) => {
     // Cache for season stats to avoid duplicate API calls
     const statsCache = new Map<string, SeasonStats | null>();
 
-    for (const fixture of fixtures) {
+    for (const fixture of processFixtures) {
+      // Check if approaching timeout
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_PROCESSING_TIME_MS) {
+        console.log(`[team-totals] Approaching timeout at ${elapsed}ms, stopping early`);
+        break;
+      }
+
       scannedFixtures++;
 
       const homeTeamId = fixture.teams_home?.id;
@@ -345,21 +362,26 @@ serve(async (req) => {
 
       // Progress log every 10 fixtures
       if (scannedFixtures % 10 === 0) {
+        const elapsed = Date.now() - startTime;
         console.log(
-          `[team-totals] Progress: ${scannedFixtures}/${fixtures.length} fixtures, ${homePass} home + ${awayPass} away passed`
+          `[team-totals] Progress: ${scannedFixtures}/${processFixtures.length} fixtures, ${homePass} home + ${awayPass} away passed (${Math.floor(elapsed/1000)}s elapsed)`
         );
       }
     }
 
     const duration = Date.now() - startTime;
+    const wasLimited = totalFixtures > MAX_FIXTURES_PER_RUN;
+    const timedOut = duration > MAX_PROCESSING_TIME_MS;
+    
     console.log(
-      `[team-totals] Complete: scanned=${scannedFixtures}, inserted=${inserted}, updated=${updated}, skipped=${skipped}, home_pass=${homePass}, away_pass=${awayPass}, errors=${errors}, duration=${duration}ms`
+      `[team-totals] Complete: scanned=${scannedFixtures}/${totalFixtures}, inserted=${inserted}, updated=${updated}, skipped=${skipped}, home_pass=${homePass}, away_pass=${awayPass}, errors=${errors}, duration=${duration}ms`
     );
 
     return jsonResponse(
       {
         success: true,
         scanned_fixtures: scannedFixtures,
+        total_fixtures: totalFixtures,
         inserted,
         updated,
         skipped,
@@ -367,6 +389,13 @@ serve(async (req) => {
         away_pass: awayPass,
         errors,
         duration_ms: duration,
+        was_limited: wasLimited,
+        timed_out: timedOut,
+        message: wasLimited 
+          ? `Processed ${scannedFixtures}/${totalFixtures} fixtures (limited to prevent timeout). Run again to process more.`
+          : timedOut
+          ? `Timed out after processing ${scannedFixtures}/${totalFixtures} fixtures. Run again to continue.`
+          : undefined,
       },
       origin,
       200,

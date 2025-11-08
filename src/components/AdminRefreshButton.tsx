@@ -494,8 +494,16 @@ export const AdminRefreshButton = () => {
 
       console.log("Team totals populate result:", data);
       
-      const summary = `${data.scanned_fixtures} scanned • ${data.inserted} inserted • ${data.updated} updated • ${data.home_pass} home + ${data.away_pass} away passed`;
-      toast.success(`Team Totals: ${summary}`);
+      const summary = `${data.scanned_fixtures}/${data.total_fixtures || data.scanned_fixtures} scanned • ${data.inserted} inserted • ${data.updated} updated • ${data.home_pass} home + ${data.away_pass} away passed`;
+      
+      if (data.was_limited || data.timed_out) {
+        toast.warning(`Team Totals (Partial): ${summary}`, {
+          description: data.message || "Run again to process remaining fixtures",
+          duration: 8000,
+        });
+      } else {
+        toast.success(`Team Totals: ${summary}`);
+      }
 
     } catch (error) {
       console.error("Populate team totals error:", error);
