@@ -20,7 +20,7 @@ interface Selection {
   side: string;
   line: number;
   bookmaker: string;
-  odds: number;
+  odds: number | null; // Can be null for model-only
   is_live: boolean;
   edge_pct: number | null;
   model_prob: number | null;
@@ -84,9 +84,10 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
 
       {/* Selections List */}
       <div className="space-y-3">
-        {selections.map((selection) => {
+      {selections.map((selection) => {
         const kickoff = new Date(selection.utc_kickoff);
         const hasEdge = selection.edge_pct !== null && selection.edge_pct > 0;
+        const isModelOnly = selection.odds === null;
         
         return (
           <Card
@@ -95,6 +96,8 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
             style={{
               borderLeftColor: hasEdge && selection.edge_pct > 5 
                 ? "hsl(var(--primary))" 
+                : isModelOnly
+                ? "hsl(var(--muted-foreground))"
                 : "hsl(var(--border))"
             }}
           >
@@ -117,6 +120,11 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                   <Badge variant="outline">
                     {selection.side} {selection.line}
                   </Badge>
+                  {isModelOnly && (
+                    <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                      MODEL ONLY
+                    </Badge>
+                  )}
                   {selection.is_live && (
                     <Badge variant="destructive" className="animate-pulse">
                       LIVE
@@ -155,7 +163,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                       market: selection.market as TicketLeg['market'],
                       side: selection.side as 'over' | 'under',
                       line: selection.line,
-                      odds: selection.odds,
+                      odds: selection.odds || 0, // 0 for model-only
                       bookmaker: selection.bookmaker,
                       rulesVersion: 'v2_combined_matrix_v1',
                       combinedAvg: selection.combined_snapshot?.[selection.market as keyof typeof selection.combined_snapshot],
@@ -170,18 +178,27 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
 
               {/* Right: Stats */}
               <div className="flex flex-col items-end gap-2 min-w-[120px]">
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-primary tabular-nums">
-                    {selection.odds.toFixed(2)}
+                {isModelOnly ? (
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-muted-foreground">
+                      No odds
+                    </div>
+                    <div className="text-xs text-muted-foreground">model only</div>
                   </div>
-                  <div className="text-xs text-muted-foreground">odds</div>
-                </div>
+                ) : (
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-primary tabular-nums">
+                      {selection.odds?.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">odds</div>
+                  </div>
+                )}
 
-                {hasEdge && (
+                {hasEdge && !isModelOnly && (
                   <div className="flex items-center gap-1 text-xs">
                     <TrendingUp className="h-3 w-3 text-primary" />
-                    <span className={`font-medium ${selection.edge_pct > 5 ? 'text-primary' : 'text-muted-foreground'}`}>
-                      {selection.edge_pct.toFixed(1)}% edge
+                    <span className={`font-medium ${selection.edge_pct! > 5 ? 'text-primary' : 'text-muted-foreground'}`}>
+                      {selection.edge_pct!.toFixed(1)}% edge
                     </span>
                   </div>
                 )}
@@ -215,7 +232,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Odds:</span>
-                    <span className="font-medium">{selection.odds}</span>
+                    <span className="font-medium">{selection.odds?.toFixed(2) || 'null (model-only)'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Selection ID:</span>

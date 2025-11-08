@@ -794,6 +794,7 @@ const Index = () => {
           line: filters.line,
           minOdds: filters.minOdds,
           showAllOdds: filters.showAllOdds,
+          includeModelOnly: filters.includeModelOnly ?? true, // Default to true
           limit: 50,
           offset: 0,
           // Global by default: do not send countryCode/leagueIds unless explicitly chosen in Filterizer
@@ -842,6 +843,7 @@ const Index = () => {
           line: filterCriteria.line,
           minOdds: filterCriteria.minOdds,
           showAllOdds: filterCriteria.showAllOdds,
+          includeModelOnly: filterCriteria.includeModelOnly ?? true,
           limit: 50,
           offset: newOffset,
         },

@@ -180,14 +180,10 @@ serve(async (req) => {
       const combined = computeCombinedMetrics(homeStats, awayStats);
       const sampleSize = combined.sample_size;
 
-      // Get odds
+      // Get odds (now optional for model-only mode)
       const oddsData = oddsMap.get(fixture.id);
-      if (!oddsData) {
-        skipped++;
-        continue;
-      }
-
-      const bookmakers = oddsData.payload?.bookmakers || [];
+      const hasOdds = !!oddsData;
+      const bookmakers = oddsData?.payload?.bookmakers || [];
 
       // Detect available markets in the odds data (lower leagues may not have all markets)
       const availableMarkets = detectAvailableMarkets(oddsData.payload);
@@ -217,63 +213,96 @@ serve(async (req) => {
         // Find top N bookmakers (by odds) for this market+line to maximize variety
         const bookmakerOdds: Array<{ bookmaker: string; odds: number }> = [];
 
-        for (const bookmaker of bookmakers) {
-          const betsData = bookmaker.bets || [];
-          
-          // Match market type by EXACT bet ID only (API-Football uses bets[].id)
-          let targetBet = null;
-          if (market === "goals") {
-            targetBet = betsData.find((b: any) => b.id === 5);
-          } else if (market === "corners") {
-            targetBet = betsData.find((b: any) => b.id === 45);
-          } else if (market === "cards") {
-            targetBet = betsData.find((b: any) => b.id === 80);
-          } else if (market === "fouls") {
-            continue; // No API odds
-          } else if (market === "offsides") {
-            continue; // No API odds
-          }
-
-          if (!targetBet?.values) continue;
-
-          // Find the specific line in values array with STRICT format matching
-          const selection = targetBet.values.find((v: any) => {
-            const value = v.value || "";
-            const normalizedValue = normalizeOddsValue(value);
+        // Only process bookmaker odds if we have odds data
+        if (hasOdds) {
+          for (const bookmaker of bookmakers) {
+            const betsData = bookmaker.bets || [];
             
-            if (!matchesTarget(normalizedValue, pick.side, pick.line)) {
-              return false;
+            // Match market type by EXACT bet ID only (API-Football uses bets[].id)
+            let targetBet = null;
+            if (market === "goals") {
+              targetBet = betsData.find((b: any) => b.id === 5);
+            } else if (market === "corners") {
+              targetBet = betsData.find((b: any) => b.id === 45);
+            } else if (market === "cards") {
+              targetBet = betsData.find((b: any) => b.id === 80);
+            } else if (market === "fouls") {
+              continue; // No API odds
+            } else if (market === "offsides") {
+              continue; // No API odds
             }
-            
-            const odds = parseFloat(v.odd);
-            
-            // ODDS BAND CHECK
-            if (odds < ODDS_MIN || odds > ODDS_MAX) {
-              droppedOutOfBand++;
-              return false;
-            }
-            
-            // SUSPICIOUS ODDS GUARD
-            const suspiciousWarning = checkSuspiciousOdds(market, pick.line, odds);
-            if (suspiciousWarning) {
-              console.warn(`[optimize] ${suspiciousWarning} - REJECTED (fixture ${fixture.id}, bookmaker ${bookmaker.name})`);
-              droppedSuspicious++;
-              return false;
-            }
-            
-            return true;
-          });
 
-          if (selection?.odd) {
-            const odds = parseFloat(selection.odd);
-            bookmakerOdds.push({
-              bookmaker: bookmaker.name || "Unknown",
-              odds
+            if (!targetBet?.values) continue;
+
+            // Find the specific line in values array with STRICT format matching
+            const selection = targetBet.values.find((v: any) => {
+              const value = v.value || "";
+              const normalizedValue = normalizeOddsValue(value);
+              
+              if (!matchesTarget(normalizedValue, pick.side, pick.line)) {
+                return false;
+              }
+              
+              const odds = parseFloat(v.odd);
+              
+              // ODDS BAND CHECK
+              if (odds < ODDS_MIN || odds > ODDS_MAX) {
+                droppedOutOfBand++;
+                return false;
+              }
+              
+              // SUSPICIOUS ODDS GUARD
+              const suspiciousWarning = checkSuspiciousOdds(market, pick.line, odds);
+              if (suspiciousWarning) {
+                console.warn(`[optimize] ${suspiciousWarning} - REJECTED (fixture ${fixture.id}, bookmaker ${bookmaker.name})`);
+                droppedSuspicious++;
+                return false;
+              }
+              
+              return true;
             });
+
+            if (selection?.odd) {
+              const odds = parseFloat(selection.odd);
+              bookmakerOdds.push({
+                bookmaker: bookmaker.name || "Unknown",
+                odds
+              });
+            }
           }
         }
 
-        if (bookmakerOdds.length === 0) {
+        // If no odds found, create a model-only selection
+        if (bookmakerOdds.length === 0 && !hasOdds) {
+          // Model-only selection (no bookmaker odds available)
+          const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
+          const countryId = leagueToCountryMap.get(fixture.league_id);
+          const countryCode = countryId ? countryCodeMap.get(countryId) : null;
+          
+          const modelProb = Math.min(0.95, Math.max(0.05, combinedValue / (pick.line * 2)));
+
+          selections.push({
+            fixture_id: fixture.id,
+            league_id: fixture.league_id,
+            country_code: countryCode,
+            utc_kickoff: utcKickoff,
+            market,
+            side: pick.side,
+            line: pick.line,
+            bookmaker: "model",
+            odds: null, // NULL for model-only
+            is_live: false,
+            edge_pct: null, // No edge without odds
+            model_prob: modelProb,
+            sample_size: sampleSize,
+            combined_snapshot: combined,
+            rules_version: RULES_VERSION,
+            source: "api-football",
+            computed_at: new Date().toISOString(),
+          });
+          
+          continue;
+        } else if (bookmakerOdds.length === 0) {
           droppedNoLine++;
           continue;
         }

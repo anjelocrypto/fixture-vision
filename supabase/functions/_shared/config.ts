@@ -20,6 +20,9 @@ export const KEEP_TOP_BOOKMAKERS = 3;
 // Sample size threshold
 export const MIN_SAMPLE_SIZE = 3;
 
+// Feature flag: allow model-only selections (no odds required)
+export const FILTERIZER_ALLOW_MODEL_ONLY = true;
+
 // League allowlist for expanded variety (country codes)
 export const ALLOWED_LEAGUES = [
   "England",      // 8 leagues: Premier League → National League divisions

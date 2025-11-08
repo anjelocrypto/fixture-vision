@@ -21,6 +21,7 @@ const RequestSchema = z.object({
   leagueIds: z.array(z.number().int().positive()).optional(),
   live: z.boolean().optional(),
   showAllOdds: z.boolean().optional(), // NEW: show all bookmaker odds instead of best per fixture
+  includeModelOnly: z.boolean().optional(), // NEW: include model-only selections (no odds)
   limit: z.number().int().positive().max(200).optional(), // pagination
   offset: z.number().int().min(0).optional(), // pagination
 });
@@ -82,6 +83,7 @@ serve(async (req) => {
       leagueIds, 
       live = false,
       showAllOdds = false,
+      includeModelOnly = true, // Default to true
       limit = 50,
       offset = 0
     } = validation.data;
@@ -238,14 +240,22 @@ serve(async (req) => {
       .eq("market", market)
       .eq("side", side)
       .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
-      .gte("odds", effectiveMinOdds)
-      .lte("odds", effectiveMaxOdds)
       .eq("is_live", live)
       .gte("utc_kickoff", queryStart.toISOString())
       .lte("utc_kickoff", endDate.toISOString());
 
     // Filter by line (with small tolerance)
     query = query.gte("line", line - 0.01).lte("line", line + 0.01);
+
+    // Handle odds filtering based on includeModelOnly flag
+    if (includeModelOnly) {
+      // When includeModelOnly is ON: (odds >= min AND odds <= max) OR (odds IS NULL)
+      // Supabase PostgREST doesn't support direct OR in query builder, so we'll filter in-app
+      // For now, just don't filter by odds - we'll handle it post-query
+    } else {
+      // When includeModelOnly is OFF: require odds in range (same as before)
+      query = query.gte("odds", effectiveMinOdds).lte("odds", effectiveMaxOdds);
+    }
 
     // Scope by league (preferred) or country_code fallback
     if (scopeLeagueIds && scopeLeagueIds.length > 0) {
@@ -277,11 +287,25 @@ serve(async (req) => {
     const rawCount = selections?.length || 0;
     console.log(`[filterizer-query] Stage 1: in_window=${rawCount}`);
 
-    // Post-filter: defensive qualification check using pickFromCombined
+    // Post-filter: defensive qualification check using pickFromCombined + odds filtering
     let qualifiedDropped = 0;
     let suspiciousDropped = 0;
+    let oddsFiltered = 0;
     
     const rows = (selections || []).filter((row: any) => {
+      // Handle odds filtering when includeModelOnly is ON
+      if (includeModelOnly) {
+        // Keep rows with: (odds >= min AND odds <= max) OR (odds IS NULL)
+        const hasOdds = row.odds !== null && row.odds !== undefined;
+        if (hasOdds) {
+          if (row.odds < effectiveMinOdds || row.odds > effectiveMaxOdds) {
+            oddsFiltered++;
+            return false;
+          }
+        }
+        // If odds is NULL, keep it (model-only)
+      }
+      
       // Defensive: Check combined value qualification using pickFromCombined (inclusive bounds)
       if (row.combined_snapshot && row.combined_snapshot[market] !== undefined) {
         const combinedValue = Number(row.combined_snapshot[market]);
@@ -298,35 +322,64 @@ serve(async (req) => {
         console.warn(`[filterizer-query] Missing combined_snapshot.${market} for fixture ${row.fixture_id}, keeping row`);
       }
       
-      // Check suspicious odds
-      const suspiciousWarning = checkSuspiciousOdds(
-        market as any,
-        Number(row.line),
-        Number(row.odds)
-      );
-      
-      if (suspiciousWarning) {
-        suspiciousDropped++;
-        console.warn(`[filterizer-query] SUSPICIOUS: ${suspiciousWarning} (fixture ${row.fixture_id}, ${row.bookmaker})`);
-        return false;
+      // Check suspicious odds (only if odds exist)
+      if (row.odds !== null && row.odds !== undefined) {
+        const suspiciousWarning = checkSuspiciousOdds(
+          market as any,
+          Number(row.line),
+          Number(row.odds)
+        );
+        
+        if (suspiciousWarning) {
+          suspiciousDropped++;
+          console.warn(`[filterizer-query] SUSPICIOUS: ${suspiciousWarning} (fixture ${row.fixture_id}, ${row.bookmaker})`);
+          return false;
+        }
       }
       
       return true;
     });
 
-    const qualifiedCount = rows.length;
-    console.log(`[filterizer-query] Stage 2: qualified=${qualifiedCount} (dropped: not_qualified=${qualifiedDropped}, suspicious=${suspiciousDropped})`);
+    // Sort: priced first (by odds DESC), then model-only (by model_prob DESC, then combined value DESC)
+    const sorted = rows.sort((a: any, b: any) => {
+      const aHasOdds = a.odds !== null && a.odds !== undefined;
+      const bHasOdds = b.odds !== null && b.odds !== undefined;
+      
+      // Priced rows come first
+      if (aHasOdds && !bHasOdds) return -1;
+      if (!aHasOdds && bHasOdds) return 1;
+      
+      // Both priced: sort by odds DESC (highest first)
+      if (aHasOdds && bHasOdds) {
+        return (b.odds || 0) - (a.odds || 0);
+      }
+      
+      // Both model-only: sort by model_prob DESC, then combined value DESC
+      const aProb = a.model_prob || 0;
+      const bProb = b.model_prob || 0;
+      if (aProb !== bProb) return bProb - aProb;
+      
+      const aCombined = a.combined_snapshot?.[market] || 0;
+      const bCombined = b.combined_snapshot?.[market] || 0;
+      if (aCombined !== bCombined) return bCombined - aCombined;
+      
+      // Tie-breaker: kickoff time
+      return new Date(a.utc_kickoff).getTime() - new Date(b.utc_kickoff).getTime();
+    });
+
+    const qualifiedCount = sorted.length;
+    console.log(`[filterizer-query] Stage 2: qualified=${qualifiedCount} (dropped: not_qualified=${qualifiedDropped}, suspicious=${suspiciousDropped}, odds_filtered=${oddsFiltered})`);
 
     // Dedupe or keep all based on showAllOdds
     let deduped: any[];
     if (showAllOdds) {
       // Keep all odds, apply pagination
-      deduped = rows.slice(offset, offset + limit);
+      deduped = sorted.slice(offset, offset + limit);
       console.log(`[filterizer-query] Stage 3: showAllOdds=true, paginated=${deduped.length} (total=${qualifiedCount}, offset=${offset}, limit=${limit})`);
     } else {
-      // Dedupe: keep best odds per fixture (already sorted DESC by odds, so first = best)
+      // Dedupe: keep best per fixture (priced > model-only, highest odds for priced)
       const bestByFixture = new Map<number, any>();
-      for (const row of rows) {
+      for (const row of sorted) {
         const fixtureId = row.fixture_id;
         if (!bestByFixture.has(fixtureId)) {
           bestByFixture.set(fixtureId, row);

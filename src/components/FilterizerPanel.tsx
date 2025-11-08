@@ -20,6 +20,7 @@ export interface FilterCriteria {
   line: number;
   minOdds: number;
   showAllOdds: boolean; // NEW: show all bookmaker odds
+  includeModelOnly?: boolean; // NEW: include picks without odds (model-only)
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -49,6 +50,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
+  const [includeModelOnly, setIncludeModelOnly] = useState<boolean>(true); // Default ON
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -67,6 +69,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       line: selectedLine,
       minOdds,
       showAllOdds: false, // Always use best per match mode
+      includeModelOnly,
     };
     onApplyFilters(filters);
   };
@@ -75,6 +78,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setSelectedMarket("goals");
     setSelectedLine(2.5);
     setMinOdds(1.50);
+    setIncludeModelOnly(true);
     onClearFilters();
   };
 
@@ -153,6 +157,32 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
             <span>1.10</span>
             <span>2.00</span>
             <span>3.00</span>
+          </div>
+          {includeModelOnly && (
+            <p className="text-xs text-muted-foreground">
+              Min odds applies to priced picks only; model-only picks always show.
+            </p>
+          )}
+        </div>
+
+        {/* Model-Only Toggle */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Include model-only picks</Label>
+              <p className="text-xs text-muted-foreground">
+                Show picks without bookmaker odds (find prices manually)
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant={includeModelOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIncludeModelOnly(!includeModelOnly)}
+              className="shrink-0"
+            >
+              {includeModelOnly ? "ON" : "OFF"}
+            </Button>
           </div>
         </div>
 
