@@ -906,8 +906,10 @@ export type Database = {
         Row: {
           computed_at: string | null
           fixture_id: number | null
+          fixture_status: string | null
           id: number | null
           league_id: number | null
+          league_name: string | null
           line: number | null
           opponent_recent_conceded_2plus: number | null
           opponent_season_conceding_rate: number | null
@@ -917,6 +919,8 @@ export type Database = {
           season_scoring_rate: number | null
           team_context: string | null
           team_id: number | null
+          teams_away: Json | null
+          teams_home: Json | null
           utc_kickoff: string | null
         }
         Relationships: []

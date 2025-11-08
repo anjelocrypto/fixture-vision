@@ -28,14 +28,9 @@ interface TeamTotalsCandidate {
   rules_passed: boolean;
   utc_kickoff: string;
   computed_at: string;
-  fixtures?: {
-    id: number;
-    teams_home: any;
-    teams_away: any;
-  };
-  leagues?: {
-    name: string;
-  };
+  teams_home: any;
+  teams_away: any;
+  league_name: string;
 }
 
 export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
@@ -55,15 +50,11 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
         .from("v_team_totals_prematch")
         .select(
           `
-          *,
-          fixtures!inner(
-            id,
-            teams_home,
-            teams_away
-          ),
-          leagues!inner(
-            name
-          )
+          id, fixture_id, league_id, team_id, team_context, line,
+          season_scoring_rate, opponent_season_conceding_rate,
+          opponent_recent_conceded_2plus, recent_sample_size,
+          rules_passed, utc_kickoff, computed_at,
+          teams_home, teams_away, league_name
         `
         )
         .eq("team_context", position)
@@ -106,14 +97,11 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
   };
 
   const copyPickToClipboard = (candidate: TeamTotalsCandidate) => {
-    const fixture = candidate.fixtures;
-    if (!fixture) return;
-
     const teamName = candidate.team_context === "home" 
-      ? fixture.teams_home?.name 
-      : fixture.teams_away?.name;
+      ? candidate.teams_home?.name 
+      : candidate.teams_away?.name;
 
-    const text = `${teamName} to score over 1.5 goals (model) — ${fixture.teams_home?.name} vs ${fixture.teams_away?.name}`;
+    const text = `${teamName} to score over 1.5 goals (model) — ${candidate.teams_home?.name} vs ${candidate.teams_away?.name}`;
     
     navigator.clipboard.writeText(text);
     toast({
@@ -191,22 +179,18 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
               {results.length} candidates
             </div>
             {results.map((candidate) => {
-              const fixture = candidate.fixtures;
-              const league = candidate.leagues;
-              if (!fixture) return null;
-
               const kickoffDate = new Date(candidate.utc_kickoff);
               const teamName =
                 candidate.team_context === "home"
-                  ? fixture.teams_home?.name
-                  : fixture.teams_away?.name;
+                  ? candidate.teams_home?.name
+                  : candidate.teams_away?.name;
 
               // Create TicketLeg for AddToTicketButton
               const leg: TicketLeg = {
                 id: `${candidate.fixture_id}-team-total-${candidate.team_context}`,
                 fixtureId: candidate.fixture_id,
-                homeTeam: fixture.teams_home?.name || "Home",
-                awayTeam: fixture.teams_away?.name || "Away",
+                homeTeam: candidate.teams_home?.name || "Home",
+                awayTeam: candidate.teams_away?.name || "Away",
                 kickoffUtc: candidate.utc_kickoff,
                 market: "goals" as any, // team_total displayed as goals O1.5
                 side: candidate.team_context,
@@ -223,7 +207,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
                   <div className="space-y-2">
                     {/* League & Kickoff */}
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{league?.name}</span>
+                      <span>{candidate.league_name}</span>
                       <span>
                         {kickoffDate.toLocaleDateString()}{" "}
                         {kickoffDate.toLocaleTimeString([], {
@@ -235,7 +219,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
 
                     {/* Teams */}
                     <div className="text-sm font-medium">
-                      {fixture.teams_home?.name} vs {fixture.teams_away?.name}
+                      {candidate.teams_home?.name} vs {candidate.teams_away?.name}
                     </div>
 
                     {/* Pick Badge */}
