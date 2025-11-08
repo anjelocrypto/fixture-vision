@@ -27,8 +27,8 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Starting refresh (internal call)`);
 
-    // Parse window_hours from request body (default 48h)
-    const { window_hours = 48 } = await req.json().catch(() => ({}));
+    // Parse window_hours from request body (default 120h for QA runway)
+    const { window_hours = 120 } = await req.json().catch(() => ({}));
 
     // Overlap guard: check if another optimize run is currently running for this window
     const runKey = `optimize-selections-${window_hours}h`;
@@ -117,6 +117,11 @@ serve(async (req) => {
     }
 
     console.log(`[optimize-selections-refresh] Loaded odds for ${oddsMap.size} fixtures`);
+    // QA visibility: distribution of fixtures by odds presence
+    console.log(`[optimize] Found ${fixtures.length} upcoming fixtures in ${window_hours}h window`);
+    const fixturesWithOdds = fixtures.filter((f: any) => oddsMap.has(f.id)).length;
+    const fixturesWithoutOdds = fixtures.length - fixturesWithOdds;
+    console.log(`[optimize] Fixture distribution: with_odds=${fixturesWithOdds}, without_odds=${fixturesWithoutOdds}`);
 
     // Batch fetch leagues for country_code
     const leagueIds = [...new Set(fixtures.map((f: any) => f.league_id).filter(Boolean))];
@@ -186,7 +191,9 @@ serve(async (req) => {
       const bookmakers = oddsData?.payload?.bookmakers || [];
 
       // Detect available markets in the odds data (lower leagues may not have all markets)
-      const availableMarkets = hasOdds ? detectAvailableMarkets(oddsData?.payload) : new Set();
+      const availableMarkets = hasOdds && oddsData?.payload
+        ? detectAvailableMarkets(oddsData.payload)
+        : new Set();
       
       // Only process markets we have odds for (goals, corners, cards are most common)
       const allMarkets: StatMarket[] = ["goals", "corners", "cards", "fouls", "offsides"];
@@ -274,6 +281,7 @@ serve(async (req) => {
 
         // If no odds found, create a model-only selection
         if (bookmakerOdds.length === 0 && !hasOdds) {
+          console.log(`[optimize] MODEL_ONLY: fixture=${fixture.id} lg=${fixture.league_id} market=${market} side=${pick.side} line=${pick.line} combined=${(typeof combinedValue==='number'?combinedValue.toFixed(2):combinedValue)} sample=${sampleSize}`);
           // Model-only selection (no bookmaker odds available)
           const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
           const countryId = leagueToCountryMap.get(fixture.league_id);
