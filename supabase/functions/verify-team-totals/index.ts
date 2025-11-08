@@ -65,6 +65,17 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Client bound to the caller's JWT so RPCs using auth.uid() work
+    const supabaseUserClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      {
+        global: {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      }
+    );
+
     console.log("[verify-team-totals] Getting user from token...");
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     console.log("[verify-team-totals] User fetch result:", { userId: user?.id, error: authError?.message });
@@ -77,11 +88,15 @@ serve(async (req) => {
       );
     }
 
-    // Check if admin
-    console.log("[verify-team-totals] Checking admin status for user:", user.id);
-    const { data: isAdmin, error: adminError } = await supabaseClient.rpc("is_user_whitelisted");
+    // Check if admin using user-bound client so auth.uid() is set
+    console.log("[verify-team-totals] Checking admin status via RPC is_user_whitelisted...");
+    const { data: isAdmin, error: adminError } = await supabaseUserClient.rpc("is_user_whitelisted");
     console.log("[verify-team-totals] Admin check result:", { isAdmin, error: adminError?.message });
     
+    if (adminError) {
+      console.error("[verify-team-totals] Admin RPC error:", adminError);
+    }
+
     if (!isAdmin) {
       console.error("[verify-team-totals] User is not admin");
       return new Response(
