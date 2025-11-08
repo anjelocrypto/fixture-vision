@@ -68,3 +68,6 @@ verify_jwt = true
 
 [functions.verify-team-totals]
 verify_jwt = true
+
+[functions.populate-team-totals-candidates]
+verify_jwt = false
