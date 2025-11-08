@@ -5,6 +5,7 @@ import { CenterRail } from "@/components/CenterRail";
 import { RightRail } from "@/components/RightRail";
 import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
 import { WinnerPanel } from "@/components/WinnerPanel";
+import { TeamTotalsPanel } from "@/components/TeamTotalsPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -18,7 +19,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
@@ -114,6 +115,7 @@ const Index = () => {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [showFilterizer, setShowFilterizer] = useState(false);
   const [showWinner, setShowWinner] = useState(false);
+  const [showTeamTotals, setShowTeamTotals] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -967,6 +969,12 @@ const Index = () => {
               </PaywallGate>
             )}
 
+            {showTeamTotals && (
+              <PaywallGate feature="Team Totals O1.5">
+                <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
+              </PaywallGate>
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -1021,29 +1029,49 @@ const Index = () => {
                 </Button>
               </div>
 
-              {/* Filterizer & Winner Toggles */}
+              {/* Filterizer, Winner & Team Totals Toggles */}
               <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                 <Button
                   className="w-full gap-2 mb-2"
                   variant={showFilterizer ? "default" : "outline"}
                   onClick={() => {
                     setShowFilterizer(!showFilterizer);
-                    if (!showFilterizer) setShowWinner(false); // Close Winner if opening Filterizer
+                    if (!showFilterizer) {
+                      setShowWinner(false);
+                      setShowTeamTotals(false);
+                    }
                   }}
                 >
                   <Filter className="h-4 w-4" />
                   {t('common:filterizer')}
                 </Button>
                 <Button
-                  className="w-full gap-2"
+                  className="w-full gap-2 mb-2"
                   variant={showWinner ? "default" : "outline"}
                   onClick={() => {
                     setShowWinner(!showWinner);
-                    if (!showWinner) setShowFilterizer(false); // Close Filterizer if opening Winner
+                    if (!showWinner) {
+                      setShowFilterizer(false);
+                      setShowTeamTotals(false);
+                    }
                   }}
                 >
                   <Trophy className="h-4 w-4" />
                   {t('common:winner_1x2')}
+                </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant={showTeamTotals ? "default" : "outline"}
+                  onClick={() => {
+                    setShowTeamTotals(!showTeamTotals);
+                    if (!showTeamTotals) {
+                      setShowFilterizer(false);
+                      setShowWinner(false);
+                    }
+                  }}
+                >
+                  <Target className="h-4 w-4" />
+                  Team Totals O1.5
                 </Button>
               </div>
 
@@ -1084,14 +1112,17 @@ const Index = () => {
                   </Button>
                 </div>
 
-                {/* Filterizer & Winner Toggles */}
+                {/* Filterizer, Winner & Team Totals Toggles */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                   <Button
                     className="w-full gap-2 mb-2"
                     variant={showFilterizer ? "default" : "outline"}
                     onClick={() => {
                       setShowFilterizer(!showFilterizer);
-                      if (!showFilterizer) setShowWinner(false);
+                      if (!showFilterizer) {
+                        setShowWinner(false);
+                        setShowTeamTotals(false);
+                      }
                       setRightSheetOpen(false);
                     }}
                   >
@@ -1099,16 +1130,34 @@ const Index = () => {
                     {t('common:filterizer')}
                   </Button>
                   <Button
-                    className="w-full gap-2"
+                    className="w-full gap-2 mb-2"
                     variant={showWinner ? "default" : "outline"}
                     onClick={() => {
                       setShowWinner(!showWinner);
-                      if (!showWinner) setShowFilterizer(false);
+                      if (!showWinner) {
+                        setShowFilterizer(false);
+                        setShowTeamTotals(false);
+                      }
                       setRightSheetOpen(false);
                     }}
                   >
                     <Trophy className="h-4 w-4" />
                     {t('common:winner_1x2')}
+                  </Button>
+                  <Button
+                    className="w-full gap-2"
+                    variant={showTeamTotals ? "default" : "outline"}
+                    onClick={() => {
+                      setShowTeamTotals(!showTeamTotals);
+                      if (!showTeamTotals) {
+                        setShowFilterizer(false);
+                        setShowWinner(false);
+                      }
+                      setRightSheetOpen(false);
+                    }}
+                  >
+                    <Target className="h-4 w-4" />
+                    Team Totals O1.5
                   </Button>
                 </div>
 

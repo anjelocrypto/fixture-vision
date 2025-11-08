@@ -65,6 +65,7 @@ export const AdminRefreshButton = () => {
   const [isFetchingPredictions, setIsFetchingPredictions] = useState(false);
   const [isPopulatingOutcomes, setIsPopulatingOutcomes] = useState(false);
   const [isVerifyingTeamTotals, setIsVerifyingTeamTotals] = useState(false);
+  const [isPopulatingTeamTotals, setIsPopulatingTeamTotals] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -465,6 +466,46 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handlePopulateTeamTotals = async (windowHours: number) => {
+    setIsPopulatingTeamTotals(true);
+    
+    try {
+      toast.info(`📊 Populating team totals for ${windowHours}h window...`);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "populate-team-totals-candidates",
+        { 
+          body: { window_hours: windowHours },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Populate team totals error:", error);
+        throw error;
+      }
+
+      console.log("Team totals populate result:", data);
+      
+      const summary = `${data.scanned_fixtures} scanned • ${data.inserted} inserted • ${data.updated} updated • ${data.home_pass} home + ${data.away_pass} away passed`;
+      toast.success(`Team Totals: ${summary}`);
+
+    } catch (error) {
+      console.error("Populate team totals error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Populate failed: ${errorMessage}`);
+    } finally {
+      setIsPopulatingTeamTotals(false);
+    }
+  };
+
   const handleVerifyTeamTotals = async () => {
     setIsVerifyingTeamTotals(true);
     
@@ -644,16 +685,29 @@ export const AdminRefreshButton = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            onClick={handleVerifyTeamTotals}
-            disabled={isVerifyingTeamTotals}
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <Search className={`h-4 w-4 ${isVerifyingTeamTotals ? "animate-pulse" : ""}`} />
-            {isVerifyingTeamTotals ? "Verifying..." : "Verify Team Totals"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isVerifyingTeamTotals || isPopulatingTeamTotals}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Search className={`h-4 w-4 ${(isVerifyingTeamTotals || isPopulatingTeamTotals) ? "animate-pulse" : ""}`} />
+                Team Totals
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handlePopulateTeamTotals(120)}>
+                📊 Populate (120h)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleVerifyTeamTotals}>
+                🔍 Verify Coverage
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </>
       )}
       </div>

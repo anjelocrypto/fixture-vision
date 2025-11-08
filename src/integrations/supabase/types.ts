@@ -598,6 +598,57 @@ export type Database = {
         }
         Relationships: []
       }
+      team_totals_candidates: {
+        Row: {
+          computed_at: string
+          fixture_id: number
+          id: number
+          league_id: number
+          line: number
+          opponent_recent_conceded_2plus: number | null
+          opponent_season_conceding_rate: number | null
+          recent_sample_size: number | null
+          rules_passed: boolean
+          rules_version: string
+          season_scoring_rate: number | null
+          team_context: string
+          team_id: number
+          utc_kickoff: string
+        }
+        Insert: {
+          computed_at?: string
+          fixture_id: number
+          id?: number
+          league_id: number
+          line?: number
+          opponent_recent_conceded_2plus?: number | null
+          opponent_season_conceding_rate?: number | null
+          recent_sample_size?: number | null
+          rules_passed?: boolean
+          rules_version?: string
+          season_scoring_rate?: number | null
+          team_context: string
+          team_id: number
+          utc_kickoff: string
+        }
+        Update: {
+          computed_at?: string
+          fixture_id?: number
+          id?: number
+          league_id?: number
+          line?: number
+          opponent_recent_conceded_2plus?: number | null
+          opponent_season_conceding_rate?: number | null
+          recent_sample_size?: number | null
+          rules_passed?: boolean
+          rules_version?: string
+          season_scoring_rate?: number | null
+          team_context?: string
+          team_id?: number
+          utc_kickoff?: string
+        }
+        Relationships: []
+      }
       user_entitlements: {
         Row: {
           current_period_end: string
@@ -847,6 +898,25 @@ export type Database = {
           sample_size: number | null
           side: string | null
           source: string | null
+          utc_kickoff: string | null
+        }
+        Relationships: []
+      }
+      v_team_totals_prematch: {
+        Row: {
+          computed_at: string | null
+          fixture_id: number | null
+          id: number | null
+          league_id: number | null
+          line: number | null
+          opponent_recent_conceded_2plus: number | null
+          opponent_season_conceding_rate: number | null
+          recent_sample_size: number | null
+          rules_passed: boolean | null
+          rules_version: string | null
+          season_scoring_rate: number | null
+          team_context: string | null
+          team_id: number | null
           utc_kickoff: string | null
         }
         Relationships: []
