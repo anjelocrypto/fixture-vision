@@ -173,7 +173,7 @@ const Index = () => {
     }
   }, [selectedCountry]);
 
-  // Fetch leagues with React Query - properly keyed by country and season
+  // Fetch leagues with exponential backoff + jitter for rate limiting
   const { data: leaguesData, isError: leaguesError, isLoading: leaguesLoading } = useQuery({
     queryKey: ['leagues', selectedCountry, SEASON],
     queryFn: async () => {
@@ -182,23 +182,50 @@ const Index = () => {
 
       console.log(`[Index] Fetching leagues for country: ${country.name}, season: ${SEASON}`);
 
-      const { data, error } = await supabase.functions.invoke("fetch-leagues", {
-        body: { country: country.name, season: SEASON },
-      });
+      // Exponential backoff: 250ms → 500 → 1000 → 2000 (max 4 tries)
+      const maxRetries = 4;
+      let attempt = 0;
+      
+      while (attempt < maxRetries) {
+        try {
+          const { data, error } = await supabase.functions.invoke("fetch-leagues", {
+            body: { country: country.name, season: SEASON },
+          });
 
-      if (error) {
-        console.error(`[Index] Error fetching leagues for ${country.name}:`, error);
-        throw error;
+          if (error) {
+            console.error(`[Index] Error fetching leagues (attempt ${attempt + 1}):`, error);
+            throw error;
+          }
+
+          // If stale cache returned due to rate limit, still use it
+          if (data?.stale) {
+            console.warn(`[Index] Using stale cache for ${country.name}, retry after ${data.retry_after}s`);
+          }
+
+          console.log(`[Index] Fetched ${data?.leagues?.length || 0} leagues for ${country.name}`);
+          return data;
+        } catch (err: any) {
+          attempt++;
+          if (attempt >= maxRetries) throw err;
+          
+          // Exponential backoff with jitter: base * 2^attempt + random(0-100ms)
+          const baseDelay = 250;
+          const backoff = baseDelay * Math.pow(2, attempt);
+          const jitter = Math.random() * 100;
+          const delay = backoff + jitter;
+          
+          console.log(`[Index] Retry ${attempt}/${maxRetries} for ${country.name} after ${Math.round(delay)}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
-
-      console.log(`[Index] Fetched ${data?.leagues?.length || 0} leagues for ${country.name}`);
-      return data;
+      
+      return { leagues: [] };
     },
     enabled: !!selectedCountry && selectedCountry !== 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes (shorter for faster updates)
-    gcTime: 60 * 60 * 1000, // Keep in cache for 1 hour
-    retry: 1,
-    refetchOnWindowFocus: false, // Don't refetch on window focus for better performance
+    staleTime: 5 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry: false, // Handle retries manually above
+    refetchOnWindowFocus: false,
   });
 
   // Prefetch leagues for adjacent countries on hover

@@ -45,7 +45,7 @@ serve(async (req) => {
         console.log(`[fetch-leagues] Returning ${cachedLeagues.length} cached leagues for ${country} (country_id: ${cachedCountry.id})`);
         return new Response(
           JSON.stringify({ leagues: cachedLeagues }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
         );
       }
     }
@@ -93,7 +93,7 @@ serve(async (req) => {
         console.log(`[fetch-leagues] Returning ${fallbackLeagues.length} leagues from stale cache due to rate limit`);
         return new Response(
           JSON.stringify({ leagues: fallbackLeagues, stale: true, retry_after: retryAfter }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
         );
       }
 
@@ -104,7 +104,7 @@ serve(async (req) => {
         }),
         { 
           status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } 
         }
       );
     }
@@ -132,7 +132,7 @@ serve(async (req) => {
       console.log(`[fetch-leagues] Empty response from API for ${country}, season ${season}`);
       return new Response(
         JSON.stringify({ leagues: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
       );
     }
 
@@ -193,7 +193,7 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ leagues }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Error in fetch-leagues:", error);
@@ -202,7 +202,7 @@ serve(async (req) => {
       JSON.stringify({ error: errorMessage }),
       {
         status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" },
       }
     );
   }
