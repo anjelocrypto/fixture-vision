@@ -1009,43 +1009,6 @@ const Index = () => {
         <div className="hidden lg:flex w-[360px] flex-col overflow-hidden border-l border-border">
           <PaywallGate feature="advanced betting tools and AI analysis">
             <>
-              {/* Bet Optimizer (Quick) */}
-              <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-                <div className="text-sm font-semibold mb-2">{t('optimizer:title')}</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => generateQuickTicket("safe")}
-                    disabled={generatingTicket}
-                  >
-                    <Shield className="h-3.5 w-3.5" />
-                    Safe
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => generateQuickTicket("standard")}
-                    disabled={generatingTicket}
-                  >
-                    <Ticket className="h-3.5 w-3.5" />
-                    Standard
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => generateQuickTicket("risky")}
-                    disabled={generatingTicket}
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    Risky
-                  </Button>
-                </div>
-              </div>
-
               {/* AI Ticket Creator (Advanced) */}
               <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                 <Button
@@ -1106,52 +1069,6 @@ const Index = () => {
           <SheetContent side="right" className="w-full sm:w-[380px] p-0">
             <PaywallGate feature="advanced betting tools and AI analysis" allowTrial={true}>
               <div className="flex flex-col h-full">
-                {/* Bet Optimizer (Quick) */}
-                <div className="p-4 border-b bg-card/30 backdrop-blur-sm space-y-2 shrink-0">
-                  <div className="text-sm font-semibold mb-2">{t('optimizer:title')}</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={() => {
-                        generateQuickTicket("safe");
-                        setRightSheetOpen(false);
-                      }}
-                      disabled={generatingTicket}
-                    >
-                      <Shield className="h-3.5 w-3.5" />
-                      Safe
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={() => {
-                        generateQuickTicket("standard");
-                        setRightSheetOpen(false);
-                      }}
-                      disabled={generatingTicket}
-                    >
-                      <Ticket className="h-3.5 w-3.5" />
-                      Standard
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={() => {
-                        generateQuickTicket("risky");
-                        setRightSheetOpen(false);
-                      }}
-                      disabled={generatingTicket}
-                    >
-                      <Zap className="h-3.5 w-3.5" />
-                      Risky
-                    </Button>
-                  </div>
-                </div>
-
                 {/* AI Ticket Creator (Advanced) */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                   <Button
