@@ -33,8 +33,10 @@ interface LeagueCoverage {
   fixtures_with_away_o15: number;
 }
 
+const RATE_DELAY_MS = 900; // keep under 50 rpm with headroom
+
 async function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 serve(async (req) => {
@@ -120,9 +122,11 @@ serve(async (req) => {
     const betsData = await betsResponse.json();
     const allBets: BetType[] = betsData.response || [];
 
-    // Filter for team-total related bets
-    const teamTotalBets = allBets.filter(bet => {
-      const name = bet.name.toLowerCase();
+    // Filter for team-total related bets (guard null names)
+    const teamTotalBets = allBets.filter((bet) => {
+      const raw = (bet as any)?.name;
+      if (!raw) return false;
+      const name = String(raw).toLowerCase();
       return (
         name.includes("team") &&
         (name.includes("total") || name.includes("goals")) &&
@@ -160,7 +164,7 @@ serve(async (req) => {
     for (const fixture of sampleFixtures) {
       console.log(`[verify-team-totals] Sampling fixture ${fixture.id}...`);
       
-      await delay(1200); // Rate limit: ~50 req/min
+      await delay(RATE_DELAY_MS); // Rate limit: < 50 req/min
       
       const oddsResponse = await fetch(
         `${API_BASE}/odds?fixture=${fixture.id}`,
@@ -205,14 +209,14 @@ serve(async (req) => {
     // STEP 4: Coverage scan across all fixtures
     const coverageData: FixtureCoverage[] = [];
     let scanned = 0;
-    const maxScan = 200; // Limit to avoid timeout
+    const maxScan = 40; // keep runtime under limits
 
     for (const fixture of (fixtures || []).slice(0, maxScan)) {
       if (scanned > 0 && scanned % 10 === 0) {
         console.log(`[verify-team-totals] Scanned ${scanned}/${Math.min(fixtures?.length || 0, maxScan)} fixtures...`);
       }
 
-      await delay(1200); // Rate limit
+      await delay(RATE_DELAY_MS); // Rate limit
 
       const oddsResponse = await fetch(
         `${API_BASE}/odds?fixture=${fixture.id}`,
