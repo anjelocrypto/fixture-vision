@@ -59,12 +59,13 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Window: ${now.toISOString()} to ${endDate.toISOString()} (${window_hours}h)`);
 
-    // Fetch upcoming fixtures in window
+    // Fetch upcoming fixtures in window (only pre-match: NS/TBD status)
     const { data: fixtures, error: fixturesError } = await supabaseClient
       .from("fixtures")
       .select("*")
       .gte("timestamp", nowTimestamp)
-      .lte("timestamp", endTimestamp);
+      .lte("timestamp", endTimestamp)
+      .in("status", ["NS", "TBD"]);
 
     if (fixturesError) {
       console.error("[optimize-selections-refresh] Error fetching fixtures:", fixturesError);
