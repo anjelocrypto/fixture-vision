@@ -62,7 +62,7 @@ export type Database = {
           code?: string | null
           created_at?: string | null
           flag?: string | null
-          id: number
+          id?: number
           name: string
         }
         Update: {
