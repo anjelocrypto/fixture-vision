@@ -58,6 +58,7 @@ serve(async (req) => {
     const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
     console.log(`[optimize-selections-refresh] Window: ${now.toISOString()} to ${endDate.toISOString()} (${window_hours}h)`);
+    console.log(`[optimize-selections-refresh] Filters: status IN ('NS','TBD'), kickoff >= now()+5min, window=${window_hours}h`);
 
     // Fetch upcoming fixtures in window (only pre-match: NS/TBD status)
     const { data: fixtures, error: fixturesError } = await supabaseClient
@@ -383,10 +384,11 @@ serve(async (req) => {
       return acc;
     }, {});
     
-    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures`);
+    console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures (window=${window_hours}h)`);
+    console.log(`[optimize-selections-refresh] Status filter: kept NS/TBD=${fixtures.length}, dropped_too_close=${droppedTooClose}`);
     console.log(`[optimize-selections-refresh] Coverage: ${with_odds}/${fixtures.length} fixtures with odds (${coveragePct}%), ${fixturesWithSelections} with selections`);
     console.log(`[optimize-selections-refresh] Variety: avg ${avgPerFixture} selections/fixture, ${bookmakers} bookmakers, top ${KEEP_TOP_BOOKMAKERS} kept per line`);
-    console.log(`[optimize-selections-refresh] Band enforcement [${ODDS_MIN}, ${ODDS_MAX}]: kept=${keptInBand}, dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}, dropped_too_close=${droppedTooClose}`);
+    console.log(`[optimize-selections-refresh] Band enforcement [${ODDS_MIN}, ${ODDS_MAX}]: kept=${keptInBand}, dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}`);
     console.log(`[optimize-selections-refresh] Market breakdown:`, JSON.stringify(marketBreakdown));
     console.log(`[optimize-selections-refresh] Top 5 lines:`, Object.entries(lineBreakdown).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(", "));
 
