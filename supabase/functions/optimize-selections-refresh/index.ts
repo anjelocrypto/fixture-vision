@@ -481,6 +481,10 @@ serve(async (req) => {
         window: { start: now.toISOString(), end: endDate.toISOString() },
         rules_version: RULES_VERSION,
         duration_ms,
+        status_filter: {
+          kept_nstd: fixtures.length,
+          dropped_too_close: droppedTooClose,
+        },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
