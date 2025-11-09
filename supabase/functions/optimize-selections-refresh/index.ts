@@ -161,11 +161,22 @@ serve(async (req) => {
     let droppedOutOfBand = 0;
     let droppedSuspicious = 0;
     let droppedNoLine = 0;
+    let droppedTooClose = 0;
     const selections: any[] = [];
     const started_at = new Date();
+    const bufferMinutes = 5;
+    const minKickoffTime = new Date(Date.now() + bufferMinutes * 60 * 1000);
 
     for (const fixture of fixtures) {
       scanned++;
+      
+      // 5-minute prematch buffer: skip fixtures too close to kickoff
+      const fixtureKickoff = new Date(fixture.timestamp * 1000);
+      if (fixtureKickoff < minKickoffTime) {
+        droppedTooClose++;
+        continue;
+      }
+      
       const homeTeamId = fixture.teams_home?.id;
       const awayTeamId = fixture.teams_away?.id;
 
@@ -375,7 +386,7 @@ serve(async (req) => {
     console.log(`[optimize-selections-refresh] Generated ${selections.length} selections from ${scanned} fixtures`);
     console.log(`[optimize-selections-refresh] Coverage: ${with_odds}/${fixtures.length} fixtures with odds (${coveragePct}%), ${fixturesWithSelections} with selections`);
     console.log(`[optimize-selections-refresh] Variety: avg ${avgPerFixture} selections/fixture, ${bookmakers} bookmakers, top ${KEEP_TOP_BOOKMAKERS} kept per line`);
-    console.log(`[optimize-selections-refresh] Band enforcement [${ODDS_MIN}, ${ODDS_MAX}]: kept=${keptInBand}, dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}`);
+    console.log(`[optimize-selections-refresh] Band enforcement [${ODDS_MIN}, ${ODDS_MAX}]: kept=${keptInBand}, dropped_out_of_band=${droppedOutOfBand}, dropped_suspicious=${droppedSuspicious}, dropped_no_line=${droppedNoLine}, dropped_too_close=${droppedTooClose}`);
     console.log(`[optimize-selections-refresh] Market breakdown:`, JSON.stringify(marketBreakdown));
     console.log(`[optimize-selections-refresh] Top 5 lines:`, Object.entries(lineBreakdown).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(", "));
 
