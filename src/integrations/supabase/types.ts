@@ -853,14 +853,6 @@ export type Database = {
           is_subscriber: boolean | null
           user_id: string | null
         }
-        Insert: {
-          is_subscriber?: never
-          user_id?: string | null
-        }
-        Update: {
-          is_subscriber?: never
-          user_id?: string | null
-        }
         Relationships: []
       }
       v_outcomes_prematch: {
@@ -964,6 +956,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
       try_use_feature: {
