@@ -12,47 +12,58 @@ const PLANS = [
   {
     id: "day_pass",
     name: "Day Pass",
-    price: "10 GEL",
-    usdApprox: "~$3.70",
-    interval: "24 hours access",
+    price: "$4.99",
+    interval: "24-hour full access",
     description: "Perfect for testing our analytics tools",
     features: [
       "Full access to Ticket Creator",
-      "Optimizer & Filterizer tools",
-      "Gemini AI analysis",
-      "My Ticket management",
-      "24-hour access period",
+      "Full access to Filterizer",
+      "Full access to Analyze",
+      "Full access to Winner",
+      "Full access to Team Totals",
     ],
   },
   {
     id: "premium_monthly",
     name: "Premium Monthly",
-    price: "$20",
+    price: "$14.99",
     interval: "per month",
     description: "Best for regular users",
     features: [
-      "Full access to all tools",
-      "Unlimited ticket creation",
-      "Advanced analytics",
-      "Priority support",
-      "Cancel anytime",
+      "Full access to Ticket Creator",
+      "Full access to Filterizer",
+      "Full access to Analyze",
+      "Full access to Winner",
+      "Full access to Team Totals",
     ],
     recommended: true,
   },
   {
+    id: "three_month",
+    name: "3-Month Plan",
+    price: "$34.99",
+    interval: "per 3 months",
+    description: "Great value for committed users",
+    features: [
+      "Full access to Ticket Creator",
+      "Full access to Filterizer",
+      "Full access to Analyze",
+      "Full access to Winner",
+      "Full access to Team Totals",
+    ],
+  },
+  {
     id: "annual",
     name: "Annual Plan",
-    price: "499 GEL",
-    usdApprox: "~$185/year",
-    interval: "billed yearly",
-    description: "Save 2 months with annual billing",
-    badge: "2 MONTHS FREE",
+    price: "$79.99",
+    interval: "per year",
+    description: "Best value for money",
     features: [
-      "Everything in Monthly",
-      "Save 2 months per year",
-      "Best value for money",
-      "Locked-in pricing",
-      "Priority support",
+      "Full access to Ticket Creator",
+      "Full access to Filterizer",
+      "Full access to Analyze",
+      "Full access to Winner",
+      "Full access to Team Totals",
     ],
   },
 ];
@@ -139,7 +150,7 @@ const Pricing = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {PLANS.map((plan) => (
               <Card
                 key={plan.id}
@@ -156,23 +167,11 @@ const Pricing = () => {
                     </Badge>
                   </div>
                 )}
-                {plan.badge && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-secondary text-secondary-foreground px-4 py-1">
-                      {plan.badge}
-                    </Badge>
-                  </div>
-                )}
                 <CardHeader className="text-center pt-8">
                   <CardTitle className="text-2xl">{plan.name}</CardTitle>
                   <CardDescription>{plan.description}</CardDescription>
                   <div className="mt-4">
                     <div className="text-4xl font-bold">{plan.price}</div>
-                    {plan.usdApprox && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {plan.usdApprox}
-                      </div>
-                    )}
                     <div className="text-sm text-muted-foreground mt-2">
                       {plan.interval}
                     </div>
@@ -203,10 +202,7 @@ const Pricing = () => {
 
           <div className="text-center mt-12 text-sm text-muted-foreground">
             <p>
-              All plans include full access to our analytics tools. Cancel anytime.
-            </p>
-            <p className="mt-2">
-              Secure payment processing powered by Stripe
+              All paid plans include full access. Cancel anytime. Payments via Stripe.
             </p>
           </div>
         </div>
