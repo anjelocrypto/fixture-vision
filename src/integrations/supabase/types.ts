@@ -848,6 +848,21 @@ export type Database = {
           },
         ]
       }
+      v_is_subscriber: {
+        Row: {
+          is_subscriber: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          is_subscriber?: never
+          user_id?: string | null
+        }
+        Update: {
+          is_subscriber?: never
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       v_outcomes_prematch: {
         Row: {
           bookmaker: string | null
