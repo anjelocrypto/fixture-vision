@@ -294,13 +294,16 @@ serve(async (req) => {
 
         // If no odds found, create a model-only selection
         if (bookmakerOdds.length === 0 && !hasOdds) {
-          console.log(`[optimize] MODEL_ONLY: fixture=${fixture.id} lg=${fixture.league_id} market=${market} side=${pick.side} line=${pick.line} combined=${(typeof combinedValue==='number'?combinedValue.toFixed(2):combinedValue)} sample=${sampleSize}`);
           // Model-only selection (no bookmaker odds available)
           const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
           const countryId = leagueToCountryMap.get(fixture.league_id);
           const countryCode = countryId ? countryCodeMap.get(countryId) : null;
           
           const modelProb = Math.min(0.95, Math.max(0.05, combinedValue / (pick.line * 2)));
+          
+          console.log(
+            `[optimize] MODEL_ONLY fixture=${fixture.id} market=${market} side=${pick.side} line=${pick.line ?? 'null'} prob=${(modelProb ?? NaN).toFixed?.(2) ?? modelProb}`
+          );
 
           selections.push({
             fixture_id: fixture.id,
