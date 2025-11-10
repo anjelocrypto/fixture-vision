@@ -29,7 +29,7 @@ serve(async (req) => {
     if (country === "International") {
       console.log(`[fetch-leagues] International leagues requested`);
       
-      // Check cache for international leagues (where country_id IS NULL)
+      // First check cache for international leagues (where country_id IS NULL)
       const { data: cachedLeagues } = await supabaseClient
         .from("leagues")
         .select("*")
@@ -45,11 +45,38 @@ serve(async (req) => {
         );
       }
 
-      // If no cache, return empty array (international leagues are fetched differently by the API)
-      // They don't belong to a country, so we can't query by country name
-      console.log(`[fetch-leagues] No cached international leagues, returning empty array`);
+      // If no cache, return hardcoded list of international leagues from our config
+      // These will be populated in the DB once fetch-fixtures runs
+      console.log(`[fetch-leagues] No cached international leagues, returning hardcoded list`);
+      
+      const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964];
+      const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
+        5: "UEFA Nations League",
+        1: "World Cup",
+        4: "UEFA Euro Championship",
+        960: "UEFA Euro Championship Qualification",
+        32: "World Cup Qualification (Africa)",
+        34: "World Cup Qualification (Asia)",
+        33: "World Cup Qualification (Oceania)",
+        31: "World Cup Qualification (South America)",
+        29: "World Cup Qualification (CONCACAF)",
+        30: "World Cup Qualification (Europe)",
+        9: "Copa América",
+        36: "AFCON Qualification",
+        964: "Africa Cup of Nations",
+      };
+      
+      const hardcodedLeagues = INTERNATIONAL_LEAGUE_IDS.map(id => ({
+        id,
+        name: INTERNATIONAL_LEAGUE_NAMES[id] || `League ${id}`,
+        country_id: null,
+        season,
+        created_at: new Date().toISOString(),
+        logo: null,
+      }));
+      
       return new Response(
-        JSON.stringify({ leagues: [] }),
+        JSON.stringify({ leagues: hardcodedLeagues }),
         { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
       );
     }
