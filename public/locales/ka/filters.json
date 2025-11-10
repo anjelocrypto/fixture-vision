@@ -5,6 +5,7 @@
   "leagues": "ლიგები",
   "countries": {
     "World": "მსოფლიო",
+    "International": "საერთაშორისო",
     "England": "ინგლისი",
     "Spain": "ესპანეთი",
     "Italy": "იტალია",
@@ -28,7 +29,7 @@
   "league_names": {
     "La Liga": "ლა ლიგა",
     "Segunda División": "სეგუნდა დივიზიონი",
-    "Primera División Femenina": "პრიმერა დივიზიონ ფემენინა",
+    "Primera División Femenina": "პრიმერა დივიზიონი ქალთა",
     "Super Cup": "სუპერ თასი",
     "Premier League": "პრემიერ ლიგა",
     "Championship": "ჩემპიონშიპი",
@@ -37,6 +38,19 @@
     "Bundesliga": "ბუნდესლიგა",
     "2. Bundesliga": "2. ბუნდესლიგა",
     "Ligue 1": "ლიგ 1",
-    "Ligue 2": "ლიგ 2"
+    "Ligue 2": "ლიგ 2",
+    "UEFA Nations League": "უეფას ერთა ლიგა",
+    "World Cup": "მსოფლიო თასი",
+    "UEFA Euro Championship": "ევრო 2024",
+    "UEFA Euro Championship Qualification": "ევროს შესარჩევი",
+    "World Cup Qualification (Africa)": "ჩემპიონატის შესარჩევი (აფრიკა)",
+    "World Cup Qualification (Asia)": "ჩემპიონატის შესარჩევი (აზია)",
+    "World Cup Qualification (Oceania)": "ჩემპიონატის შესარჩევი (ოკეანეთი)",
+    "World Cup Qualification (South America)": "ჩემპიონატის შესარჩევი (სამხრეთი ამერიკა)",
+    "World Cup Qualification (CONCACAF)": "ჩემპიონატის შესარჩევი (CONCACAF)",
+    "World Cup Qualification (Europe)": "ჩემპიონატის შესარჩევი (ევროპა)",
+    "Copa América": "კოპა ამერიკა",
+    "AFCON Qualification": "აფრიკის თასის შესარჩევი",
+    "Africa Cup of Nations": "აფრიკის ერთა თასი"
   }
 }
