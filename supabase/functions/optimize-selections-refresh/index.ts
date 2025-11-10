@@ -30,6 +30,36 @@ serve(async (req) => {
     // Parse window_hours from request body (default 120h for QA runway)
     const { window_hours = 120 } = await req.json().catch(() => ({}));
 
+    // GUARD: Don't let short-window cron stomps long-window manual runs
+    // If this is a short window (≤24h) and a longer window is running, skip
+    if (window_hours <= 24) {
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: longerRuns } = await supabaseClient
+        .from("optimizer_run_logs")
+        .select("run_type, started_at, finished_at")
+        .gte("started_at", fifteenMinutesAgo)
+        .is("finished_at", null)
+        .ilike("run_type", "optimize-selections-%");
+      
+      const activeLongRun = longerRuns?.find(r => {
+        const match = r.run_type.match(/optimize-selections-(\d+)h/);
+        const runWindow = match ? parseInt(match[1]) : 0;
+        return runWindow > 24;
+      });
+
+      if (activeLongRun) {
+        console.log(`[optimize-selections-refresh] Long-window run (${activeLongRun.run_type}) active, skipping ${window_hours}h cron`);
+        return new Response(
+          JSON.stringify({ 
+            skipped: true, 
+            reason: "long_window_run_in_progress",
+            active_run: activeLongRun.run_type 
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Overlap guard: check if another optimize run is currently running for this window
     const runKey = `optimize-selections-${window_hours}h`;
     const { data: recentRuns } = await supabaseClient

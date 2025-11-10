@@ -222,7 +222,7 @@ export const AdminRefreshButton = () => {
     setIsRefreshing(true);
     
     try {
-      toast.info(`Warming ${windowHours}h odds pipeline...`);
+      toast.info(`Warming ${windowHours}h odds pipeline (force=true)...`);
       
       // Get current session to ensure we have a valid token
       const { data: { session } } = await supabase.auth.getSession();
@@ -234,7 +234,7 @@ export const AdminRefreshButton = () => {
       const { data, error } = await supabase.functions.invoke(
         "warmup-odds",
         { 
-          body: { window_hours: windowHours },
+          body: { window_hours: windowHours, force: true },
           headers: {
             Authorization: `Bearer ${session.access_token}`
           }
@@ -636,7 +636,10 @@ export const AdminRefreshButton = () => {
                 className="gap-2"
               >
                 <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                {isRefreshing ? "Warming..." : `Warmup (${selectedWindow}h)`}
+                {isRefreshing ? "Warming..." : "Warmup"}
+                <span className="text-xs font-mono bg-primary/10 px-1.5 py-0.5 rounded ml-1">
+                  {selectedWindow}h • force
+                </span>
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
