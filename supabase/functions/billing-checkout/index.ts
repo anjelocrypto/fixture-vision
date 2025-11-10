@@ -80,9 +80,10 @@ serve(async (req) => {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    // Success and cancel URLs
-    const successUrl = "https://ticketai.bet/account?checkout=success";
-    const cancelUrl = "https://ticketai.bet/pricing?checkout=cancel";
+    // Success and cancel URLs using APP_URL env var
+    const appUrl = Deno.env.get("APP_URL") || "https://ticketai.bet";
+    const successUrl = `${appUrl}/account?checkout=success`;
+    const cancelUrl = `${appUrl}/pricing?checkout=cancel`;
 
     // Handle subscription checkout
     if (pathname.endsWith("/create-subscription-session")) {

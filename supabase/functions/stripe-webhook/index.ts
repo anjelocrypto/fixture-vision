@@ -105,7 +105,7 @@ serve(async (req) => {
               .from("user_entitlements")
               .upsert({
                 user_id: userId,
-                plan: "daypass",
+                plan: "day_pass",
                 status: "active",
                 current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 stripe_customer_id: customerId,
@@ -268,50 +268,6 @@ serve(async (req) => {
         break;
       }
 
-      case "charge.succeeded": {
-        const charge = event.data.object as Stripe.Charge;
-        
-        // Get invoice to check if this is a subscription payment
-        const invoiceId = charge.invoice as string | null;
-        if (invoiceId) {
-          // This is a subscription payment, handled by invoice.paid
-          console.log(`[webhook] Charge ${charge.id} is subscription payment, skipping`);
-          break;
-        }
-
-        // Handle one-time payments (Day Pass)
-        const customerId = charge.customer as string;
-        if (!customerId) {
-          console.error("[webhook] No customer in charge");
-          break;
-        }
-
-        const customer = await stripe.customers.retrieve(customerId);
-        const userId = (customer as any).metadata?.user_id;
-        if (!userId) {
-          console.error("[webhook] No user_id in customer metadata");
-          break;
-        }
-
-        // This is a one-time payment (Day Pass)
-        console.log(`[webhook] One-time payment for user ${userId}`);
-
-        const { error } = await supabase
-          .from("user_entitlements")
-          .upsert({
-            user_id: userId,
-            plan: "day_pass",
-            status: "active",
-            current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            stripe_customer_id: customerId,
-            stripe_subscription_id: null,
-            source: "stripe",
-          });
-
-        if (error) console.error("[webhook] Error upserting day pass:", error);
-        else console.log(`[webhook] Day pass activated for user ${userId}`);
-        break;
-      }
 
       default:
         console.log(`[webhook] Unhandled event type: ${event.type}`);

@@ -982,7 +982,7 @@ const Index = () => {
 
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
             {showFilterizer && (
-              <PaywallGate feature="Filterizer">
+              <PaywallGate feature="Filterizer" featureKey="bet_optimizer" allowTrial={true}>
                 <FilterizerPanel
                   onApplyFilters={handleApplyFilters}
                   onClearFilters={handleClearFilters}
@@ -992,13 +992,13 @@ const Index = () => {
             )}
 
             {showWinner && (
-              <PaywallGate feature="Winner Predictions">
+              <PaywallGate feature="Winner Predictions" featureKey="bet_optimizer" allowTrial={true}>
                 <WinnerPanel onClose={() => setShowWinner(false)} />
               </PaywallGate>
             )}
 
             {showTeamTotals && (
-              <PaywallGate feature="Team Totals O1.5">
+              <PaywallGate feature="Team Totals O1.5" featureKey="bet_optimizer" allowTrial={true}>
                 <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
               </PaywallGate>
             )}
@@ -1218,7 +1218,7 @@ const Index = () => {
         </Button>
 
         {/* Mobile AI Ticket Creator FAB */}
-        <PaywallGate feature="AI Ticket Creator">
+        <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
           <Button
             className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
             onClick={() => setTicketCreatorOpen(true)}
@@ -1229,7 +1229,7 @@ const Index = () => {
         </PaywallGate>
       </div>
 
-      <PaywallGate feature="AI Ticket Creator">
+      <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
         <TicketCreatorDialog
           open={ticketCreatorOpen}
           onOpenChange={setTicketCreatorOpen}
