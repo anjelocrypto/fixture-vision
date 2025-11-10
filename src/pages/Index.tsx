@@ -1219,20 +1219,24 @@ const Index = () => {
         </Button>
 
         {/* Mobile AI Ticket Creator FAB */}
-        <Button
-          className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
-          onClick={() => setTicketCreatorOpen(true)}
-        >
-          <Sparkles className="h-5 w-5" />
-          <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
-        </Button>
+        <PaywallGate feature="AI Ticket Creator">
+          <Button
+            className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
+            onClick={() => setTicketCreatorOpen(true)}
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
+          </Button>
+        </PaywallGate>
       </div>
 
-      <TicketCreatorDialog
-        open={ticketCreatorOpen}
-        onOpenChange={setTicketCreatorOpen}
-        onGenerate={generateAITicket}
-      />
+      <PaywallGate feature="AI Ticket Creator">
+        <TicketCreatorDialog
+          open={ticketCreatorOpen}
+          onOpenChange={setTicketCreatorOpen}
+          onGenerate={generateAITicket}
+        />
+      </PaywallGate>
 
       <TicketDrawer
         open={ticketDrawerOpen}
