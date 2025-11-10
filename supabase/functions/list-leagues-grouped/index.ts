@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight } from "../_shared/cors.ts";
 
-const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964];
+const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 17];
 const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
   5: "UEFA Nations League",
   1: "World Cup",
@@ -17,6 +17,7 @@ const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
   9: "Copa América",
   36: "AFCON Qualification",
   964: "Africa Cup of Nations",
+  17: "AFC Champions League",
 };
 
 serve(async (req) => {
