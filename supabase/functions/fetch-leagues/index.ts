@@ -25,6 +25,35 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Special handling for International leagues (country_id IS NULL)
+    if (country === "International") {
+      console.log(`[fetch-leagues] International leagues requested`);
+      
+      // Check cache for international leagues (where country_id IS NULL)
+      const { data: cachedLeagues } = await supabaseClient
+        .from("leagues")
+        .select("*")
+        .eq("season", season)
+        .is("country_id", null)
+        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // 24h cache
+
+      if (cachedLeagues && cachedLeagues.length > 0) {
+        console.log(`[fetch-leagues] Returning ${cachedLeagues.length} cached international leagues`);
+        return new Response(
+          JSON.stringify({ leagues: cachedLeagues }),
+          { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
+        );
+      }
+
+      // If no cache, return empty array (international leagues are fetched differently by the API)
+      // They don't belong to a country, so we can't query by country name
+      console.log(`[fetch-leagues] No cached international leagues, returning empty array`);
+      return new Response(
+        JSON.stringify({ leagues: [] }),
+        { headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" } }
+      );
+    }
+
     // First, look up the country_id to properly filter cached leagues
     const { data: cachedCountry } = await supabaseClient
       .from("countries")

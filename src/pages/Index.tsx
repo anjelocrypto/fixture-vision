@@ -41,6 +41,7 @@ const getCountryFlag = (code: string): string => {
 // Mock countries data - comprehensive coverage
 const MOCK_COUNTRIES = [
   { id: 0, name: "World", code: "WORLD" },
+  { id: 9999, name: "International", code: "INTL" }, // International competitions
   // Western Europe
   { id: 39, name: "England", code: "GB-ENG" },
   { id: 140, name: "Spain", code: "ES" },

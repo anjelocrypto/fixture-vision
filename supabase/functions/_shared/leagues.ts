@@ -4,6 +4,21 @@
  */
 
 export const ALLOWED_LEAGUE_IDS = [
+  // International Competitions
+  5,    // UEFA Nations League
+  1,    // World Cup
+  4,    // UEFA Euro Championship
+  960,  // UEFA Euro Championship Qualification
+  32,   // FIFA World Cup Qualification (Africa)
+  34,   // FIFA World Cup Qualification (Asia)
+  33,   // FIFA World Cup Qualification (Oceania)
+  31,   // FIFA World Cup Qualification (South America)
+  29,   // FIFA World Cup Qualification (CONCACAF)
+  30,   // FIFA World Cup Qualification (Europe)
+  9,    // Copa América
+  36,   // Africa Cup of Nations Qualification
+  964,  // CAF Africa Cup of Nations
+  
   // England (9 leagues)
   39,   // Premier League
   40,   // Championship
@@ -185,6 +200,21 @@ export const ALLOWED_LEAGUE_IDS = [
 ];
 
 export const LEAGUE_NAMES: Record<number, string> = {
+  // International
+  5: "UEFA Nations League",
+  1: "World Cup",
+  4: "UEFA Euro Championship",
+  960: "UEFA Euro Championship Qualification",
+  32: "World Cup Qualification (Africa)",
+  34: "World Cup Qualification (Asia)",
+  33: "World Cup Qualification (Oceania)",
+  31: "World Cup Qualification (South America)",
+  29: "World Cup Qualification (CONCACAF)",
+  30: "World Cup Qualification (Europe)",
+  9: "Copa América",
+  36: "AFCON Qualification",
+  964: "Africa Cup of Nations",
+  
   // England
   39: "Premier League",
   40: "Championship",
