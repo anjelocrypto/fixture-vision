@@ -1,7 +1,7 @@
 // Stripe price IDs for all plans
 export const STRIPE_PLANS = {
   premium_monthly: {
-    priceId: "price_1SNEq4KAifASkGDzr44W6Htn",
+    priceId: "price_1SRlmOKAifASkGDzgavNBNlQ",
     name: "Premium Monthly",
     amount: 20_00,
     currency: "usd",
@@ -9,17 +9,25 @@ export const STRIPE_PLANS = {
     type: "subscription" as const,
   },
   day_pass: {
-    priceId: "price_1SNEqpKAifASkGDzdydTmEQc",
+    priceId: "price_1SRlkiKAifASkGDz37LGqtbk",
     name: "Day Pass",
     amount: 10_00,
     currency: "gel",
     type: "payment" as const,
   },
+  quarterly: {
+    priceId: "price_1SRlnFKAifASkGDzxzFQTXDr",
+    name: "3-Month Plan",
+    amount: 34_99,
+    currency: "usd",
+    interval: "month",
+    type: "subscription" as const,
+  },
   annual: {
-    priceId: "price_1SNErcKAifASkGDzCZ71QpQE",
+    priceId: "price_1SRlocKAifASkGDzemzpW2xL",
     name: "Annual Plan",
-    amount: 499_00,
-    currency: "gel",
+    amount: 79_99,
+    currency: "usd",
     interval: "year",
     type: "subscription" as const,
   },
