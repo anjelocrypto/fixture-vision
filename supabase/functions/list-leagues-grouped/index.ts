@@ -68,9 +68,9 @@ serve(async (req) => {
     // Group by country
     const grouped: Record<string, any> = {};
 
-    // Add International group first (leagues with null country_id)
+    // Add International group - ONLY leagues matching INTERNATIONAL_LEAGUE_IDS
     const internationalLeagues = (allLeagues || [])
-      .filter((l: any) => l.country_id === null)
+      .filter((l: any) => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
       .map((l: any) => ({
         id: l.id,
         name: l.name,
@@ -78,32 +78,40 @@ serve(async (req) => {
         season: l.season,
       }));
 
-    // If we have cached international leagues, use them; otherwise use hardcoded list
-    if (internationalLeagues.length > 0) {
-      grouped["International"] = {
-        code: "INTL",
-        name: "International",
-        flag: null,
-        leagues: internationalLeagues,
-      };
-    } else {
-      // Fallback to hardcoded international leagues
-      grouped["International"] = {
-        code: "INTL",
-        name: "International",
-        flag: null,
-        leagues: INTERNATIONAL_LEAGUE_IDS.map(id => ({
+    // Merge DB international leagues with hardcoded ones (for leagues not yet in DB)
+    const internationalLeagueMap = new Map<number, any>();
+    
+    // Add DB leagues first (they have real names)
+    internationalLeagues.forEach(league => {
+      internationalLeagueMap.set(league.id, league);
+    });
+    
+    // Add hardcoded leagues for any missing IDs
+    INTERNATIONAL_LEAGUE_IDS.forEach(id => {
+      if (!internationalLeagueMap.has(id)) {
+        internationalLeagueMap.set(id, {
           id,
           name: INTERNATIONAL_LEAGUE_NAMES[id] || `League ${id}`,
           logo: null,
           season,
-        })),
-      };
-    }
+        });
+      }
+    });
 
-    // Group remaining leagues by country
+    grouped["International"] = {
+      code: "INTL",
+      name: "International",
+      flag: null,
+      leagues: Array.from(internationalLeagueMap.values()),
+    };
+
+    // Group remaining leagues by country (exclude international leagues and leagues without country)
     (allLeagues || [])
-      .filter((l: any) => l.country_id !== null && l.countries)
+      .filter((l: any) => 
+        l.country_id !== null && 
+        l.countries && 
+        !INTERNATIONAL_LEAGUE_IDS.includes(l.id) // Exclude international leagues
+      )
       .forEach((league: any) => {
         const country = league.countries;
         const countryKey = country.name;
