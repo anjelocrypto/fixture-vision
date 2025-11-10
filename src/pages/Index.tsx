@@ -26,7 +26,6 @@ import { formatMarketLabel } from "@/lib/i18nFormatters";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
-  if (code === "WORLD") return "🌍";
   if (code === "GB") return "🏴󠁧󠁢󠁥󠁮󠁧󠁿"; // England
   if (code === "GB-SCT") return "🏴󠁧󠁢󠁳󠁣󠁴󠁿"; // Scotland
   
@@ -40,7 +39,6 @@ const getCountryFlag = (code: string): string => {
 
 // Mock countries data - comprehensive coverage
 const MOCK_COUNTRIES = [
-  { id: 0, name: "World", code: "WORLD" },
   { id: 9999, name: "International", code: "INTL" }, // International competitions
   // Western Europe
   { id: 39, name: "England", code: "GB-ENG" },
@@ -179,7 +177,7 @@ const Index = () => {
     queryKey: ['leagues', selectedCountry, SEASON],
     queryFn: async () => {
       const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
-      if (!country || country.id === 0) return { leagues: [] };
+      if (!country) return { leagues: [] };
 
       console.log(`[Index] Fetching leagues for country: ${country.name}, season: ${SEASON}`);
 
@@ -222,7 +220,7 @@ const Index = () => {
       
       return { leagues: [] };
     },
-    enabled: !!selectedCountry && selectedCountry !== 0,
+    enabled: !!selectedCountry,
     staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: false, // Handle retries manually above
@@ -232,7 +230,7 @@ const Index = () => {
   // Prefetch leagues for adjacent countries on hover
   const prefetchLeagues = useCallback((countryId: number) => {
     const country = MOCK_COUNTRIES.find((c) => c.id === countryId);
-    if (!country || country.id === 0) return;
+    if (!country) return;
 
     queryClient.prefetchQuery({
       queryKey: ['leagues', countryId, SEASON],
