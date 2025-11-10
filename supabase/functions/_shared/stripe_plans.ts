@@ -11,11 +11,12 @@ export const STRIPE_PLANS = {
   day_pass: {
     priceId: "price_1SRlkiKAifASkGDz37LGqtbk",
     name: "Day Pass",
-    amount: 10_00,
-    currency: "gel",
-    type: "payment" as const,
+    amount: 4_99,
+    currency: "usd",
+    interval: "day",
+    type: "subscription" as const,
   },
-  quarterly: {
+  three_month: {
     priceId: "price_1SRlnFKAifASkGDzxzFQTXDr",
     name: "3-Month Plan",
     amount: 34_99,

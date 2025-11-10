@@ -99,7 +99,7 @@ serve(async (req) => {
       customer_email: customerId ? undefined : user.email,
       client_reference_id: user.id,
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
-      mode: planConfig.type === "payment" ? "payment" : "subscription",
+      mode: "subscription",
       payment_method_types: ["card"],
       success_url: `${appUrl}/account?status=success`,
       cancel_url: `${appUrl}/pricing?status=cancelled`,
