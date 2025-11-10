@@ -131,28 +131,46 @@ const Index = () => {
 
   const SEASON = 2025;
 
-  // Prefetch leagues for all major countries on initial load
-  // Removed aggressive global prefetch to avoid API rate limiting
-  // We now rely on per-country query below and optional hover prefetch
-  // useEffect(() => {
-  //   const prefetchAllCountries = async () => {
-  //     const countriesToPrefetch = MOCK_COUNTRIES.filter(c => c.id !== 0);
-  //     for (const country of countriesToPrefetch) {
-  //       queryClient.prefetchQuery({
-  //         queryKey: ['leagues', country.id, SEASON],
-  //         queryFn: async () => {
-  //           const { data } = await supabase.functions.invoke("fetch-leagues", {
-  //             body: { country: country.name, season: SEASON },
-  //           });
-  //           return data;
-  //         },
-  //         staleTime: 5 * 60 * 1000,
-  //       });
-  //     }
-  //   };
-  //   const timer = setTimeout(() => { prefetchAllCountries(); }, 500);
-  //   return () => clearTimeout(timer);
-  // }, [queryClient]);
+  // Preload ALL leagues once on mount (grouped by country)
+  const { data: allLeaguesData } = useQuery({
+    queryKey: ['leagues-grouped', SEASON],
+    queryFn: async () => {
+      console.log(`[Index] Preloading all leagues for season ${SEASON}...`);
+      const start = performance.now();
+      
+      const { data, error } = await supabase.functions.invoke("list-leagues-grouped", {
+        body: { season: SEASON },
+      });
+
+      if (error) throw error;
+
+      const elapsed = Math.round(performance.now() - start);
+      console.log(`[Index] Preloaded ${data?.countries?.length || 0} countries in ${elapsed}ms`);
+      
+      // Store in localStorage for offline support
+      try {
+        localStorage.setItem(`leagues-grouped-${SEASON}`, JSON.stringify(data));
+      } catch (e) {
+        console.warn("Failed to cache leagues in localStorage:", e);
+      }
+
+      return data;
+    },
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    retry: 2,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    // On initial load, try to restore from localStorage immediately
+    initialData: () => {
+      try {
+        const cached = localStorage.getItem(`leagues-grouped-${SEASON}`);
+        return cached ? JSON.parse(cached) : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+  });
 
   // Reset league, date, and invalidate queries when country changes
   useEffect(() => {
@@ -172,89 +190,46 @@ const Index = () => {
     }
   }, [selectedCountry]);
 
-  // Fetch leagues with exponential backoff + jitter for rate limiting
-  const { data: leaguesData, isError: leaguesError, isLoading: leaguesLoading } = useQuery({
-    queryKey: ['leagues', selectedCountry, SEASON],
-    queryFn: async () => {
-      const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
-      if (!country) return { leagues: [] };
-
-      console.log(`[Index] Fetching leagues for country: ${country.name}, season: ${SEASON}`);
-
-      // Exponential backoff: 250ms → 500 → 1000 → 2000 (max 4 tries)
-      const maxRetries = 4;
-      let attempt = 0;
-      
-      while (attempt < maxRetries) {
-        try {
-          const { data, error } = await supabase.functions.invoke("fetch-leagues", {
-            body: { country: country.name, season: SEASON },
-          });
-
-          if (error) {
-            console.error(`[Index] Error fetching leagues (attempt ${attempt + 1}):`, error);
-            throw error;
-          }
-
-          // If stale cache returned due to rate limit, still use it
-          if (data?.stale) {
-            console.warn(`[Index] Using stale cache for ${country.name}, retry after ${data.retry_after}s`);
-          }
-
-          console.log(`[Index] Fetched ${data?.leagues?.length || 0} leagues for ${country.name}`);
-          return data;
-        } catch (err: any) {
-          attempt++;
-          if (attempt >= maxRetries) throw err;
-          
-          // Exponential backoff with jitter: base * 2^attempt + random(0-100ms)
-          const baseDelay = 250;
-          const backoff = baseDelay * Math.pow(2, attempt);
-          const jitter = Math.random() * 100;
-          const delay = backoff + jitter;
-          
-          console.log(`[Index] Retry ${attempt}/${maxRetries} for ${country.name} after ${Math.round(delay)}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-      
+  // Filter preloaded leagues by selected country (instant, no network)
+  const leaguesData = (() => {
+    if (!selectedCountry || !allLeaguesData?.countries) {
       return { leagues: [] };
-    },
-    enabled: !!selectedCountry,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: false, // Handle retries manually above
-    refetchOnWindowFocus: false,
-  });
-
-  // Prefetch leagues for adjacent countries on hover
-  const prefetchLeagues = useCallback((countryId: number) => {
-    const country = MOCK_COUNTRIES.find((c) => c.id === countryId);
-    if (!country) return;
-
-    queryClient.prefetchQuery({
-      queryKey: ['leagues', countryId, SEASON],
-      queryFn: async () => {
-        const { data } = await supabase.functions.invoke("fetch-leagues", {
-          body: { country: country.name, season: SEASON },
-        });
-        return data;
-      },
-      staleTime: 5 * 60 * 1000,
-    });
-  }, [queryClient]);
-
-  // Show error toast when leagues fail to load
-  useEffect(() => {
-    if (leaguesError && selectedCountry) {
-      const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
-      toast({
-        title: "Unable to load leagues",
-        description: `Could not fetch leagues for ${country?.name}. The API might be rate limited or unavailable. Please try again later.`,
-        variant: "destructive",
-      });
     }
-  }, [leaguesError, selectedCountry]);
+
+    const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
+    if (!country) return { leagues: [] };
+
+    // Find the country group in preloaded data
+    const countryGroup = allLeaguesData.countries.find(
+      (c: any) => c.name === country.name || (country.name === "International" && c.code === "INTL")
+    );
+
+    if (!countryGroup) {
+      console.log(`[Index] No leagues found for ${country.name} in preloaded data`);
+      return { leagues: [] };
+    }
+
+    console.log(`[Index] Filtered ${countryGroup.leagues?.length || 0} leagues for ${country.name} (instant, no network)`);
+    return { leagues: countryGroup.leagues || [] };
+  })();
+
+  const leaguesLoading = false; // Always instant after initial preload
+  const leaguesError = false; // Errors only on initial preload
+
+  // No-op: prefetch is not needed anymore (all leagues preloaded)
+  const prefetchLeagues = useCallback((countryId: number) => {
+    // All leagues are already preloaded, no network call needed
+  }, []);
+
+  // Background refresh for preloaded data (every 15 minutes)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log("[Index] Background refresh: invalidating leagues-grouped");
+      queryClient.invalidateQueries({ queryKey: ['leagues-grouped', SEASON] });
+    }, 15 * 60 * 1000); // 15 minutes
+
+    return () => clearInterval(interval);
+  }, [queryClient]);
 
   // Query fixtures from database for selected league (upcoming fixtures only)
   const { data: fixturesData, isLoading: loadingFixtures } = useQuery({
