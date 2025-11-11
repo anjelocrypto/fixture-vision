@@ -82,10 +82,16 @@ export default function Auth() {
 
       navigate("/");
     } catch (error: any) {
+      // Check if it's an email confirmation error
+      const isEmailNotConfirmed = error.message?.toLowerCase().includes('email not confirmed');
+      
       toast({
-        title: t('common:signin_failed'),
-        description: error.message,
-        variant: "destructive",
+        title: isEmailNotConfirmed ? "📧 Verify Your Email" : t('common:signin_failed'),
+        description: isEmailNotConfirmed 
+          ? "Please check your inbox and click the verification link we sent you to activate your account."
+          : error.message,
+        variant: isEmailNotConfirmed ? "default" : "destructive",
+        className: isEmailNotConfirmed ? "bg-primary/10 border-primary/20" : "",
       });
     } finally {
       setLoading(false);
