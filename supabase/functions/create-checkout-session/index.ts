@@ -99,7 +99,7 @@ serve(async (req) => {
       customer_email: customerId ? undefined : user.email,
       client_reference_id: user.id,
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
-      mode: "subscription", // Day Pass is handled as subscription in this function
+      mode: (plan === 'day_pass' ? 'payment' : 'subscription'),
       payment_method_types: ["card"],
       success_url: `${appUrl}/account?checkout=success`,
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
