@@ -17,6 +17,29 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     const appUrl = Deno.env.get("APP_URL");
 
+    // Debug logging (enable with ?debug=1 or body.debug=true)
+    let debugMode = false;
+    try {
+      const url = new URL(req.url);
+      debugMode = url.searchParams.get('debug') === '1';
+      if (!debugMode && req.headers.get('content-type')?.includes('application/json')) {
+        const bodyClone = await req.clone().json();
+        debugMode = bodyClone?.debug === true;
+      }
+    } catch (_) {
+      // ignore parse errors
+    }
+
+    if (debugMode) {
+      console.log('[checkout-debug] Environment check:', {
+        APP_URL: Deno.env.get('APP_URL'),
+        SUPABASE_URL: Deno.env.get('SUPABASE_URL'),
+        STRIPE_MODE: stripeKey?.startsWith('sk_live_') ? 'live' : 'test',
+        success_url_template: `${appUrl}/account?checkout=success`,
+        cancel_url_template: `${appUrl}/pricing?checkout=cancel`,
+      });
+    }
+
     if (!stripeKey) {
       console.error("[checkout] Missing STRIPE_SECRET_KEY");
       return new Response(
