@@ -99,13 +99,12 @@ serve(async (req) => {
       customer_email: customerId ? undefined : user.email,
       client_reference_id: user.id,
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
-      mode: "subscription",
+      mode: "subscription", // Day Pass is handled as subscription in this function
       payment_method_types: ["card"],
-      success_url: `${appUrl}/account?status=success`,
-      cancel_url: `${appUrl}/pricing?status=cancelled`,
+      success_url: `${appUrl}/account?checkout=success`,
+      cancel_url: `${appUrl}/pricing?checkout=cancel`,
       metadata: { user_id: user.id, plan },
     };
-
     let session;
     try {
       session = await stripe.checkout.sessions.create(sessionParams);
