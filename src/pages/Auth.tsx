@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Mail } from "lucide-react";
 import Footer from "@/components/Footer";
+import { FcGoogle } from "react-icons/fc";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -109,6 +110,25 @@ export default function Auth() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (error) throw error;
+    } catch (error: any) {
+      toast({
+        title: t('common:signin_failed'),
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <>
       <AlertDialog open={showEmailVerificationDialog} onOpenChange={setShowEmailVerificationDialog}>
@@ -183,6 +203,28 @@ export default function Auth() {
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {t('common:sign_in')}
                   </Button>
+                  
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                  >
+                    <FcGoogle className="mr-2 h-5 w-5" />
+                    Sign in with Google
+                  </Button>
                 </form>
               </TabsContent>
 
@@ -240,6 +282,28 @@ export default function Auth() {
                   <Button type="submit" className="w-full" disabled={loading || !acceptedTerms}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {t('common:create_account')}
+                  </Button>
+                  
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                  >
+                    <FcGoogle className="mr-2 h-5 w-5" />
+                    Sign up with Google
                   </Button>
                 </form>
               </TabsContent>
