@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Search, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useState, useMemo } from "react";
 
 interface Country {
   id: number;
@@ -47,6 +48,7 @@ export function LeftRail({
   onCountryHover
 }: LeftRailProps) {
   const { t } = useTranslation(['filters']);
+  const [searchQuery, setSearchQuery] = useState("");
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
   // Helper function to translate country names
@@ -63,6 +65,25 @@ export function LeftRail({
     return translated !== translationKey ? translated : leagueName;
   };
 
+  // Filter countries and leagues based on search query
+  const filteredCountries = useMemo(() => {
+    if (!searchQuery.trim()) return countries;
+    
+    const query = searchQuery.toLowerCase();
+    return countries.filter((country) => 
+      getCountryName(country.name).toLowerCase().includes(query)
+    );
+  }, [countries, searchQuery]);
+
+  const filteredLeagues = useMemo(() => {
+    if (!searchQuery.trim()) return leagues;
+    
+    const query = searchQuery.toLowerCase();
+    return leagues.filter((league) => 
+      getLeagueName(league.name).toLowerCase().includes(query)
+    );
+  }, [leagues, searchQuery]);
+
   return (
     <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col h-full">
       <div className="p-3 sm:p-4 border-b border-border shrink-0">
@@ -72,6 +93,8 @@ export function LeftRail({
           <Input 
             placeholder={t('filters:search_placeholder')}
             className="pl-9 bg-secondary/50 text-sm"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
       </div>
@@ -83,7 +106,12 @@ export function LeftRail({
       {/* Countries Section - Fixed height with scroll */}
       <div className="shrink-0 max-h-[280px] overflow-y-auto">
         <div className="p-2 space-y-1">
-          {countries.map((country) => (
+          {filteredCountries.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+              No countries found
+            </div>
+          ) : (
+            filteredCountries.map((country) => (
             <button
               key={country.id}
               onClick={() => onSelectCountry(country.id)}
@@ -105,7 +133,8 @@ export function LeftRail({
               })()}
               <span className="text-sm font-medium">{getCountryName(country.name)}</span>
             </button>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -134,12 +163,12 @@ export function LeftRail({
                     />
                   ))}
                 </>
-              ) : leagues.length === 0 ? (
+              ) : filteredLeagues.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground text-center">
-                  No leagues available
+                  No leagues found
                 </div>
               ) : (
-                leagues.map((league) => (
+                filteredLeagues.map((league) => (
                   <button
                     key={league.id}
                     onClick={() => onSelectLeague(league)}
