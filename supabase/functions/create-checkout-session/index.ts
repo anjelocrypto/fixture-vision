@@ -94,12 +94,14 @@ serve(async (req) => {
     }
 
     // Create checkout session
+    const mode = (plan === 'day_pass' || plan === 'test_pass') ? 'payment' : 'subscription';
+    
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
       client_reference_id: user.id,
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
-      mode: (plan === 'day_pass' || plan === 'test_pass') ? 'payment' : 'subscription',
+      mode,
       payment_method_types: ["card"],
       success_url: `${appUrl}/account?checkout=success`,
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
