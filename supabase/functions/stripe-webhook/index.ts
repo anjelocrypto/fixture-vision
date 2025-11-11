@@ -42,6 +42,7 @@ const getPlanFromPriceId = (priceId: string): string => {
   return "unknown";
 };
 
+// Webhook handler for Stripe events
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
