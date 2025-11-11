@@ -34,7 +34,7 @@ interface TeamTotalsCandidate {
 }
 
 export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
-  const { t } = useTranslation(["common"]);
+  const { t } = useTranslation(["team_totals"]);
   const { toast } = useToast();
   const [position, setPosition] = useState<"home" | "away">("home");
   const [results, setResults] = useState<TeamTotalsCandidate[]>([]);
@@ -69,20 +69,20 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
 
       if (!data || data.length === 0) {
         toast({
-          title: "No candidates found",
-          description: `No ${position === "home" ? "Home" : "Away"} O1.5 candidates match the criteria. Try the other side or check fixtures closer to the weekend.`,
+          title: t("toast_no_candidates_title"),
+          description: t("toast_no_candidates_description", { position: position === "home" ? t("home") : t("away") }),
         });
       } else {
         toast({
-          title: "Results loaded",
-          description: `Found ${data.length} ${position === "home" ? "Home" : "Away"} O1.5 candidates`,
+          title: t("toast_results_title"),
+          description: t("toast_results_description", { count: data.length, position: position === "home" ? t("home") : t("away") }),
         });
       }
     } catch (error: any) {
       console.error("Error fetching team totals:", error);
       toast({
-        title: "Error",
-        description: "Failed to fetch candidates. Please try again.",
+        title: t("toast_error_title"),
+        description: t("toast_error_description"),
         variant: "destructive",
       });
     } finally {
@@ -105,8 +105,8 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
     
     navigator.clipboard.writeText(text);
     toast({
-      title: "Copied!",
-      description: "Pick copied to clipboard",
+      title: t("toast_copied_title"),
+      description: t("toast_copied_description"),
     });
   };
 
@@ -116,20 +116,20 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <Target className="h-5 w-5" />
-            Team Totals (O1.5)
+            {t("title")}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Model-only predictions (no odds displayed)
+          {t("subtitle")}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Position Selector */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Position</label>
+          <label className="text-sm font-medium">{t("position")}</label>
           <ToggleGroup
             type="single"
             value={position}
@@ -137,14 +137,14 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
             className="justify-start"
           >
             <ToggleGroupItem value="home" className="flex-1">
-              Home O1.5
+              {t("home_o15")}
             </ToggleGroupItem>
             <ToggleGroupItem value="away" className="flex-1">
-              Away O1.5
+              {t("away_o15")}
             </ToggleGroupItem>
           </ToggleGroup>
           <p className="text-xs text-muted-foreground">
-            Click Generate after changing position
+            {t("click_generate_hint")}
           </p>
         </div>
 
@@ -154,10 +154,10 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading...
+                {t("loading")}
               </>
             ) : (
-              "Generate"
+              t("generate")
             )}
           </Button>
           {results.length > 0 && (
@@ -176,7 +176,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
         {results.length > 0 && (
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             <div className="text-sm font-medium text-muted-foreground">
-              {results.length} candidates
+              {t("candidates_count", { count: results.length })}
             </div>
             {results.map((candidate) => {
               const kickoffDate = new Date(candidate.utc_kickoff);
@@ -224,21 +224,21 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
 
                     {/* Pick Badge */}
                     <Badge variant="default" className="w-fit">
-                      {candidate.team_context === "home" ? "Home" : "Away"} O1.5
+                      {candidate.team_context === "home" ? t("home") : t("away")} O1.5
                     </Badge>
 
                     {/* Reason Chips */}
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline" className="text-xs">
-                        Scorer GPG: {candidate.season_scoring_rate.toFixed(2)}
+                        {t("scorer_gpg")}: {candidate.season_scoring_rate.toFixed(2)}
                       </Badge>
                       <Badge variant="outline" className="text-xs">
-                        Opp Concede GPG:{" "}
+                        {t("opp_concede_gpg")}:{" "}
                         {candidate.opponent_season_conceding_rate.toFixed(2)}
                       </Badge>
                       <Badge variant="outline" className="text-xs">
-                        Last 5: {candidate.opponent_recent_conceded_2plus}/
-                        {candidate.recent_sample_size} conceded 2+
+                        {t("last_5")}: {candidate.opponent_recent_conceded_2plus}/
+                        {candidate.recent_sample_size} {t("conceded_2plus")}
                       </Badge>
                     </div>
 
@@ -249,7 +249,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
                         size="sm"
                         onClick={() => copyPickToClipboard(candidate)}
                       >
-                        Copy Pick
+                        {t("copy_pick")}
                       </Button>
                       <AddToTicketButton leg={leg} size="sm" variant="default" />
                     </div>
@@ -263,8 +263,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
         {/* Empty State */}
         {!loading && results.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            Click Generate to find {position === "home" ? "Home" : "Away"} O1.5
-            candidates
+            {t("empty_state", { position: position === "home" ? t("home") : t("away") })}
           </div>
         )}
       </CardContent>
