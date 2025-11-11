@@ -9,8 +9,8 @@ import {
   STRIPE_PRICE_YEARLY 
 } from "../_shared/stripePrices.ts";
 
-// Test pass price (for $0.01 testing)
-const STRIPE_PRICE_TEST_PASS = "price_1SS8HTKAifASkGDzALgkgC6o";
+// Test pass price (for $0.51 testing)
+const STRIPE_PRICE_TEST_PASS = "price_1SS8ONKAifASkGDzSwzZLLW2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -17,9 +17,9 @@ export const STRIPE_PLANS = {
     type: "subscription" as const,
   },
   test_pass: {
-    priceId: "price_1SS8HTKAifASkGDzALgkgC6o",
+    priceId: "price_1SS8ONKAifASkGDzSwzZLLW2",
     name: "Test Pass (24h)",
-    amount: 1,
+    amount: 51,
     currency: "usd",
     interval: "day",
     type: "subscription" as const,

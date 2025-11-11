@@ -12,9 +12,9 @@ const PLANS = [
   {
     id: "test_pass",
     name: "Test Pass",
-    price: "$0.01",
+    price: "$0.51",
     interval: "24-hour full access",
-    description: "Test our platform for just 1 cent",
+    description: "Test our platform for just 51 cents",
     features: [
       "Full access to Ticket Creator",
       "Full access to Filterizer",
