@@ -8,9 +8,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useTranslation } from "react-i18next";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -20,6 +29,7 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showEmailVerificationDialog, setShowEmailVerificationDialog] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,23 +95,48 @@ export default function Auth() {
       // Check if it's an email confirmation error
       const isEmailNotConfirmed = error.message?.toLowerCase().includes('email not confirmed');
       
-      toast({
-        title: isEmailNotConfirmed ? "📧 Verify Your Email" : t('common:signin_failed'),
-        description: isEmailNotConfirmed 
-          ? "Please check your inbox and click the verification link we sent you to activate your account."
-          : error.message,
-        variant: isEmailNotConfirmed ? "default" : "destructive",
-        className: isEmailNotConfirmed ? "bg-primary/10 border-primary/20" : "",
-      });
+      if (isEmailNotConfirmed) {
+        setShowEmailVerificationDialog(true);
+      } else {
+        toast({
+          title: t('common:signin_failed'),
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary/20 p-4">
-        <Card className="w-full max-w-md">
+    <>
+      <AlertDialog open={showEmailVerificationDialog} onOpenChange={setShowEmailVerificationDialog}>
+        <AlertDialogContent className="bg-card border-primary/20">
+          <AlertDialogHeader>
+            <div className="flex items-center justify-center mb-4">
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Mail className="h-8 w-8 text-primary" />
+              </div>
+            </div>
+            <AlertDialogTitle className="text-center text-2xl">
+              📧 Verify Your Email
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-base">
+              Please check your inbox and click the verification link we sent you to activate your account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="w-full">
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="min-h-screen flex flex-col">
+        <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary/20 p-4">
+          <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl text-center">
               <span className="text-primary animate-glow">TICKET AI</span>
@@ -214,5 +249,6 @@ export default function Auth() {
       </div>
       <Footer />
     </div>
+    </>
   );
 }
