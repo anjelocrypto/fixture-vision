@@ -9,6 +9,9 @@ import {
   STRIPE_PRICE_YEARLY 
 } from "../_shared/stripePrices.ts";
 
+// Test pass price (for $0.01 testing)
+const STRIPE_PRICE_TEST_PASS = "price_1SS8HTKAifASkGDzALgkgC6o";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -101,16 +104,17 @@ serve(async (req) => {
         const customerId = session.customer as string;
 
         if (session.mode === "payment") {
-          // Check if this is a day pass by price ID
+          // Check if this is a day pass or test pass by price ID
           const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
           const priceId = lineItems.data[0]?.price?.id;
           
-          if (priceId === STRIPE_PRICE_DAY_PASS) {
+          if (priceId === STRIPE_PRICE_DAY_PASS || priceId === STRIPE_PRICE_TEST_PASS) {
+            const planName = priceId === STRIPE_PRICE_TEST_PASS ? "test_pass" : "day_pass";
             const { error } = await supabase
               .from("user_entitlements")
               .upsert({
                 user_id: userId,
-                plan: "day_pass",
+                plan: planName,
                 status: "active",
                 current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 stripe_customer_id: customerId,
@@ -118,8 +122,8 @@ serve(async (req) => {
                 source: "stripe",
               });
 
-            if (error) console.error("[webhook] Error upserting day pass:", error);
-            else console.log(`[webhook] Day pass activated for user ${userId}`);
+            if (error) console.error(`[webhook] Error upserting ${planName}:`, error);
+            else console.log(`[webhook] ${planName} activated for user ${userId}`);
           }
         } else if (session.mode === "subscription") {
           // Fetch subscription details
