@@ -9,7 +9,7 @@ export const STRIPE_PLANS = {
     type: "subscription" as const,
   },
   day_pass: {
-    priceId: "price_1SRlkiKAifASkGDz37LGqtbk",
+    priceId: "price_1SS7L9KAifASkGDzgZL5PPOj",
     name: "Day Pass",
     amount: 4_99,
     currency: "usd",
