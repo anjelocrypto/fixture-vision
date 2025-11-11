@@ -59,7 +59,7 @@ serve(async (req) => {
     if (!signature) throw new Error("Missing stripe-signature header");
 
     const body = await req.text();
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
 
     console.log(`[webhook] Received event: ${event.type}, ID: ${event.id}`);
 
