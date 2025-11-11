@@ -75,14 +75,26 @@ export function LeftRail({
     );
   }, [countries, searchQuery]);
 
+  // Check if selected country matches search query
+  const selectedCountryMatchesSearch = useMemo(() => {
+    if (!searchQuery.trim() || !selectedCountryData) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return getCountryName(selectedCountryData.name).toLowerCase().includes(query);
+  }, [searchQuery, selectedCountryData]);
+
   const filteredLeagues = useMemo(() => {
     if (!searchQuery.trim()) return leagues;
     
+    // If the selected country matches the search, show all its leagues
+    if (selectedCountryMatchesSearch) return leagues;
+    
+    // Otherwise, filter leagues by name
     const query = searchQuery.toLowerCase();
     return leagues.filter((league) => 
       getLeagueName(league.name).toLowerCase().includes(query)
     );
-  }, [leagues, searchQuery]);
+  }, [leagues, searchQuery, selectedCountryMatchesSearch]);
 
   return (
     <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col h-full">
