@@ -4,13 +4,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { STRIPE_PLANS } from "../_shared/stripe_plans.ts";
 import { 
   STRIPE_PRICE_DAY_PASS,
+  STRIPE_PRICE_TEST_PASS,
   STRIPE_PRICE_MONTHLY,
   STRIPE_PRICE_QUARTERLY,
   STRIPE_PRICE_YEARLY 
 } from "../_shared/stripePrices.ts";
-
-// Test pass price (for $0.51 testing)
-const STRIPE_PRICE_TEST_PASS = "price_1SS8ONKAifASkGDzSwzZLLW2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
