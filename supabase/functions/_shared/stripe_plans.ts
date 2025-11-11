@@ -25,7 +25,7 @@ export const STRIPE_PLANS = {
     type: "subscription" as const,
   },
   three_month: {
-    priceId: "price_1SRlnFKAifASkGDzxzFQTXDr",
+    priceId: "price_1SSIuZKAifASkGDzWZxgNYZX",
     name: "3-Month Plan",
     amount: 34_99,
     currency: "usd",
