@@ -93,21 +93,40 @@ serve(async (req) => {
           console.error("[webhook] ❌ CRITICAL: No user_id in checkout session", { 
             sessionId: session.id,
             customer: session.customer,
-            mode: session.mode 
+            mode: session.mode,
+            metadata: session.metadata
           });
           break;
         }
-        console.log(`[webhook] Processing checkout for user ${userId}`);
+        console.log(`[webhook] Processing checkout for user ${userId}, mode: ${session.mode}`);
 
         const customerId = session.customer as string;
 
         if (session.mode === "payment") {
-          // Check if this is a day pass or test pass by price ID
-          const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
-          const priceId = lineItems.data[0]?.price?.id;
+          // For one-time payments (day_pass, test_pass), prioritize metadata.plan
+          let planName = undefined as "day_pass" | "test_pass" | undefined;
+          const metaPlan = session.metadata?.plan as string | undefined;
           
-          if (priceId === STRIPE_PRICE_DAY_PASS || priceId === STRIPE_PRICE_TEST_PASS) {
-            const planName = priceId === STRIPE_PRICE_TEST_PASS ? "test_pass" : "day_pass";
+          if (metaPlan === "day_pass" || metaPlan === "test_pass") {
+            planName = metaPlan;
+            console.log(`[webhook] Found plan in metadata: ${planName}`);
+          } else {
+            // Fallback: check line items price ID
+            const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+            const priceId = lineItems.data[0]?.price?.id;
+            console.log(`[webhook] Checking line item price: ${priceId}`);
+            
+            if (priceId === STRIPE_PRICE_TEST_PASS) planName = "test_pass";
+            else if (priceId === STRIPE_PRICE_DAY_PASS) planName = "day_pass";
+          }
+
+          if (!planName) {
+            console.error("[webhook] ❌ Payment session missing valid plan; skipping entitlement", {
+              sessionId: session.id,
+              metadataPlan: metaPlan,
+            });
+          } else {
+            console.log(`[webhook] Upserting ${planName} entitlement for user ${userId}`);
             const { error } = await supabase
               .from("user_entitlements")
               .upsert({
@@ -120,8 +139,8 @@ serve(async (req) => {
                 source: "stripe",
               });
 
-            if (error) console.error(`[webhook] Error upserting ${planName}:`, error);
-            else console.log(`[webhook] ${planName} activated for user ${userId}`);
+            if (error) console.error(`[webhook] ❌ Error upserting ${planName}:`, error);
+            else console.log(`[webhook] ✅ ${planName} activated for user ${userId}`);
           }
         } else if (session.mode === "subscription") {
           // Fetch subscription details
