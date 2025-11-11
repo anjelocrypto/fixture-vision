@@ -100,6 +100,7 @@ serve(async (req) => {
     }
 
     console.log(`[checkout] Creating session for ${planConfig.name}, user ${user.id}`);
+    console.log(`[checkout] Success URL will be: ${appUrl}/payment-success`);
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
