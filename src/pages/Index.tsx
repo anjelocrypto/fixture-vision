@@ -1074,7 +1074,7 @@ const Index = () => {
                   }}
                 >
                   <Target className="h-4 w-4" />
-                  Team Totals O1.5
+                  {t('common:team_totals')}
                 </Button>
               </div>
 
@@ -1160,7 +1160,7 @@ const Index = () => {
                     }}
                   >
                     <Target className="h-4 w-4" />
-                    Team Totals O1.5
+                    {t('common:team_totals')}
                   </Button>
                 </div>
 
