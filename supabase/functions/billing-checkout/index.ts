@@ -107,6 +107,7 @@ serve(async (req) => {
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
+        client_reference_id: user.id, // ✅ Pass user ID for webhook
         line_items: [
           {
             price: priceId,
@@ -132,6 +133,7 @@ serve(async (req) => {
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
+        client_reference_id: user.id, // ✅ Pass user ID for webhook
         line_items: [
           {
             price: STRIPE_PRICE_DAY_PASS,

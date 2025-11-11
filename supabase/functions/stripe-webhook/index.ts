@@ -89,9 +89,14 @@ serve(async (req) => {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.client_reference_id || session.metadata?.user_id;
         if (!userId) {
-          console.error("[webhook] No user_id in checkout session");
+          console.error("[webhook] ❌ CRITICAL: No user_id in checkout session", { 
+            sessionId: session.id,
+            customer: session.customer,
+            mode: session.mode 
+          });
           break;
         }
+        console.log(`[webhook] Processing checkout for user ${userId}`);
 
         const customerId = session.customer as string;
 
