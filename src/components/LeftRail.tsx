@@ -60,9 +60,11 @@ export function LeftRail({
 
   // Helper function to translate league names
   const getLeagueName = (leagueName: string) => {
-    const translationKey = `filters:league_names.${leagueName}`;
+    // Strip "league_names." prefix if present
+    const cleanName = leagueName.replace(/^league_names\./, '');
+    const translationKey = `filters:league_names.${cleanName}`;
     const translated = t(translationKey);
-    return translated !== translationKey ? translated : leagueName;
+    return translated !== translationKey ? translated : cleanName;
   };
 
   // Filter countries and leagues based on search query

@@ -78,7 +78,7 @@ export function CenterRail({
       {league && (
         <div className="flex items-center gap-3 mb-4">
           <img src={league.logo} alt={league.name} className="w-6 h-6 sm:w-8 sm:h-8" />
-          <h2 className="text-lg sm:text-xl font-semibold">{league.name}</h2>
+          <h2 className="text-lg sm:text-xl font-semibold">{league.name.replace(/^league_names\./, '')}</h2>
         </div>
       )}
 
@@ -104,7 +104,7 @@ export function CenterRail({
           <div>
             <p className="text-lg font-medium mb-2">No matches on {formatDateWithLocale(selectedDate, "MMM d", i18n.language)}</p>
             <p className="text-muted-foreground text-sm">
-              {league?.name} has no matches scheduled for this date
+              {league?.name.replace(/^league_names\./, '')} has no matches scheduled for this date
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
