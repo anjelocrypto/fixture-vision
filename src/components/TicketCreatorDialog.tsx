@@ -118,16 +118,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
             {t('ticket:title')}
-            <InfoTooltip
-              label="Ticket Creator"
-              description="Build complete betting tickets (parlays) to hit your target odds range."
-              bullets={[
-                "Set your target odds range (e.g. 18-20x)",
-                "Choose which markets to include",
-                "We build optimized multi-leg tickets",
-                "Review and place your ticket"
-              ]}
-            />
+            <InfoTooltip tooltipKey="ticket_creator" />
           </DialogTitle>
           <DialogDescription>
             {t('ticket:description')}

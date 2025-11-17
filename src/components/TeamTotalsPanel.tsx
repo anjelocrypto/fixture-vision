@@ -118,16 +118,7 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
           <CardTitle className="text-lg flex items-center gap-2">
             <Target className="h-5 w-5" />
             {t("title")}
-            <InfoTooltip
-              label="Team Totals"
-              description="Find teams likely to score 2+ goals based on scoring and conceding patterns."
-              bullets={[
-                "Choose home or away team context",
-                "We analyze season scoring rates and opponent weakness",
-                "Review picks with supporting stats",
-                "Add promising selections to your ticket"
-              ]}
-            />
+            <InfoTooltip tooltipKey="team_totals" />
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕
