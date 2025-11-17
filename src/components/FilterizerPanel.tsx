@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { X, Filter } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
+import { InfoTooltip } from "@/components/shared/InfoTooltip";
 
 interface FilterizerPanelProps {
   onApplyFilters: (filters: FilterCriteria) => void;
@@ -88,6 +89,16 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         <div className="flex items-center gap-2">
           <Filter className="h-5 w-5 text-primary" />
           <h3 className="text-lg font-semibold">{t('filterizer:title')}</h3>
+          <InfoTooltip
+            label="Filterizer"
+            description="Filter markets by specific lines and odds to find single bets."
+            bullets={[
+              "Select a market (Goals, Corners, Cards)",
+              "Choose your line threshold (e.g. Over 2.5)",
+              "Set minimum odds to match your strategy",
+              "View all qualifying picks instantly"
+            ]}
+          />
           {isActive && (
             <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">
               {t('filterizer:active')}
