@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AddToTicketButton } from "@/components/AddToTicketButton";
 import { TicketLeg } from "@/stores/useTicket";
+import { InfoTooltip } from "@/components/shared/InfoTooltip";
 
 interface WinnerPanelProps {
   onClose: () => void;
@@ -126,6 +127,16 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
           <CardTitle className="text-lg flex items-center gap-2">
             <Trophy className="h-5 w-5" />
             {t('winner:title')}
+            <InfoTooltip
+              label="Winner (1X2)"
+              description="Find best value home and away win picks based on our models."
+              bullets={[
+                "Select home or away win outcome",
+                "Filter by minimum odds and probability",
+                "Sort by edge, odds, or probability",
+                "Add strong value picks to your ticket"
+              ]}
+            />
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕

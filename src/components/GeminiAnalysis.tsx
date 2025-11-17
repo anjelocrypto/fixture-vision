@@ -2,6 +2,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { InfoTooltip } from "@/components/shared/InfoTooltip";
 
 interface MatchAnalysis {
   match_title: string;
@@ -30,6 +31,16 @@ export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps)
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="h-5 w-5 text-primary" />
         <h3 className="text-lg font-semibold">{t('gemini_analysis')}</h3>
+        <InfoTooltip
+          label="AI Analysis"
+          description="Get AI-powered betting insights and recommendations for selected fixtures."
+          bullets={[
+            "View overall analysis summary",
+            "See match-by-match recommendations",
+            "Check confidence levels for each bet",
+            "Make informed decisions with AI assistance"
+          ]}
+        />
       </div>
 
       {/* Overall Summary */}

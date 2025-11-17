@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AddToTicketButton } from "@/components/AddToTicketButton";
 import { TicketLeg } from "@/stores/useTicket";
+import { InfoTooltip } from "@/components/shared/InfoTooltip";
 
 interface TeamTotalsPanelProps {
   onClose: () => void;
@@ -117,6 +118,16 @@ export function TeamTotalsPanel({ onClose }: TeamTotalsPanelProps) {
           <CardTitle className="text-lg flex items-center gap-2">
             <Target className="h-5 w-5" />
             {t("title")}
+            <InfoTooltip
+              label="Team Totals"
+              description="Find teams likely to score 2+ goals based on scoring and conceding patterns."
+              bullets={[
+                "Choose home or away team context",
+                "We analyze season scoring rates and opponent weakness",
+                "Review picks with supporting stats",
+                "Add promising selections to your ticket"
+              ]}
+            />
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕
