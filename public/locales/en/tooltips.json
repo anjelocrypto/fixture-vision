@@ -1,0 +1,42 @@
+{
+  "filterizer": {
+    "label": "Filterizer",
+    "description": "Filter markets by specific lines and odds to find single bets.",
+    "bullet1": "Select a market (Goals, Corners, Cards)",
+    "bullet2": "Choose your line threshold (e.g. Over 2.5)",
+    "bullet3": "Set minimum odds to match your strategy",
+    "bullet4": "View all qualifying picks instantly"
+  },
+  "team_totals": {
+    "label": "Team Totals",
+    "description": "Find teams likely to score 2+ goals based on scoring and conceding patterns.",
+    "bullet1": "Choose home or away team context",
+    "bullet2": "We analyze season scoring rates and opponent weakness",
+    "bullet3": "Review picks with supporting stats",
+    "bullet4": "Add promising selections to your ticket"
+  },
+  "winner": {
+    "label": "Winner (1X2)",
+    "description": "Find best value home and away win picks based on our models.",
+    "bullet1": "Select home or away win outcome",
+    "bullet2": "Filter by minimum odds and probability",
+    "bullet3": "Sort by edge, odds, or probability",
+    "bullet4": "Add strong value picks to your ticket"
+  },
+  "ticket_creator": {
+    "label": "Ticket Creator",
+    "description": "Build complete betting tickets (parlays) to hit your target odds range.",
+    "bullet1": "Set your target odds range (e.g. 18-20x)",
+    "bullet2": "Choose which markets to include",
+    "bullet3": "We build optimized multi-leg tickets",
+    "bullet4": "Review and place your ticket"
+  },
+  "ai_analysis": {
+    "label": "AI Analysis",
+    "description": "Get AI-powered betting insights and recommendations for selected fixtures.",
+    "bullet1": "View overall analysis summary",
+    "bullet2": "See match-by-match recommendations",
+    "bullet3": "Check confidence levels for each bet",
+    "bullet4": "Make informed decisions with AI assistance"
+  }
+}
