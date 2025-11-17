@@ -28,16 +28,16 @@ export function InfoTooltip({ label, description, bullets, className = "" }: Inf
         </TooltipTrigger>
         <TooltipContent 
           side="right" 
-          className="max-w-[280px] bg-primary text-primary-foreground p-4 shadow-lg"
+          className="max-w-[280px] bg-card text-foreground border-2 border-primary/20 p-4 shadow-xl z-[100]"
           sideOffset={8}
         >
-          {label && <p className="font-semibold mb-2">{label}</p>}
-          {description && <p className="text-sm mb-2 opacity-90">{description}</p>}
+          {label && <p className="font-semibold mb-2 text-primary">{label}</p>}
+          {description && <p className="text-sm mb-2">{description}</p>}
           {bullets && bullets.length > 0 && (
-            <ul className="text-sm space-y-1 opacity-90">
+            <ul className="text-sm space-y-1">
               {bullets.map((bullet, index) => (
                 <li key={index} className="flex gap-2">
-                  <span className="text-primary-foreground/60">•</span>
+                  <span className="text-primary shrink-0">•</span>
                   <span>{bullet}</span>
                 </li>
               ))}
