@@ -633,7 +633,7 @@ const Index = () => {
         minLegs: params.minLegs,
         maxLegs: params.maxLegs,
         useLiveOdds: params.useLiveOdds,
-        countryCode: selectedCountry ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
+        countryCode: selectedCountry ? actualCountries.find(c => c.id === selectedCountry)?.code : undefined,
         leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
       });
 
