@@ -791,11 +791,12 @@ const Index = () => {
           minOdds: filters.minOdds,
           showAllOdds: filters.showAllOdds,
           includeModelOnly: filters.includeModelOnly ?? true, // Default to true
+          allLeagues: filters.allLeagues ?? false, // All-leagues mode
           limit: 50,
           offset: 0,
-          // Respect country/league selection from left rail
-          countryCode: selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
-          leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
+          // Only send league/country filters if NOT in all-leagues mode
+          countryCode: filters.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined),
+          leagueIds: filters.allLeagues ? undefined : (selectedLeague ? [selectedLeague.id] : undefined),
         },
       });
 
@@ -806,11 +807,12 @@ const Index = () => {
       setFilterizerHasMore(data.pagination?.has_more || false);
 
       const displayMode = filters.showAllOdds ? "All qualifying odds" : "Best per match";
+      const scopeInfo = filters.allLeagues ? " (all leagues, next 120h)" : "";
       const totalInfo = filters.showAllOdds && data.total_qualified ? ` (${data.total_qualified} total)` : "";
       
       toast({
         title: "Filters Applied",
-        description: `${displayMode}: Found ${data.count} selections${totalInfo} (${filters.market} Over ${filters.line})`,
+        description: `${displayMode}${scopeInfo}: Found ${data.count} selections${totalInfo} (${filters.market} Over ${filters.line})`,
       });
     } catch (error: any) {
       console.error("Error applying filters:", error);
@@ -842,11 +844,12 @@ const Index = () => {
           minOdds: filterCriteria.minOdds,
           showAllOdds: filterCriteria.showAllOdds,
           includeModelOnly: filterCriteria.includeModelOnly ?? true,
+          allLeagues: filterCriteria.allLeagues ?? false,
           limit: 50,
           offset: newOffset,
-          // Respect country/league selection from left rail (pagination)
-          countryCode: selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined,
-          leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
+          // Only send league/country filters if NOT in all-leagues mode
+          countryCode: filterCriteria.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined),
+          leagueIds: filterCriteria.allLeagues ? undefined : (selectedLeague ? [selectedLeague.id] : undefined),
         },
       });
 
