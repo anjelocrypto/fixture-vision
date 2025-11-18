@@ -42,6 +42,119 @@ const getPlanFromPriceId = (priceId: string): string => {
   return "unknown";
 };
 
+// Helper to resolve userId from various sources
+const resolveUserId = async (
+  stripe: Stripe,
+  supabase: any,
+  session?: Stripe.Checkout.Session,
+  subscription?: Stripe.Subscription,
+  invoice?: Stripe.Invoice,
+  customerId?: string
+): Promise<string | null> => {
+  // Try session first
+  if (session?.client_reference_id) {
+    console.log(`[webhook] Found userId in session.client_reference_id: ${session.client_reference_id}`);
+    return session.client_reference_id;
+  }
+  if (session?.metadata?.user_id) {
+    console.log(`[webhook] Found userId in session.metadata: ${session.metadata.user_id}`);
+    return session.metadata.user_id;
+  }
+
+  // Try subscription metadata
+  if (subscription?.metadata?.user_id) {
+    console.log(`[webhook] Found userId in subscription.metadata: ${subscription.metadata.user_id}`);
+    return subscription.metadata.user_id;
+  }
+
+  // Try invoice metadata
+  if (invoice?.metadata?.user_id) {
+    console.log(`[webhook] Found userId in invoice.metadata: ${invoice.metadata.user_id}`);
+    return invoice.metadata.user_id;
+  }
+
+  // Try customer metadata
+  if (customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      const userId = (customer as any).metadata?.user_id;
+      if (userId) {
+        console.log(`[webhook] Found userId in customer.metadata: ${userId}`);
+        return userId;
+      }
+    } catch (err) {
+      console.error(`[webhook] Error retrieving customer ${customerId}:`, err);
+    }
+
+    // Fallback: lookup in user_entitlements by stripe_customer_id
+    console.log(`[webhook] No userId in metadata, checking user_entitlements for customerId: ${customerId}`);
+    const { data: entitlement, error } = await supabase
+      .from("user_entitlements")
+      .select("user_id")
+      .eq("stripe_customer_id", customerId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[webhook] Error looking up userId by customerId:`, error);
+    } else if (entitlement?.user_id) {
+      console.log(`[webhook] Found userId in user_entitlements: ${entitlement.user_id}`);
+      return entitlement.user_id;
+    }
+  }
+
+  return null;
+};
+
+// Helper to upsert entitlement for subscription
+const upsertSubscriptionEntitlement = async (
+  supabase: any,
+  userId: string,
+  subscription: Stripe.Subscription,
+  customerId: string
+) => {
+  const priceId = subscription.items.data[0]?.price?.id;
+  
+  // Map price to plan
+  let plan = "monthly";
+  if (priceId === STRIPE_PRICE_QUARTERLY) plan = "quarterly";
+  else if (priceId === STRIPE_PRICE_YEARLY) plan = "yearly";
+  else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
+  
+  const status = mapSubscriptionStatus(subscription.status);
+  const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  console.log(`[webhook][subscription] Upserting entitlement:`, {
+    userId,
+    plan,
+    status,
+    subscriptionId: subscription.id,
+    customerId,
+    priceId,
+    currentPeriodEnd,
+  });
+
+  const { error } = await supabase
+    .from("user_entitlements")
+    .upsert({
+      user_id: userId,
+      plan,
+      status,
+      current_period_end: currentPeriodEnd,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscription.id,
+      source: "stripe",
+    });
+
+  if (error) {
+    console.error("[webhook][subscription] ❌ Error upserting entitlement:", error);
+    throw error;
+  } else {
+    console.log(`[webhook][subscription] ✅ Entitlement upserted successfully`);
+  }
+};
+
 // Webhook handler for Stripe events
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -89,19 +202,31 @@ serve(async (req) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.client_reference_id || session.metadata?.user_id;
+        const customerId = session.customer as string;
+        
+        const userId = await resolveUserId(stripe, supabase, session, undefined, undefined, customerId);
+        
         if (!userId) {
-          console.error("[webhook] ❌ CRITICAL: No user_id in checkout session", { 
+          console.error("[webhook] ❌ CRITICAL: No user_id resolvable for checkout", { 
             sessionId: session.id,
-            customer: session.customer,
+            customer: customerId,
             mode: session.mode,
             metadata: session.metadata
           });
-          break;
+          return new Response(
+            JSON.stringify({ error: "Missing userId" }), 
+            { headers: corsHeaders, status: 400 }
+          );
         }
-        console.log(`[webhook] Processing checkout for user ${userId}, mode: ${session.mode}`);
-
-        const customerId = session.customer as string;
+        
+        console.log(`[webhook][checkout.session.completed]`, {
+          eventType: event.type,
+          eventId: event.id,
+          mode: session.mode,
+          customerId,
+          userId,
+          metadata: session.metadata,
+        });
 
         if (session.mode === "payment") {
           // For one-time payments (day_pass, test_pass), prioritize metadata.plan
@@ -112,7 +237,6 @@ serve(async (req) => {
             planName = metaPlan;
             console.log(`[webhook] Found plan in metadata: ${planName}`);
           } else {
-            // Fallback: check line items price ID
             const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
             const priceId = lineItems.data[0]?.price?.id;
             console.log(`[webhook] Checking line item price: ${priceId}`);
@@ -146,28 +270,22 @@ serve(async (req) => {
         } else if (session.mode === "subscription") {
           // Fetch subscription details
           const subscriptionId = session.subscription as string;
+          if (!subscriptionId) {
+            console.error("[webhook] ❌ No subscription ID in checkout session");
+            break;
+          }
+          
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
           const priceId = subscription.items.data[0]?.price?.id;
           
-          // Map price to plan
-          let plan = "monthly";
-          if (priceId === STRIPE_PRICE_QUARTERLY) plan = "quarterly";
-          else if (priceId === STRIPE_PRICE_YEARLY) plan = "yearly";
+          console.log(`[webhook][subscription] Processing subscription from checkout:`, {
+            subscriptionId,
+            priceId,
+            userId,
+            customerId,
+          });
           
-          const { error } = await supabase
-            .from("user_entitlements")
-            .upsert({
-              user_id: userId,
-              plan,
-              status: "active",
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              source: "stripe",
-            });
-
-          if (error) console.error("[webhook] Error upserting subscription:", error);
-          else console.log(`[webhook] Subscription ${plan} activated for user ${userId}`);
+          await upsertSubscriptionEntitlement(supabase, userId, subscription, customerId);
         }
         break;
       }
@@ -176,45 +294,34 @@ serve(async (req) => {
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
-
-        // Find user by customer ID
-        const customer = await stripe.customers.retrieve(customerId);
-        const userId = (customer as any).metadata?.user_id;
-        if (!userId) {
-          console.error("[webhook] No user_id in customer metadata");
-          break;
-        }
-
-        // Determine plan from price ID
         const priceId = subscription.items.data[0]?.price?.id;
-        let plan = "monthly";
-        if (priceId === STRIPE_PRICE_QUARTERLY) plan = "quarterly";
-        else if (priceId === STRIPE_PRICE_YEARLY) plan = "yearly";
-        
-        // Handle status - set past_due for unpaid/past_due subscriptions
-        let status = mapSubscriptionStatus(subscription.status);
-        if (subscription.status === "past_due" || subscription.status === "unpaid") {
-          status = "past_due";
-        }
-        
-        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
-        console.log(`[webhook] Upserting subscription: user=${userId}, plan=${plan}, status=${status}`);
+        console.log(`[webhook][${event.type}]`, {
+          eventType: event.type,
+          eventId: event.id,
+          subscriptionId: subscription.id,
+          customerId,
+          priceId,
+          status: subscription.status,
+        });
 
-        const { error } = await supabase
-          .from("user_entitlements")
-          .upsert({
-            user_id: userId,
-            plan,
-            status,
-            current_period_end: currentPeriodEnd,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscription.id,
-            source: "stripe",
+        const userId = await resolveUserId(stripe, supabase, undefined, subscription, undefined, customerId);
+        
+        if (!userId) {
+          console.error(`[webhook] ❌ CRITICAL: No user_id resolvable for ${event.type}`, {
+            eventType: event.type,
+            eventId: event.id,
+            customerId,
+            subscriptionId: subscription.id,
+            priceId,
           });
+          return new Response(
+            JSON.stringify({ error: "Missing userId" }), 
+            { headers: corsHeaders, status: 400 }
+          );
+        }
 
-        if (error) console.error("[webhook] Error upserting subscription:", error);
-        else console.log(`[webhook] Subscription ${subscription.id} upserted for user ${userId}`);
+        await upsertSubscriptionEntitlement(supabase, userId, subscription, customerId);
         break;
       }
 
@@ -222,14 +329,14 @@ serve(async (req) => {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        const customer = await stripe.customers.retrieve(customerId);
-        const userId = (customer as any).metadata?.user_id;
+        const userId = await resolveUserId(stripe, supabase, undefined, subscription, undefined, customerId);
         if (!userId) {
-          console.error("[webhook] No user_id in customer metadata");
+          console.error("[webhook] ❌ No user_id for subscription deletion");
           break;
         }
 
-        // Set to free plan on cancellation
+        console.log(`[webhook][subscription.deleted] Setting user ${userId} to free plan`);
+
         const { error } = await supabase
           .from("user_entitlements")
           .update({ 
@@ -242,7 +349,7 @@ serve(async (req) => {
           .eq("stripe_subscription_id", subscription.id);
 
         if (error) console.error("[webhook] Error canceling subscription:", error);
-        else console.log(`[webhook] Subscription ${subscription.id} canceled, user ${userId} set to free`);
+        else console.log(`[webhook] ✅ Subscription ${subscription.id} canceled, user ${userId} set to free`);
         break;
       }
 
@@ -253,11 +360,16 @@ serve(async (req) => {
 
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const customerId = subscription.customer as string;
-        const customer = await stripe.customers.retrieve(customerId);
-        const userId = (customer as any).metadata?.user_id;
-        if (!userId) break;
+        
+        const userId = await resolveUserId(stripe, supabase, undefined, subscription, invoice, customerId);
+        if (!userId) {
+          console.error("[webhook] ❌ No user_id for invoice.payment_succeeded");
+          break;
+        }
 
         const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+        console.log(`[webhook][invoice.payment_succeeded] Updating user ${userId} to active`);
 
         const { error } = await supabase
           .from("user_entitlements")
@@ -269,7 +381,7 @@ serve(async (req) => {
           .eq("stripe_subscription_id", subscriptionId);
 
         if (error) console.error("[webhook] Error updating on invoice paid:", error);
-        else console.log(`[webhook] Invoice paid, updated user ${userId}`);
+        else console.log(`[webhook] ✅ Invoice paid, updated user ${userId}`);
         break;
       }
 
@@ -280,9 +392,14 @@ serve(async (req) => {
 
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const customerId = subscription.customer as string;
-        const customer = await stripe.customers.retrieve(customerId);
-        const userId = (customer as any).metadata?.user_id;
-        if (!userId) break;
+        
+        const userId = await resolveUserId(stripe, supabase, undefined, subscription, invoice, customerId);
+        if (!userId) {
+          console.error("[webhook] ❌ No user_id for invoice.payment_failed");
+          break;
+        }
+
+        console.log(`[webhook][invoice.payment_failed] Marking user ${userId} as past_due`);
 
         const { error } = await supabase
           .from("user_entitlements")
@@ -291,7 +408,7 @@ serve(async (req) => {
           .eq("stripe_subscription_id", subscriptionId);
 
         if (error) console.error("[webhook] Error updating on payment failed:", error);
-        else console.log(`[webhook] Payment failed for user ${userId}`);
+        else console.log(`[webhook] ✅ Payment failed for user ${userId}`);
         break;
       }
 
