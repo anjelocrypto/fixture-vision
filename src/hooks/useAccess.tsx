@@ -12,7 +12,20 @@ export const useAccess = () => {
     try {
       setLoading(true);
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      // Handle invalid refresh token - clear session and reload
+      if (sessionError?.message?.includes('Invalid Refresh Token') || 
+          sessionError?.message?.includes('Refresh Token Not Found')) {
+        console.log('[useAccess] Clearing invalid session');
+        await supabase.auth.signOut();
+        setHasAccess(false);
+        setEntitlement(null);
+        setIsWhitelisted(false);
+        setTrialCredits(null);
+        return;
+      }
+      
       if (!session?.user) {
         setHasAccess(false);
         setEntitlement(null);
