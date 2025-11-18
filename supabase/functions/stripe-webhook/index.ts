@@ -123,7 +123,24 @@ const upsertSubscriptionEntitlement = async (
   else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
   
   const status = mapSubscriptionStatus(subscription.status);
-  const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  const endTimestamp = subscription.current_period_end; // seconds since epoch or null
+
+  const fallbackEndSeconds =
+    Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60; // +30 days from now
+
+  if (!endTimestamp) {
+    console.warn("[webhook] Subscription missing current_period_end, using fallback", {
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      priceId,
+      plan,
+    });
+  }
+
+  const currentPeriodEnd = new Date(
+    (endTimestamp ?? fallbackEndSeconds) * 1000
+  ).toISOString();
 
   console.log(`[webhook][subscription] Upserting entitlement:`, {
     userId,
@@ -367,7 +384,20 @@ serve(async (req) => {
           break;
         }
 
-        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+        const endTimestamp = subscription.current_period_end;
+        const fallbackEndSeconds =
+          Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+
+        if (!endTimestamp) {
+          console.warn("[webhook][invoice.payment_succeeded] Missing current_period_end, using fallback", {
+            subscriptionId: subscription.id,
+            status: subscription.status,
+          });
+        }
+
+        const currentPeriodEnd = new Date(
+          (endTimestamp ?? fallbackEndSeconds) * 1000
+        ).toISOString();
 
         console.log(`[webhook][invoice.payment_succeeded] Updating user ${userId} to active`);
 
