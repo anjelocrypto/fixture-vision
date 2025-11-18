@@ -22,6 +22,7 @@ const RequestSchema = z.object({
   live: z.boolean().optional(),
   showAllOdds: z.boolean().optional(), // NEW: show all bookmaker odds instead of best per fixture
   includeModelOnly: z.boolean().optional(), // NEW: include model-only selections (no odds)
+  allLeagues: z.boolean().optional(), // NEW: all leagues mode (next 120h)
   limit: z.number().int().positive().max(200).optional(), // pagination
   offset: z.number().int().min(0).optional(), // pagination
 });
@@ -84,9 +85,13 @@ serve(async (req) => {
       live = false,
       showAllOdds = false,
       includeModelOnly = true, // Default to true
+      allLeagues = false,
       limit = 50,
       offset = 0
     } = validation.data;
+
+    // Cap limit at 100 for all-leagues mode to prevent huge responses
+    const effectiveLimit = allLeagues ? Math.min(limit, 100) : limit;
 
     // Get the qualification range for this market/line combination
     const rules = RULES[market as StatMarket];
@@ -107,15 +112,30 @@ serve(async (req) => {
       );
     }
     
-    console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} rules=${RULES_VERSION}`);
-
-    // Calculate 7-day window from date (query from selected date, not from "now")
-    const startDate = new Date(date);
-    startDate.setUTCHours(0, 0, 0, 0);
+    console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} allLeagues=${allLeagues} rules=${RULES_VERSION}`);
     
-    const endDate = new Date(startDate);
-    endDate.setUTCDate(endDate.getUTCDate() + 7);
-    endDate.setUTCHours(23, 59, 59, 999);
+    if (allLeagues) {
+      console.log(`[filterizer-query] allLeagues mode enabled - querying all leagues for next 120 hours`);
+    }
+
+    // Calculate time window based on mode
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (allLeagues) {
+      // All-leagues mode: next 120 hours from now
+      startDate = new Date();
+      endDate = new Date();
+      endDate.setTime(endDate.getTime() + (120 * 60 * 60 * 1000)); // now + 120 hours
+    } else {
+      // Normal mode: 7-day window from selected date
+      startDate = new Date(date);
+      startDate.setUTCHours(0, 0, 0, 0);
+      
+      endDate = new Date(startDate);
+      endDate.setUTCDate(endDate.getUTCDate() + 7);
+      endDate.setUTCHours(23, 59, 59, 999);
+    }
     
     const queryStart = startDate;
 
@@ -127,8 +147,9 @@ serve(async (req) => {
     const effectiveMaxOdds = ODDS_MAX;
 
     // Resolve league scoping: prefer explicit leagueIds; otherwise, resolve by country -> leagues
-    let scopeLeagueIds: number[] | undefined = leagueIds;
-    if ((!scopeLeagueIds || scopeLeagueIds.length === 0) && countryCode) {
+    // Skip this entirely in all-leagues mode
+    let scopeLeagueIds: number[] | undefined = allLeagues ? undefined : leagueIds;
+    if (!allLeagues && (!scopeLeagueIds || scopeLeagueIds.length === 0) && countryCode) {
       // Lookup country id by ISO2 code
       const { data: countryRow, error: countryErr } = await supabaseClient
         .from("countries")
@@ -158,9 +179,11 @@ serve(async (req) => {
     }
     
     // Stage counters (computed via lightweight count queries)
-    const scopeType = (scopeLeagueIds && scopeLeagueIds.length > 0)
-      ? "leagues"
-      : (countryCode ? "country" : "global");
+    const scopeType = allLeagues 
+      ? "all_leagues"
+      : (scopeLeagueIds && scopeLeagueIds.length > 0)
+        ? "leagues"
+        : (countryCode ? "country" : "global");
 
     // Global in-window count (no scoping)
     const baseGlobal = supabaseClient
@@ -172,7 +195,7 @@ serve(async (req) => {
       .lte("utc_kickoff", endDate.toISOString());
     const { count: inWindow } = await baseGlobal;
 
-    // Scoped in-window count (applies when scopeType != 'global')
+    // Scoped in-window count (applies when scopeType != 'global' and !allLeagues)
     let baseScoped = supabaseClient
       .from("optimized_selections")
       .select("id", { count: "exact", head: true })
@@ -180,12 +203,14 @@ serve(async (req) => {
       .eq("is_live", live)
       .gte("utc_kickoff", queryStart.toISOString())
       .lte("utc_kickoff", endDate.toISOString());
-    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-      // @ts-ignore
-      baseScoped = (baseScoped as any).in("league_id", scopeLeagueIds);
-    } else if (countryCode) {
-      // @ts-ignore
-      baseScoped = (baseScoped as any).eq("country_code", countryCode);
+    if (!allLeagues) {
+      if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+        // @ts-ignore
+        baseScoped = (baseScoped as any).in("league_id", scopeLeagueIds);
+      } else if (countryCode) {
+        // @ts-ignore
+        baseScoped = (baseScoped as any).eq("country_code", countryCode);
+      }
     }
     const { count: scopeCount } = await baseScoped;
 
@@ -201,12 +226,14 @@ serve(async (req) => {
       .eq("side", side)
       .gte("line", line - 0.01)
       .lte("line", line + 0.01);
-    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-      // @ts-ignore
-      marketScope = (marketScope as any).in("league_id", scopeLeagueIds);
-    } else if (countryCode) {
-      // @ts-ignore
-      marketScope = (marketScope as any).eq("country_code", countryCode);
+    if (!allLeagues) {
+      if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+        // @ts-ignore
+        marketScope = (marketScope as any).in("league_id", scopeLeagueIds);
+      } else if (countryCode) {
+        // @ts-ignore
+        marketScope = (marketScope as any).eq("country_code", countryCode);
+      }
     }
     const { count: marketMatched } = await marketScope;
 
@@ -224,12 +251,14 @@ serve(async (req) => {
       .lte("line", line + 0.01)
       .gte("odds", effectiveMinOdds)
       .lte("odds", effectiveMaxOdds);
-    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-      // @ts-ignore
-      oddsScope = (oddsScope as any).in("league_id", scopeLeagueIds);
-    } else if (countryCode) {
-      // @ts-ignore
-      oddsScope = (oddsScope as any).eq("country_code", countryCode);
+    if (!allLeagues) {
+      if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+        // @ts-ignore
+        oddsScope = (oddsScope as any).in("league_id", scopeLeagueIds);
+      } else if (countryCode) {
+        // @ts-ignore
+        oddsScope = (oddsScope as any).eq("country_code", countryCode);
+      }
     }
     const { count: minOddsKept } = await oddsScope;
 
@@ -257,22 +286,33 @@ serve(async (req) => {
       query = query.gte("odds", effectiveMinOdds).lte("odds", effectiveMaxOdds);
     }
 
-    // Scope by league (preferred) or country_code fallback
-    if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-      query = query.in("league_id", scopeLeagueIds);
-    } else if (countryCode) {
-      query = query.eq("country_code", countryCode);
+    // Scope by league (preferred) or country_code fallback - skip in all-leagues mode
+    if (!allLeagues) {
+      if (scopeLeagueIds && scopeLeagueIds.length > 0) {
+        query = query.in("league_id", scopeLeagueIds);
+      } else if (countryCode) {
+        query = query.eq("country_code", countryCode);
+      }
     }
 
     // Sort strategy:
+    // - allLeagues mode: sort by utc_kickoff ASC (earliest matches first)
     // - showAllOdds=true: sort by odds ASC (lowest first)
     // - showAllOdds=false: sort by odds DESC (highest first) for best-per-fixture mode
-    const oddsOrder = showAllOdds ? true : false; // ASC for all odds, DESC for best per fixture
-    query = query
-      .order("odds", { ascending: oddsOrder })
-      .order("utc_kickoff", { ascending: true })
-      .order("fixture_id", { ascending: true })
-      .order("bookmaker", { ascending: true });
+    if (allLeagues) {
+      query = query
+        .order("utc_kickoff", { ascending: true })
+        .order("odds", { ascending: false }) // Best odds first within each time slot
+        .order("fixture_id", { ascending: true })
+        .order("bookmaker", { ascending: true });
+    } else {
+      const oddsOrder = showAllOdds ? true : false; // ASC for all odds, DESC for best per fixture
+      query = query
+        .order("odds", { ascending: oddsOrder })
+        .order("utc_kickoff", { ascending: true })
+        .order("fixture_id", { ascending: true })
+        .order("bookmaker", { ascending: true });
+    }
 
     const { data: selections, error: selectionsError } = await query;
 
@@ -373,9 +413,9 @@ serve(async (req) => {
     // Dedupe or keep all based on showAllOdds
     let deduped: any[];
     if (showAllOdds) {
-      // Keep all odds, apply pagination
-      deduped = sorted.slice(offset, offset + limit);
-      console.log(`[filterizer-query] Stage 3: showAllOdds=true, paginated=${deduped.length} (total=${qualifiedCount}, offset=${offset}, limit=${limit})`);
+      // Keep all odds, apply pagination (using effectiveLimit)
+      deduped = sorted.slice(offset, offset + effectiveLimit);
+      console.log(`[filterizer-query] Stage 3: showAllOdds=true, paginated=${deduped.length} (total=${qualifiedCount}, offset=${offset}, limit=${effectiveLimit})`);
     } else {
       // Dedupe: keep best per fixture (priced > model-only, highest odds for priced)
       const bestByFixture = new Map<number, any>();
@@ -386,8 +426,8 @@ serve(async (req) => {
         }
       }
       const uniqueFixtures = Array.from(bestByFixture.values());
-      // Apply pagination after dedup
-      deduped = uniqueFixtures.slice(offset, offset + limit);
+      // Apply pagination after dedup (using effectiveLimit)
+      deduped = uniqueFixtures.slice(offset, offset + effectiveLimit);
       console.log(`[filterizer-query] Stage 3: dedup=${uniqueFixtures.length} unique fixtures (removed ${qualifiedCount - uniqueFixtures.length} duplicate bookmakers), paginated=${deduped.length}`);
     }
 
@@ -463,7 +503,7 @@ serve(async (req) => {
         scope_count: scopeCount || 0,
         window: { start: queryStart.toISOString(), end: endDate.toISOString() },
         filters: { market, side, line, minOdds, showAllOdds, rulesVersion: RULES_VERSION },
-        pagination: { limit, offset, has_more: showAllOdds && (offset + limit < qualifiedCount) },
+        pagination: { limit: effectiveLimit, offset, has_more: showAllOdds && (offset + effectiveLimit < qualifiedCount) },
         debug: {
           counters: {
             in_window: inWindow || 0,
