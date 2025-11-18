@@ -22,6 +22,7 @@ export interface FilterCriteria {
   minOdds: number;
   showAllOdds: boolean; // NEW: show all bookmaker odds
   includeModelOnly?: boolean; // NEW: include picks without odds (model-only)
+  allLeagues?: boolean; // NEW: all leagues mode (next 120h)
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -52,6 +53,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [selectedLine, setSelectedLine] = useState<number>(2.5);
   const [minOdds, setMinOdds] = useState<number>(1.50);
   const [includeModelOnly, setIncludeModelOnly] = useState<boolean>(true); // Default ON
+  const [allLeaguesMode, setAllLeaguesMode] = useState<boolean>(false); // Default OFF
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -71,6 +73,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       minOdds,
       showAllOdds: false, // Always use best per match mode
       includeModelOnly,
+      allLeagues: allLeaguesMode,
     };
     onApplyFilters(filters);
   };
@@ -80,6 +83,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setSelectedLine(2.5);
     setMinOdds(1.50);
     setIncludeModelOnly(true);
+    setAllLeaguesMode(false);
     onClearFilters();
   };
 
@@ -102,6 +106,36 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       </div>
 
       <div className="space-y-6">
+        {/* Scope Toggle */}
+        <div className="space-y-3 pb-4 border-b">
+          <Label className="text-sm font-medium">{t('filterizer:scope_label')}</Label>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={!allLeaguesMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAllLeaguesMode(false)}
+              className="flex-1"
+            >
+              {t('filterizer:scope_selected_league')}
+            </Button>
+            <Button
+              type="button"
+              variant={allLeaguesMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAllLeaguesMode(true)}
+              className="flex-1"
+            >
+              {t('filterizer:scope_all_leagues')}
+            </Button>
+          </div>
+          {allLeaguesMode && (
+            <p className="text-xs text-muted-foreground">
+              {t('filterizer:all_leagues_caption')}
+            </p>
+          )}
+        </div>
+
         {/* Market Selection */}
         <div className="space-y-3">
           <Label className="text-sm font-medium">{t('filterizer:select_market')}</Label>

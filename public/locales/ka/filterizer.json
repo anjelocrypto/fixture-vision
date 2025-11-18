@@ -10,5 +10,9 @@
   "market_corners": "კუთხეები",
   "market_cards": "ბარათები",
   "market_fouls": "დარღვევები",
-  "market_offsides": "ოფსაიდები"
+  "market_offsides": "ოფსაიდები",
+  "scope_label": "მასშტაბი",
+  "scope_selected_league": "მხოლოდ არჩეული ლიგა",
+  "scope_all_leagues": "ყველა ლიგა (შემდეგი 120 საათი)",
+  "all_leagues_caption": "ნაჩვენებია საუკეთესო შესაძლებლობები ყველა ლიგიდან მომდევნო 120 საათში"
 }

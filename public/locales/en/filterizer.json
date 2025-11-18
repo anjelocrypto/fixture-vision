@@ -10,5 +10,9 @@
   "market_corners": "Corners",
   "market_cards": "Cards",
   "market_fouls": "Fouls",
-  "market_offsides": "Offsides"
+  "market_offsides": "Offsides",
+  "scope_label": "Scope",
+  "scope_selected_league": "Selected league only",
+  "scope_all_leagues": "All leagues (next 120h)",
+  "all_leagues_caption": "Showing best opportunities from all leagues in the next 120 hours"
 }
