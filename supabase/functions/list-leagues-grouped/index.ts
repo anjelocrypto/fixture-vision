@@ -100,6 +100,7 @@ serve(async (req) => {
     });
 
     grouped["International"] = {
+      id: 9999, // Special ID for International
       code: "INTL",
       name: "International",
       flag: null,
@@ -119,6 +120,7 @@ serve(async (req) => {
 
         if (!grouped[countryKey]) {
           grouped[countryKey] = {
+            id: country.id, // Include country ID
             code: country.code,
             name: country.name,
             flag: country.flag,

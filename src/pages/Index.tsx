@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { LeftRail } from "@/components/LeftRail";
 import { CenterRail } from "@/components/CenterRail";
@@ -133,7 +133,7 @@ const Index = () => {
 
   // Preload ALL leagues once on mount (grouped by country)
   const { data: allLeaguesData } = useQuery({
-    queryKey: ['leagues-grouped', SEASON],
+    queryKey: ['leagues-grouped', SEASON, 'v2'], // Version bump to bust cache
     queryFn: async () => {
       console.log(`[Index] Preloading all leagues for season ${SEASON}...`);
       const start = performance.now();
@@ -147,9 +147,11 @@ const Index = () => {
       const elapsed = Math.round(performance.now() - start);
       console.log(`[Index] Preloaded ${data?.countries?.length || 0} countries in ${elapsed}ms`);
       
-      // Store in localStorage for offline support
+      // Store in localStorage for offline support with version
       try {
-        localStorage.setItem(`leagues-grouped-${SEASON}`, JSON.stringify(data));
+        localStorage.setItem(`leagues-grouped-${SEASON}-v2`, JSON.stringify(data));
+        // Clear old cache
+        localStorage.removeItem(`leagues-grouped-${SEASON}`);
       } catch (e) {
         console.warn("Failed to cache leagues in localStorage:", e);
       }
@@ -164,7 +166,7 @@ const Index = () => {
     // On initial load, try to restore from localStorage immediately
     initialData: () => {
       try {
-        const cached = localStorage.getItem(`leagues-grouped-${SEASON}`);
+        const cached = localStorage.getItem(`leagues-grouped-${SEASON}-v2`);
         return cached ? JSON.parse(cached) : undefined;
       } catch {
         return undefined;
@@ -190,26 +192,36 @@ const Index = () => {
     }
   }, [selectedCountry]);
 
+  // Extract actual countries from preloaded grouped data
+  const actualCountries = useMemo(() => {
+    if (!allLeaguesData?.countries) return []; // Empty array while loading
+    
+    // Build country list from real backend data
+    return allLeaguesData.countries.map((c: any) => ({
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      flag: c.flag,
+    }));
+  }, [allLeaguesData]);
+
   // Filter preloaded leagues by selected country (instant, no network)
   const leaguesData = (() => {
     if (!selectedCountry || !allLeaguesData?.countries) {
       return { leagues: [] };
     }
 
-    const country = MOCK_COUNTRIES.find((c) => c.id === selectedCountry);
-    if (!country) return { leagues: [] };
-
-    // Find the country group in preloaded data
+    // Find the country group directly by ID
     const countryGroup = allLeaguesData.countries.find(
-      (c: any) => c.name === country.name || (country.name === "International" && c.code === "INTL")
+      (c: any) => c.id === selectedCountry
     );
 
     if (!countryGroup) {
-      console.log(`[Index] No leagues found for ${country.name} in preloaded data`);
+      console.log(`[Index] No leagues found for country ID ${selectedCountry} in preloaded data`);
       return { leagues: [] };
     }
 
-    console.log(`[Index] Filtered ${countryGroup.leagues?.length || 0} leagues for ${country.name} (instant, no network)`);
+    console.log(`[Index] Filtered ${countryGroup.leagues?.length || 0} leagues for ${countryGroup.name} (instant, no network)`);
     return { leagues: countryGroup.leagues || [] };
   })();
 
@@ -795,7 +807,7 @@ const Index = () => {
           limit: 50,
           offset: 0,
           // Only send league/country filters if NOT in all-leagues mode
-          countryCode: filters.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined),
+          countryCode: filters.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? actualCountries.find(c => c.id === selectedCountry)?.code : undefined),
           leagueIds: filters.allLeagues ? undefined : (selectedLeague ? [selectedLeague.id] : undefined),
         },
       });
@@ -848,7 +860,7 @@ const Index = () => {
           limit: 50,
           offset: newOffset,
           // Only send league/country filters if NOT in all-leagues mode
-          countryCode: filterCriteria.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? MOCK_COUNTRIES.find(c => c.id === selectedCountry)?.code : undefined),
+          countryCode: filterCriteria.allLeagues ? undefined : (selectedCountry && selectedCountry !== 0 ? actualCountries.find(c => c.id === selectedCountry)?.code : undefined),
           leagueIds: filterCriteria.allLeagues ? undefined : (selectedLeague ? [selectedLeague.id] : undefined),
         },
       });
@@ -889,7 +901,7 @@ const Index = () => {
         {/* Desktop Left Rail */}
         <div className="hidden lg:block">
           <LeftRail
-            countries={MOCK_COUNTRIES}
+            countries={actualCountries}
             selectedCountry={selectedCountry}
             onSelectCountry={(id) => {
               setSelectedCountry(id);
@@ -911,7 +923,7 @@ const Index = () => {
         <Sheet open={leftSheetOpen} onOpenChange={setLeftSheetOpen}>
           <SheetContent side="left" className="w-[280px] p-0 lg:hidden">
             <LeftRail
-              countries={MOCK_COUNTRIES}
+              countries={actualCountries}
               selectedCountry={selectedCountry}
               onSelectCountry={(id) => {
                 setSelectedCountry(id);
