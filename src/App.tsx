@@ -13,6 +13,8 @@ import Account from "./pages/Account";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import { Navigate } from "react-router-dom";
 
 const queryClient = new QueryClient({
@@ -32,6 +34,8 @@ const App = () => {
           <BrowserRouter>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/auth/payment-success" element={<PaymentSuccess />} />
