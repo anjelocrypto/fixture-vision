@@ -100,7 +100,7 @@ serve(async (req) => {
     }
 
     console.log(`[checkout] Creating session for ${planConfig.name}, user ${user.id}`);
-    console.log(`[checkout] Success URL will be: ${appUrl}/payment-success`);
+    console.log(`[checkout] Success URL will be: ${appUrl}/account?checkout=success`);
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
@@ -120,6 +120,9 @@ serve(async (req) => {
     // Create checkout session
     const mode = (plan === 'day_pass' || plan === 'test_pass') ? 'payment' : 'subscription';
     
+    // Fix: Redirect directly to /account to avoid race condition with session restoration
+    // Previously redirected to /payment-success which then redirected to /account,
+    // causing the ProtectedRoute to not find the session in time and logging user out
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
@@ -127,7 +130,7 @@ serve(async (req) => {
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
       mode,
       payment_method_types: ["card"],
-      success_url: `${appUrl}/payment-success`,
+      success_url: `${appUrl}/account?checkout=success`,
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
       metadata: { user_id: user.id, plan },
     };
