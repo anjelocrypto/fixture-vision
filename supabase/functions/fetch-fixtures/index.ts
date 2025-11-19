@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
-import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES } from "../_shared/leagues.ts";
+import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES, getCountryIdForLeague } from "../_shared/leagues.ts";
 import { RPM_LIMIT } from "../_shared/config.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
@@ -223,17 +223,21 @@ serve(async (req) => {
     
     console.log(`[fetch-fixtures] Scanned ${fixturesScannedTotal}, kept ${fixturesInWindowKept} in window, dropped ${fixturesOutsideWindowDropped} outside`);
     
-    // Step 1: Collect unique leagues and upsert them first
+    // Step 1: Collect unique leagues and upsert them first WITH CORRECT COUNTRY_ID
     const uniqueLeagues = new Map<number, any>();
     for (const item of allFixtures) {
       if (item.league && !uniqueLeagues.has(item.league.id)) {
         const season = getSeasonForLeague(item.league.id);
+        
+        // ⚠️ CRITICAL: Use deterministic country mapping to prevent country_id being overwritten to NULL
+        const countryId = await getCountryIdForLeague(item.league.id, supabaseClient);
+        
         uniqueLeagues.set(item.league.id, {
           id: item.league.id,
           name: item.league.name,
           logo: item.league.logo,
           season,
-          country_id: item.league.country_id || null,
+          country_id: countryId,
         });
       }
     }

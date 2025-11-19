@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ALLOWED_LEAGUE_IDS } from '../_shared/leagues.ts';
+import { ALLOWED_LEAGUE_IDS, getCountryIdForLeague } from '../_shared/leagues.ts';
 import { apiHeaders, API_BASE } from '../_shared/api.ts';
 
 const corsHeaders = {
@@ -121,15 +121,18 @@ serve(async (req) => {
 
           console.log(`[cron-fetch-fixtures] League ${leagueId} on ${dateStr}: ${relevantFixtures.length} fixtures`);
 
-          // Upsert league
+          // Upsert league WITH CORRECT COUNTRY_ID using deterministic mapping
           const leagueData = apiResponse.response[0]?.league;
           if (leagueData) {
+            // ⚠️ CRITICAL: Use deterministic country mapping to prevent country_id being overwritten to NULL
+            const countryId = await getCountryIdForLeague(leagueData.id, supabase);
+            
             await supabase.from('leagues').upsert({
               id: leagueData.id,
               name: leagueData.name,
               logo: leagueData.logo,
               season: leagueData.season,
-              country_id: leagueData.country_id || null,
+              country_id: countryId,
             }, { onConflict: 'id' });
           }
 
