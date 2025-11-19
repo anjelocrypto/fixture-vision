@@ -199,6 +199,170 @@ export const ALLOWED_LEAGUE_IDS = [
   244,  // Veikkausliiga
 ];
 
+/**
+ * ⚠️ CRITICAL: Deterministic league→country mapping
+ * 
+ * This is the SINGLE SOURCE OF TRUTH for league-to-country assignments.
+ * Used by ALL ingestion functions to prevent country_id from being overwritten to NULL.
+ * 
+ * INTERNATIONAL leagues (with null country_id) are identified by INTERNATIONAL_LEAGUE_IDS below.
+ * All other leagues MUST be mapped here to prevent data corruption.
+ */
+export const LEAGUE_TO_COUNTRY_CODE: Record<number, string> = {
+  // England
+  39: 'GB-ENG', 40: 'GB-ENG', 41: 'GB-ENG', 42: 'GB-ENG',
+  43: 'GB-ENG', 50: 'GB-ENG', 51: 'GB-ENG', 667: 'GB-ENG',
+  
+  // Spain
+  140: 'ES', 141: 'ES', 435: 'ES', 436: 'ES', 663: 'ES',
+  
+  // Italy
+  135: 'IT', 136: 'IT', 269: 'IT',
+  
+  // Germany
+  78: 'DE', 79: 'DE', 80: 'DE',
+  
+  // France
+  61: 'FR', 62: 'FR', 556: 'FR',
+  
+  // Netherlands
+  88: 'NL', 89: 'NL',
+  
+  // Portugal
+  94: 'PT', 95: 'PT',
+  
+  // Turkey
+  203: 'TR', 204: 'TR',
+  
+  // Belgium
+  144: 'BE', 145: 'BE',
+  
+  // Scotland
+  179: 'GB-SCT', 180: 'GB-SCT',
+  
+  // Austria
+  218: 'AT', 219: 'AT',
+  
+  // Switzerland
+  207: 'CH', 208: 'CH',
+  
+  // Greece
+  197: 'GR', 198: 'GR',
+  
+  // Denmark
+  119: 'DK',
+  
+  // Norway
+  103: 'NO',
+  
+  // Sweden
+  113: 'SE', 114: 'SE',
+  
+  // Poland
+  106: 'PL', 107: 'PL',
+  
+  // Czech Republic
+  345: 'CZ',
+  
+  // Romania
+  283: 'RO',
+  
+  // Croatia
+  210: 'HR',
+  
+  // Serbia
+  286: 'RS',
+  
+  // Bulgaria
+  172: 'BG',
+  
+  // Hungary
+  271: 'HU',
+  
+  // Ukraine
+  333: 'UA',
+  
+  // Russia
+  235: 'RU',
+  
+  // USA
+  253: 'US', 254: 'US',
+  
+  // Mexico
+  262: 'MX', 263: 'MX',
+  
+  // Brazil
+  71: 'BR', 72: 'BR',
+  
+  // Argentina
+  128: 'AR', 129: 'AR',
+  
+  // Colombia
+  239: 'CO',
+  
+  // Chile
+  265: 'CL',
+  
+  // Uruguay
+  274: 'UY',
+  
+  // Paraguay
+  250: 'PY',
+  
+  // Ecuador
+  242: 'EC',
+  
+  // Japan
+  98: 'JP', 99: 'JP',
+  
+  // South Korea
+  292: 'KR',
+  
+  // Australia
+  188: 'AU',
+  
+  // China
+  17: 'CN',
+  
+  // Saudi Arabia
+  307: 'SA',
+  
+  // UAE
+  301: 'AE',
+  
+  // Qatar
+  305: 'QA',
+  
+  // South Africa
+  288: 'ZA',
+  
+  // Egypt
+  233: 'EG',
+  
+  // Morocco
+  200: 'MA',
+  
+  // Algeria
+  185: 'DZ',
+  
+  // Tunisia
+  202: 'TN',
+  
+  // Israel
+  383: 'IL',
+  
+  // Iceland
+  165: 'IS',
+  
+  // Finland
+  244: 'FI',
+};
+
+/**
+ * International competitions that should have country_id = NULL
+ */
+export const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964];
+
 export const LEAGUE_NAMES: Record<number, string> = {
   // International
   5: "UEFA Nations League",
@@ -397,5 +561,44 @@ export const LEAGUE_NAMES: Record<number, string> = {
 
 // Markets that are commonly available across leagues
 // Lower divisions may have fewer markets - we'll auto-detect and skip unavailable ones
+/**
+ * Helper function to get country_id for a league from Supabase
+ * Uses the deterministic LEAGUE_TO_COUNTRY_CODE mapping
+ * 
+ * @param leagueId - The API league ID
+ * @param supabaseClient - Supabase client instance
+ * @returns country_id (number) or null for international leagues
+ */
+export async function getCountryIdForLeague(
+  leagueId: number, 
+  supabaseClient: any
+): Promise<number | null> {
+  // International leagues always return null
+  if (INTERNATIONAL_LEAGUE_IDS.includes(leagueId)) {
+    return null;
+  }
+  
+  // Get country code from mapping
+  const countryCode = LEAGUE_TO_COUNTRY_CODE[leagueId];
+  if (!countryCode) {
+    console.warn(`[getCountryIdForLeague] No country mapping for league ${leagueId}`);
+    return null;
+  }
+  
+  // Look up country_id from database
+  const { data: country, error } = await supabaseClient
+    .from('countries')
+    .select('id')
+    .eq('code', countryCode)
+    .single();
+  
+  if (error || !country) {
+    console.error(`[getCountryIdForLeague] Failed to find country with code ${countryCode}:`, error);
+    return null;
+  }
+  
+  return country.id;
+}
+
 export const COMMON_MARKETS = ["goals", "corners", "cards"] as const;
 export const OPTIONAL_MARKETS = ["fouls", "offsides"] as const;
