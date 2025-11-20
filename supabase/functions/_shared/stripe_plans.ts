@@ -3,7 +3,7 @@ export const STRIPE_PLANS = {
   premium_monthly: {
     priceId: "price_1SRlmOKAifASkGDzgavNBNlQ",
     name: "Premium Monthly",
-    amount: 20_00,
+    amount: 14_99,
     currency: "usd",
     interval: "month",
     type: "subscription" as const,
