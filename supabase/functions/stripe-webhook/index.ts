@@ -6,7 +6,7 @@ import {
   STRIPE_PRICE_DAY_PASS,
   STRIPE_PRICE_TEST_PASS,
   STRIPE_PRICE_MONTHLY,
-  STRIPE_PRICE_QUARTERLY,
+  STRIPE_PRICE_THREE_MONTH,
   STRIPE_PRICE_YEARLY 
 } from "../_shared/stripePrices.ts";
 
@@ -118,8 +118,8 @@ const upsertSubscriptionEntitlement = async (
   
   // Map price to plan
   let plan = "monthly";
-  if (priceId === STRIPE_PRICE_QUARTERLY) plan = "quarterly";
-  else if (priceId === STRIPE_PRICE_YEARLY) plan = "yearly";
+  if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
+  else if (priceId === STRIPE_PRICE_YEARLY) plan = "annual";
   else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
   
   const status = mapSubscriptionStatus(subscription.status);
@@ -268,21 +268,32 @@ serve(async (req) => {
               metadataPlan: metaPlan,
             });
           } else {
-            console.log(`[webhook] Upserting ${planName} entitlement for user ${userId}`);
+            const currentPeriodEnd = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            console.log(`[webhook] 🎟️ Creating ${planName} entitlement for user ${userId}`, {
+              userId,
+              plan: planName,
+              status: "active",
+              current_period_end: currentPeriodEnd,
+              stripe_customer_id: customerId,
+            });
+            
             const { error } = await supabase
               .from("user_entitlements")
               .upsert({
                 user_id: userId,
                 plan: planName,
                 status: "active",
-                current_period_end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                current_period_end: currentPeriodEnd,
                 stripe_customer_id: customerId,
                 stripe_subscription_id: null,
                 source: "stripe",
               });
 
-            if (error) console.error(`[webhook] ❌ Error upserting ${planName}:`, error);
-            else console.log(`[webhook] ✅ ${planName} activated for user ${userId}`);
+            if (error) {
+              console.error(`[webhook] ❌ Error upserting ${planName}:`, error);
+            } else {
+              console.log(`[webhook] ✅ ${planName} activated for user ${userId}, expires at ${currentPeriodEnd}`);
+            }
           }
         } else if (session.mode === "subscription") {
           // Fetch subscription details
