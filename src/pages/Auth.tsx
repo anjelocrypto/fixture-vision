@@ -139,7 +139,7 @@ export default function Auth() {
           <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl text-center">
-              <span className="text-primary animate-glow">TICKET AI</span>
+              <span className="text-primary animate-glow">TICKET 1.0 BETA</span>
             </CardTitle>
             <CardDescription className="text-center">
               {t('common:generate_optimized_betting_tickets')}

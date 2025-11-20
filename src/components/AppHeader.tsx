@@ -69,7 +69,7 @@ export function AppHeader() {
         {/* Logo */}
         <div className="flex items-center gap-2">
           <div className="text-lg sm:text-2xl font-bold text-primary animate-glow">
-            TICKET AI
+            TICKET 1.0 BETA
           </div>
         </div>
 
