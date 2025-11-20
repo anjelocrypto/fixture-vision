@@ -75,6 +75,9 @@ const Pricing = () => {
   const [searchParams] = useSearchParams();
 
   const handleSelectPlan = async (planId: string) => {
+    // Prevent double-clicks on mobile
+    if (loading) return;
+    
     setLoading(planId);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -102,13 +105,17 @@ const Pricing = () => {
         throw new Error(detail);
       }
 
-      // Open in new tab
+      // Open in new tab - do this before showing toast to prevent blocking
       window.open(data.url, "_blank");
       
-      toast({
-        title: "Opening checkout...",
-        description: "Complete your purchase in the new tab",
-      });
+      // Short delay before showing toast to ensure window.open completes
+      setTimeout(() => {
+        toast({
+          title: "Opening checkout...",
+          description: "Complete your purchase in the new tab",
+          duration: 3000,
+        });
+      }, 100);
     } catch (error: any) {
       console.error("Checkout error:", error);
       toast({
