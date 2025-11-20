@@ -10,20 +10,6 @@ import Footer from "@/components/Footer";
 
 const PLANS = [
   {
-    id: "test_pass",
-    name: "Test Pass",
-    price: "$0.51",
-    interval: "24-hour full access",
-    description: "Test our platform for just 51 cents",
-    features: [
-      "Full access to Ticket Creator",
-      "Full access to Filterizer",
-      "Full access to Analyze",
-      "Full access to Winner",
-      "Full access to Team Totals",
-    ],
-  },
-  {
     id: "day_pass",
     name: "Day Pass",
     price: "$4.99",
