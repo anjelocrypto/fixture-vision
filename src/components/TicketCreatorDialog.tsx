@@ -205,25 +205,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             </div>
           </div>
 
-          {/* Live Odds Toggle */}
-          <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-            <div className="flex items-center gap-2">
-              <Radio className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <Label htmlFor="liveOdds" className="text-sm font-medium cursor-pointer">
-                  {t('ticket:use_live_odds')}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('ticket:use_live_odds_description')}
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="liveOdds"
-              checked={useLiveOdds}
-              onCheckedChange={setUseLiveOdds}
-            />
-          </div>
+          {/* Live Odds Toggle - Hidden (non-functional) */}
 
           {/* Legs Range */}
           <div>
