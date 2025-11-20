@@ -13,11 +13,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Add small delay to ensure localStorage session restoration completes
+    const initAuth = async () => {
+      // Give localStorage time to restore session
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Check current session
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setLoading(false);
-    });
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const {

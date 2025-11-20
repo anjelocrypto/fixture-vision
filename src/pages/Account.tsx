@@ -86,11 +86,15 @@ const Account = () => {
   const { hasAccess, loading: accessLoading, entitlement, refreshAccess } = useAccess();
   const [searchParams] = useSearchParams();
   const [user, setUser] = useState<any>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
+      // Wait for session to be fully restored
+      await new Promise(resolve => setTimeout(resolve, 100));
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user);
+      setSessionReady(true);
     };
     getUser();
   }, []);
@@ -98,15 +102,18 @@ const Account = () => {
   // Show success message if redirected from checkout
   useEffect(() => {
     const checkoutStatus = searchParams.get("checkout");
-    if (checkoutStatus === "success") {
+    if (checkoutStatus === "success" && sessionReady) {
       toast({
-        title: "Welcome!",
-        description: "Your subscription is now active",
+        title: "Payment Successful!",
+        description: "Your premium access is now active. Welcome!",
+        duration: 5000,
       });
       // Refresh access status
       refreshAccess();
+      // Clear the checkout param from URL after showing message
+      window.history.replaceState({}, '', '/account');
     }
-  }, [searchParams]);
+  }, [searchParams, sessionReady, toast, refreshAccess]);
 
   const handleManageBilling = async () => {
     setLoading(true);
@@ -212,7 +219,7 @@ const Account = () => {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  if (accessLoading) {
+  if (accessLoading || !sessionReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
