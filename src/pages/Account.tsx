@@ -34,7 +34,7 @@ const PLANS = [
   {
     id: "premium_monthly",
     name: "Premium Monthly",
-    price: "$20.00",
+    price: "$14.99",
     interval: "per month",
     description: "Best for regular users",
     features: [
