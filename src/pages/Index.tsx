@@ -23,6 +23,7 @@ import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
@@ -103,6 +104,7 @@ const Index = () => {
   const { t, i18n } = useTranslation(['fixtures', 'filterizer', 'optimizer']);
   const queryClient = useQueryClient();
   const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
+  const isMobile = useIsMobile();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -304,6 +306,11 @@ const Index = () => {
     setLoadingAnalysis(true);
     setAnalysis(null);
     setValueAnalysis(null);
+
+    // Open right sheet on mobile immediately to show loading state
+    if (isMobile) {
+      setRightSheetOpen(true);
+    }
 
     try {
       const homeTeamId = fixture.teams_home?.id;
