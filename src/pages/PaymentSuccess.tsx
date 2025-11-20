@@ -1,29 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles, Home } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
-  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
-    // Countdown timer
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          navigate("/account");
-          return 0;
+    // Ensure session is restored and refresh entitlements immediately
+    const refreshAccess = async () => {
+      try {
+        // Wait a moment for Stripe redirect to settle
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Get current session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          console.log("[PaymentSuccess] Session confirmed, user logged in");
+          
+          // Force a quick entitlement refresh by calling a simple query
+          // This ensures the backend has processed the webhook
+          await supabase
+            .from("user_entitlements")
+            .select("plan, status")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+          
+          console.log("[PaymentSuccess] Entitlements refreshed");
         }
-        return prev - 1;
-      });
-    }, 1000);
+      } catch (error) {
+        console.error("[PaymentSuccess] Error refreshing access:", error);
+      }
+    };
 
-    return () => clearInterval(timer);
-  }, [navigate]);
+    refreshAccess();
+  }, []);
+
+  const handleBackToHome = () => {
+    // Navigate to main homepage
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-primary/5 to-background flex items-center justify-center p-4">
@@ -55,10 +75,10 @@ const PaymentSuccess = () => {
             </h1>
             
             <p className="text-muted-foreground mb-8 text-lg">
-              Your plan is now active. Welcome to premium!
+              Your premium access is now active. Welcome to TicketAI!
             </p>
 
-            <div className="flex items-center justify-center gap-2 mb-6 text-primary">
+            <div className="flex items-center justify-center gap-2 mb-8 text-primary">
               <Sparkles className="h-5 w-5" />
               <span className="font-semibold">
                 Full access to all features unlocked
@@ -66,18 +86,19 @@ const PaymentSuccess = () => {
               <Sparkles className="h-5 w-5" />
             </div>
 
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Redirecting to your account in {countdown} seconds...
-              </p>
-              
+            <div className="space-y-3">
               <Button
-                onClick={() => navigate("/account")}
+                onClick={handleBackToHome}
                 size="lg"
-                className="w-full"
+                className="w-full gap-2"
               >
-                Go to Account Now
+                <Home className="h-5 w-5" />
+                Back to Home
               </Button>
+              
+              <p className="text-xs text-muted-foreground">
+                Start using TicketAI with your premium features
+              </p>
             </div>
           </CardContent>
         </Card>
