@@ -18,7 +18,6 @@ export type Last5Result = {
 
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
   console.log(`[stats] Fetching last 5 fixture IDs for team ${teamId}`);
-  console.log(`[stats] Using API_BASE: ${API_BASE}`);
   
   const url = `${API_BASE}/fixtures?team=${teamId}&last=5&status=FT`;
   const res = await fetch(url, { headers: apiHeaders() });
@@ -30,18 +29,6 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   
   const json = await res.json();
   const fixtures = json?.response ?? [];
-  
-  // Enhanced logging for Man City (team_id 50)
-  if (teamId === 50) {
-    console.log(`[stats] 🔍 DEBUG Man City - Raw fixtures response:`, JSON.stringify(fixtures.map((f: any) => ({
-      fixture_id: f.fixture?.id,
-      date: f.fixture?.date,
-      league: f.league?.name,
-      home: f.teams?.home?.name,
-      away: f.teams?.away?.name,
-      status: f.fixture?.status?.short
-    })), null, 2));
-  }
   
   const ids = fixtures
     .map((f: any) => Number(f.fixture?.id))
@@ -97,15 +84,6 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   
   const statsJson = await statsRes.json();
   
-  // Enhanced logging for Man City (team_id 50)
-  if (teamId === 50) {
-    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} - Raw statistics response:`, JSON.stringify(statsJson?.response?.map((r: any) => ({
-      team_id: r?.team?.id,
-      team_name: r?.team?.name,
-      statistics_count: r?.statistics?.length
-    })), null, 2));
-  }
-  
   // Find the statistics for this specific team (handle both number and string IDs)
   const teamStats = (statsJson?.response ?? []).find((r: any) => {
     const responseTeamId = Number(r?.team?.id);
@@ -115,21 +93,10 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   
   if (!teamStats) {
     console.warn(`[stats] ❌ No statistics found for team ${teamId} in fixture ${fixtureId}`);
-    if (teamId === 50) {
-      console.log(`[stats] 🔍 Available teams in response:`, (statsJson?.response ?? []).map((r: any) => ({
-        id: r?.team?.id,
-        name: r?.team?.name
-      })));
-    }
     return { goals, corners: 0, offsides: 0, fouls: 0, cards: 0 };
   }
   
   const statsArr = teamStats?.statistics ?? [];
-  
-  // Enhanced logging for Man City
-  if (teamId === 50) {
-    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} - All statistics types:`, statsArr.map((s: any) => `${s?.type}: ${s?.value}`));
-  }
   
   // Helper: find numeric value by type (supports multiple type names)
   const val = (...types: string[]) => {
@@ -160,11 +127,6 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const cards = yellow + red;
   
   console.log(`[stats] Team ${teamId} fixture ${fixtureId}: goals=${goals}, corners=${corners}, cards=${cards}, fouls=${fouls}, offsides=${offsides}`);
-  
-  // Enhanced logging for Man City
-  if (teamId === 50) {
-    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} SUMMARY: ${fixture?.teams?.home?.name} vs ${fixture?.teams?.away?.name} | Team side: ${teamSide} | Corners: ${corners}`);
-  }
   
   return { goals, corners, offsides, fouls, cards };
 }
@@ -218,21 +180,9 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   
   console.log(`[stats] Team ${teamId} averages (${n} matches): goals=${result.goals.toFixed(2)}, corners=${result.corners.toFixed(2)}, cards=${result.cards.toFixed(2)}`);
   
-  // Enhanced logging for Man City (team_id 50) or any team with suspicious low corners
-  if (teamId === 50 || result.corners < 3) {
-    console.log(`[stats] 🔍 DEBUG Team ${teamId} FINAL SUMMARY:`);
-    console.log(`[stats] 🔍 Fixtures analyzed: [${validFixtures.join(', ')}]`);
-    console.log(`[stats] 🔍 Per-match breakdown:`);
-    stats.forEach((s, i) => {
-      console.log(`[stats] 🔍   Match ${i + 1} (fixture ${validFixtures[i]}): goals=${s.goals}, corners=${s.corners}, cards=${s.cards}`);
-    });
-    console.log(`[stats] 🔍 Total corners sum: ${sum("corners")}`);
-    console.log(`[stats] 🔍 Average corners: ${result.corners.toFixed(2)}`);
-    console.log(`[stats] 🔍 Sample size: ${n} matches`);
-    
-    if (result.corners < 3 && n === 5) {
-      console.warn(`[stats] ⚠️ SUSPICIOUS: Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)}). This may indicate a data extraction bug.`);
-    }
+  // Log warning for teams with suspicious low corners (possible data extraction issue)
+  if (result.corners < 3 && n === 5) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)} from ${n} matches). Check fixture IDs: [${validFixtures.join(', ')}]`);
   }
   
   return result;
