@@ -8,7 +8,7 @@
 // - CORS headers verified on ALL response paths via cors.ts helpers
 // - OPTIONS preflight handled at top of handler
 // - All returns use jsonResponse/errorResponse (no raw Response objects)
-// - Deployment timestamp: 2025-11-21T16:30:00Z
+// - Deployment timestamp: 2025-11-21T17:15:00Z (Force redeploy for CORS fix)
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
