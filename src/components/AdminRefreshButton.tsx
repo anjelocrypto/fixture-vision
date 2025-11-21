@@ -67,9 +67,28 @@ export const AdminRefreshButton = () => {
   const [isVerifyingTeamTotals, setIsVerifyingTeamTotals] = useState(false);
   const [isPopulatingTeamTotals, setIsPopulatingTeamTotals] = useState(false);
   const [isOptimizerRefreshing, setIsOptimizerRefreshing] = useState(false);
+  const [isReleasingLock, setIsReleasingLock] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
+
+  const handleReleaseLock = async (jobName: string) => {
+    setIsReleasingLock(true);
+    try {
+      const { error } = await supabase.rpc('release_cron_lock', { 
+        p_job_name: jobName 
+      });
+
+      if (error) throw error;
+
+      toast.success(`Successfully released ${jobName} lock`);
+    } catch (error) {
+      console.error(`Error releasing ${jobName} lock:`, error);
+      toast.error(error instanceof Error ? error.message : `Failed to release ${jobName} lock`);
+    } finally {
+      setIsReleasingLock(false);
+    }
+  };
 
   const handleFetchFixtures = async () => {
     setIsFetchingFixtures(true);
@@ -667,7 +686,7 @@ export const AdminRefreshButton = () => {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                disabled={isRefreshingStats}
+                disabled={isRefreshingStats || isReleasingLock}
                 variant="outline"
                 size="sm"
                 className="gap-1 sm:gap-2 h-8 px-3"
@@ -686,6 +705,14 @@ export const AdminRefreshButton = () => {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleRefreshStats(72, false)}>
                 📅 3 days (72h)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => handleReleaseLock('stats-refresh')}
+                className="text-orange-600 dark:text-orange-400"
+                disabled={isReleasingLock}
+              >
+                🔓 Release Lock
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
