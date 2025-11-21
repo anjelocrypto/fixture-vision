@@ -106,13 +106,20 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
     })), null, 2));
   }
   
-  // Find the statistics for this specific team
-  const teamStats = (statsJson?.response ?? []).find((r: any) => r?.team?.id === teamId);
+  // Find the statistics for this specific team (handle both number and string IDs)
+  const teamStats = (statsJson?.response ?? []).find((r: any) => {
+    const responseTeamId = Number(r?.team?.id);
+    const targetTeamId = Number(teamId);
+    return responseTeamId === targetTeamId;
+  });
   
   if (!teamStats) {
     console.warn(`[stats] ❌ No statistics found for team ${teamId} in fixture ${fixtureId}`);
     if (teamId === 50) {
-      console.log(`[stats] 🔍 Available team IDs in response:`, (statsJson?.response ?? []).map((r: any) => r?.team?.id));
+      console.log(`[stats] 🔍 Available teams in response:`, (statsJson?.response ?? []).map((r: any) => ({
+        id: r?.team?.id,
+        name: r?.team?.name
+      })));
     }
     return { goals, corners: 0, offsides: 0, fouls: 0, cards: 0 };
   }
@@ -124,22 +131,28 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
     console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} - All statistics types:`, statsArr.map((s: any) => `${s?.type}: ${s?.value}`));
   }
   
-  // Helper: find numeric value by type
-  const val = (type: string) => {
-    const row = statsArr.find((s: any) => 
-      (s?.type || "").toLowerCase() === type.toLowerCase()
-    );
-    const v = row?.value;
-    if (typeof v === "number") return v;
-    if (typeof v === "string") {
-      // Handle cases like "10%" or "10"
-      const num = parseFloat(String(v).replace(/[^0-9.]/g, ""));
-      return isNaN(num) ? 0 : num;
+  // Helper: find numeric value by type (supports multiple type names)
+  const val = (...types: string[]) => {
+    for (const type of types) {
+      const row = statsArr.find((s: any) => 
+        (s?.type || "").toLowerCase() === type.toLowerCase()
+      );
+      if (row) {
+        const v = row.value;
+        if (typeof v === "number") return v;
+        if (typeof v === "string") {
+          // Handle cases like "10%" or "10"
+          const num = parseFloat(String(v).replace(/[^0-9.]/g, ""));
+          if (!isNaN(num)) return num;
+        }
+        if (v === null || v === undefined) continue;
+      }
     }
     return 0;
   };
   
-  const corners = val("Corner Kicks");
+  // Try multiple variations of stat names (API-FOOTBALL may use different names)
+  const corners = val("Corner Kicks", "Corners");
   const offsides = val("Offsides");
   const fouls = val("Fouls");
   const yellow = val("Yellow Cards");
@@ -161,11 +174,24 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   
   const fixtures = await fetchTeamLast5FixtureIds(teamId);
   const stats: Array<{ goals: number; corners: number; offsides: number; fouls: number; cards: number }> = [];
+  const validFixtures: number[] = [];
   
+  // Fetch stats for each fixture, only include those with valid data
   for (const fxId of fixtures) {
     try {
       const s = await fetchFixtureTeamStats(fxId, teamId);
-      stats.push(s);
+      
+      // Only include matches where we got actual stats (not all zeros due to missing data)
+      // At minimum we should have goals data for a finished match
+      const hasValidData = s.goals !== undefined || s.corners > 0 || s.cards > 0;
+      
+      if (hasValidData || stats.length < 5) {
+        // Always add to maintain up to 5 matches even if some have zero stats
+        stats.push(s);
+        validFixtures.push(fxId);
+      } else {
+        console.warn(`[stats] Fixture ${fxId} has no valid stats, skipping`);
+      }
     } catch (error) {
       console.error(`[stats] Error fetching stats for fixture ${fxId}:`, error);
     }
@@ -184,25 +210,29 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
     fouls: avg(sum("fouls")),
     offsides: avg(sum("offsides")),
     sample_size: n,
-    last_five_fixture_ids: fixtures,
-    last_final_fixture: fixtures[0] ?? null,
+    last_five_fixture_ids: validFixtures,
+    last_final_fixture: validFixtures[0] ?? null,
     computed_at: new Date().toISOString(),
     source: "api-football",
   };
   
   console.log(`[stats] Team ${teamId} averages (${n} matches): goals=${result.goals.toFixed(2)}, corners=${result.corners.toFixed(2)}, cards=${result.cards.toFixed(2)}`);
   
-  // Enhanced logging for Man City (team_id 50)
-  if (teamId === 50) {
-    console.log(`[stats] 🔍 DEBUG Man City FINAL SUMMARY:`);
-    console.log(`[stats] 🔍 Fixtures analyzed: [${fixtures.join(', ')}]`);
+  // Enhanced logging for Man City (team_id 50) or any team with suspicious low corners
+  if (teamId === 50 || result.corners < 3) {
+    console.log(`[stats] 🔍 DEBUG Team ${teamId} FINAL SUMMARY:`);
+    console.log(`[stats] 🔍 Fixtures analyzed: [${validFixtures.join(', ')}]`);
     console.log(`[stats] 🔍 Per-match breakdown:`);
     stats.forEach((s, i) => {
-      console.log(`[stats] 🔍   Match ${i + 1} (fixture ${fixtures[i]}): ${s.corners} corners`);
+      console.log(`[stats] 🔍   Match ${i + 1} (fixture ${validFixtures[i]}): goals=${s.goals}, corners=${s.corners}, cards=${s.cards}`);
     });
     console.log(`[stats] 🔍 Total corners sum: ${sum("corners")}`);
     console.log(`[stats] 🔍 Average corners: ${result.corners.toFixed(2)}`);
     console.log(`[stats] 🔍 Sample size: ${n} matches`);
+    
+    if (result.corners < 3 && n === 5) {
+      console.warn(`[stats] ⚠️ SUSPICIOUS: Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)}). This may indicate a data extraction bug.`);
+    }
   }
   
   return result;
