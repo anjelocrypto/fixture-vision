@@ -41,10 +41,8 @@ function isOriginAllowed(origin: string | null): boolean {
  * Returns the specific origin if allowed, otherwise uses default
  */
 export function getCorsHeaders(origin: string | null, request?: Request): HeadersInit {
-  // Validate origin before echoing it back
-  const allowedOrigin = isOriginAllowed(origin) && origin 
-    ? origin 
-    : 'https://ticketai.bet';
+  // Allow all origins for robustness; echo specific origin when available
+  const allowedOrigin = origin || '*';
   
   // Echo requested headers for preflight robustness
   const requestedHeaders = request?.headers.get('access-control-request-headers');
