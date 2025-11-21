@@ -631,7 +631,8 @@ export const AdminRefreshButton = () => {
         <Globe className="h-3 w-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground font-medium">Admin: All Countries</span>
       </div>
-      <div className="flex gap-2">
+      <div className="overflow-x-auto pb-2">
+        <div className="flex gap-2 min-w-max px-2">
         <Button
           onClick={handleFetchFixtures}
           disabled={isFetchingFixtures}
@@ -795,6 +796,7 @@ export const AdminRefreshButton = () => {
           </DropdownMenu>
         </>
       )}
+        </div>
       </div>
     </div>
   );
