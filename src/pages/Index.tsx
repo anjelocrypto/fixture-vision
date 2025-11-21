@@ -996,7 +996,7 @@ const Index = () => {
                 : t('fixtures:all_fixtures')}
             </h2>
             
-            <div className="flex gap-2 shrink-0 overflow-x-auto max-w-[60vw] sm:max-w-none">
+            <div className="flex gap-2 shrink-0 items-center max-w-full flex-wrap justify-end">
               <TrialBadge 
                 creditsRemaining={trialCredits} 
                 isWhitelisted={isWhitelisted}
