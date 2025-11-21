@@ -17,6 +17,11 @@ import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "..
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES } from "../_shared/leagues.ts";
 
+// EdgeRuntime is provided by the Supabase Edge Runtime environment
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
+
+
 
 // Simple delay helper
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -81,6 +86,232 @@ async function computeWithRetry(teamId: number) {
         continue;
       }
       throw e;
+    }
+  }
+}
+
+// Background job context for stats-refresh
+interface StatsRefreshContext {
+  supabaseUrl: string;
+  supabaseKey: string;
+  window_hours: number;
+  stats_ttl_hours: number;
+  force: boolean;
+  season: number;
+}
+
+// Run the heavy stats-refresh job in the background via EdgeRuntime.waitUntil
+async function runStatsRefreshJob(ctx: StatsRefreshContext): Promise<void> {
+  const { supabaseUrl, supabaseKey, window_hours, stats_ttl_hours, force, season } = ctx;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const now = new Date();
+  const startedAt = now;
+  const windowEnd = new Date(now.getTime() + window_hours * 60 * 60 * 1000);
+  const statsTTL = new Date(now.getTime() - stats_ttl_hours * 60 * 60 * 1000);
+
+  try {
+    // Get upcoming fixtures
+    const { data: upcomingFixtures, error: fixturesError } = await supabase
+      .from("fixtures")
+      .select("id, league_id, teams_home, teams_away")
+      .gte("timestamp", Math.floor(now.getTime() / 1000))
+      .lte("timestamp", Math.floor(windowEnd.getTime() / 1000));
+
+    if (fixturesError) {
+      throw fixturesError;
+    }
+
+    // Collect unique team IDs from fixtures, grouped by league
+    const teamsByLeague = new Map<number, Set<number>>();
+    const allTeamIds = new Set<number>();
+    
+    for (const fixture of upcomingFixtures || []) {
+      const leagueId = fixture.league_id;
+      const homeId = (fixture as any).teams_home?.id;
+      const awayId = (fixture as any).teams_away?.id;
+      
+      if (!teamsByLeague.has(leagueId)) {
+        teamsByLeague.set(leagueId, new Set());
+      }
+      
+      if (homeId) {
+        teamsByLeague.get(leagueId)!.add(homeId);
+        allTeamIds.add(homeId);
+      }
+      if (awayId) {
+        teamsByLeague.get(leagueId)!.add(awayId);
+        allTeamIds.add(awayId);
+      }
+    }
+
+    console.log(`[stats-refresh] [bg] Found ${allTeamIds.size} teams from ${upcomingFixtures?.length || 0} fixtures across ${teamsByLeague.size} leagues`);
+
+    // For leagues with few/no fixtures, fetch all teams from API
+    const leaguesWithFewFixtures = Array.from(teamsByLeague.entries())
+      .filter(([_, teams]) => teams.size < 5)
+      .map(([leagueId]) => leagueId);
+
+    if (leaguesWithFewFixtures.length > 0) {
+      console.log(`[stats-refresh] [bg] ${leaguesWithFewFixtures.length} leagues have <5 teams in fixtures, fetching from teams API`);
+      
+      for (const leagueId of leaguesWithFewFixtures) {
+        if (!ALLOWED_LEAGUE_IDS.includes(leagueId)) continue;
+        
+        try {
+          await sleep(1200); // Rate limit: ~45 RPM
+          const teamIds = await fetchTeamsByLeagueSeason(leagueId, season);
+          
+          for (const teamId of teamIds) {
+            if (!teamsByLeague.has(leagueId)) {
+              teamsByLeague.set(leagueId, new Set());
+            }
+            teamsByLeague.get(leagueId)!.add(teamId);
+            allTeamIds.add(teamId);
+          }
+        } catch (error) {
+          console.error(`[stats-refresh] [bg] Failed to fetch teams for league ${leagueId}:`, error);
+        }
+      }
+      
+      console.log(`[stats-refresh] [bg] After teams API fallback: ${allTeamIds.size} total teams`);
+    }
+
+    let teamsScanned = 0;
+    let teamsRefreshed = 0;
+    let skippedTTL = 0;
+    let apiCalls = 0;
+    let failures = 0;
+    const leagueStats = new Map<number, { total: number; fetched: number; skipped: number; errors: number }>();
+
+    // Initialize league stats
+    for (const [leagueId, teams] of teamsByLeague) {
+      leagueStats.set(leagueId, { total: teams.size, fetched: 0, skipped: 0, errors: 0 });
+    }
+
+    // Process teams with batching (45 RPM = ~1.33s per request)
+    const teamArray = Array.from(allTeamIds);
+    for (let i = 0; i < teamArray.length; i++) {
+      const teamId = teamArray[i];
+      teamsScanned++;
+      
+      // Find which league this team belongs to
+      let teamLeagueId: number | undefined;
+      for (const [leagueId, teams] of teamsByLeague) {
+        if (teams.has(teamId)) {
+          teamLeagueId = leagueId;
+          break;
+        }
+      }
+      
+      try {
+        // Check current cache with TTL
+        const { data: cached } = await supabase
+          .from("stats_cache")
+          .select("*")
+          .eq("team_id", teamId)
+          .single();
+
+        // Skip if updated within TTL window (unless force=true)
+        if (!force && cached?.computed_at) {
+          const lastUpdate = new Date(cached.computed_at as string);
+          if (lastUpdate > statsTTL) {
+            skippedTTL++;
+            if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+              leagueStats.get(teamLeagueId as number)!.skipped++;
+            }
+            continue;
+          }
+        }
+
+        // Rate limit: ~45 RPM (1.33s between requests)
+        if (i > 0 && i % 10 === 0) {
+          await sleep(1300);
+        }
+
+        // Compute stats with retry
+        const { ids: currentFixtureIds, stats } = await computeWithRetry(teamId);
+        apiCalls += 1 + (stats.sample_size * 2); // 1 for fixture IDs + 2 per fixture for stats
+
+        // Upsert with updated_at timestamp
+        await supabase.from("stats_cache").upsert({
+          team_id: teamId,
+          goals: stats.goals,
+          cards: stats.cards,
+          offsides: stats.offsides,
+          corners: stats.corners,
+          fouls: stats.fouls,
+          sample_size: stats.sample_size,
+          last_five_fixture_ids: stats.last_five_fixture_ids,
+          last_final_fixture: stats.last_final_fixture,
+          computed_at: new Date().toISOString(),
+          source: "api-football",
+        });
+
+        teamsRefreshed++;
+        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+          leagueStats.get(teamLeagueId as number)!.fetched++;
+        }
+        
+        if (teamsRefreshed % 20 === 0) {
+          console.log(`[stats-refresh] [bg] Progress: ${teamsRefreshed}/${teamArray.length} teams refreshed`);
+        }
+      } catch (error) {
+        console.error(`[stats-refresh] [bg] Failed to process team ${teamId}:`, error);
+        failures++;
+        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
+          leagueStats.get(teamLeagueId as number)!.errors++;
+        }
+      }
+    }
+
+    // Log per-league summary
+    console.log("[stats-refresh] [bg] Per-league summary:");
+    for (const [leagueId, stats] of leagueStats) {
+      const leagueName = LEAGUE_NAMES[leagueId] || `League ${leagueId}`;
+      console.log(`  ${leagueName} (${leagueId}): ${stats.total} teams, ${stats.fetched} fetched, ${stats.skipped} skipped, ${stats.errors} errors`);
+    }
+
+    console.log("[stats-refresh] [bg] Job complete", {
+      teamsScanned,
+      teamsRefreshed,
+      skippedTTL,
+      apiCalls,
+      failures,
+    });
+
+    // Log run to optimizer_run_logs
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    
+    await supabase.from("optimizer_run_logs").insert({
+      id: crypto.randomUUID(),
+      run_type: "stats-refresh",
+      window_start: now.toISOString(),
+      window_end: windowEnd.toISOString(),
+      scope: { 
+        teams: allTeamIds.size, 
+        window_hours, 
+        stats_ttl_hours,
+        force,
+      },
+      scanned: teamsScanned,
+      with_odds: 0,
+      upserted: teamsRefreshed,
+      skipped: skippedTTL,
+      failed: failures,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: durationMs,
+    });
+  } catch (error) {
+    console.error("[stats-refresh] [bg] Fatal error:", error);
+  } finally {
+    try {
+      await supabase.rpc("release_cron_lock", { p_job_name: "stats-refresh" });
+      console.log("[stats-refresh] [bg] Released cron lock");
+    } catch (e) {
+      console.error("[stats-refresh] [bg] Failed to release lock:", e);
     }
   }
 }
@@ -248,208 +479,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get upcoming fixtures
-    const now = new Date();
-    const startedAt = now;
-    const windowEnd = new Date(now.getTime() + window_hours * 60 * 60 * 1000);
-    const statsTTL = new Date(now.getTime() - stats_ttl_hours * 60 * 60 * 1000);
+    // Lock acquired - schedule heavy job as background task
+    try {
+      // Start the long-running stats refresh in the background so the HTTP
+      // request can return immediately and avoid gateway timeouts / CORS issues.
+      EdgeRuntime.waitUntil(
+        runStatsRefreshJob({
+          supabaseUrl,
+          supabaseKey,
+          window_hours,
+          stats_ttl_hours,
+          force,
+          season,
+        }),
+      );
+      console.log("[stats-refresh] Scheduled background stats refresh job via EdgeRuntime.waitUntil");
+    } catch (scheduleError) {
+      console.error("[stats-refresh] Failed to schedule background job:", scheduleError);
 
-    const { data: upcomingFixtures, error: fixturesError } = await supabase
-      .from("fixtures")
-      .select("id, league_id, teams_home, teams_away")
-      .gte("timestamp", Math.floor(now.getTime() / 1000))
-      .lte("timestamp", Math.floor(windowEnd.getTime() / 1000));
-
-    if (fixturesError) {
-      throw fixturesError;
-    }
-
-    // Collect unique team IDs from fixtures, grouped by league
-    const teamsByLeague = new Map<number, Set<number>>();
-    const allTeamIds = new Set<number>();
-    
-    for (const fixture of upcomingFixtures || []) {
-      const leagueId = fixture.league_id;
-      const homeId = fixture.teams_home?.id;
-      const awayId = fixture.teams_away?.id;
-      
-      if (!teamsByLeague.has(leagueId)) {
-        teamsByLeague.set(leagueId, new Set());
-      }
-      
-      if (homeId) {
-        teamsByLeague.get(leagueId)!.add(homeId);
-        allTeamIds.add(homeId);
-      }
-      if (awayId) {
-        teamsByLeague.get(leagueId)!.add(awayId);
-        allTeamIds.add(awayId);
-      }
-    }
-
-    console.log(`[stats-refresh] Found ${allTeamIds.size} teams from ${upcomingFixtures?.length || 0} fixtures across ${teamsByLeague.size} leagues`);
-
-    // For leagues with few/no fixtures, fetch all teams from API
-    const leaguesWithFewFixtures = Array.from(teamsByLeague.entries())
-      .filter(([_, teams]) => teams.size < 5)
-      .map(([leagueId]) => leagueId);
-
-    if (leaguesWithFewFixtures.length > 0) {
-      console.log(`[stats-refresh] ${leaguesWithFewFixtures.length} leagues have <5 teams in fixtures, fetching from teams API`);
-      
-      for (const leagueId of leaguesWithFewFixtures) {
-        if (!ALLOWED_LEAGUE_IDS.includes(leagueId)) continue;
-        
-        try {
-          await sleep(1200); // Rate limit: ~45 RPM
-          const teamIds = await fetchTeamsByLeagueSeason(leagueId, season);
-          
-          for (const teamId of teamIds) {
-            if (!teamsByLeague.has(leagueId)) {
-              teamsByLeague.set(leagueId, new Set());
-            }
-            teamsByLeague.get(leagueId)!.add(teamId);
-            allTeamIds.add(teamId);
-          }
-        } catch (error) {
-          console.error(`[stats-refresh] Failed to fetch teams for league ${leagueId}:`, error);
-        }
-      }
-      
-      console.log(`[stats-refresh] After teams API fallback: ${allTeamIds.size} total teams`);
-    }
-
-    let teamsScanned = 0;
-    let teamsRefreshed = 0;
-    let skippedTTL = 0;
-    let apiCalls = 0;
-    let failures = 0;
-    const leagueStats = new Map<number, { total: number; fetched: number; skipped: number; errors: number }>();
-
-    // Initialize league stats
-    for (const [leagueId, teams] of teamsByLeague) {
-      leagueStats.set(leagueId, { total: teams.size, fetched: 0, skipped: 0, errors: 0 });
-    }
-
-    // Process teams with batching (45 RPM = ~1.33s per request)
-    const teamArray = Array.from(allTeamIds);
-    for (let i = 0; i < teamArray.length; i++) {
-      const teamId = teamArray[i];
-      teamsScanned++;
-      
-      // Find which league this team belongs to
-      let teamLeagueId: number | undefined;
-      for (const [leagueId, teams] of teamsByLeague) {
-        if (teams.has(teamId)) {
-          teamLeagueId = leagueId;
-          break;
-        }
-      }
-      
+      // Best-effort: release the lock if we couldn't schedule the job
       try {
-        // Check current cache with TTL
-        const { data: cached } = await supabase
-          .from("stats_cache")
-          .select("*")
-          .eq("team_id", teamId)
-          .single();
-
-        // Skip if updated within TTL window (unless force=true)
-        if (!force && cached?.computed_at) {
-          const lastUpdate = new Date(cached.computed_at);
-          if (lastUpdate > statsTTL) {
-            skippedTTL++;
-            if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
-              leagueStats.get(teamLeagueId as number)!.skipped++;
-            }
-            continue;
-          }
-        }
-
-        // Rate limit: ~45 RPM (1.33s between requests)
-        if (i > 0 && i % 10 === 0) {
-          await sleep(1300);
-        }
-
-        // Compute stats with retry
-        const { ids: currentFixtureIds, stats } = await computeWithRetry(teamId);
-        apiCalls += 1 + (stats.sample_size * 2); // 1 for fixture IDs + 2 per fixture for stats
-
-        // Upsert with updated_at timestamp
-        await supabase.from("stats_cache").upsert({
-          team_id: teamId,
-          goals: stats.goals,
-          cards: stats.cards,
-          offsides: stats.offsides,
-          corners: stats.corners,
-          fouls: stats.fouls,
-          sample_size: stats.sample_size,
-          last_five_fixture_ids: stats.last_five_fixture_ids,
-          last_final_fixture: stats.last_final_fixture,
-          computed_at: new Date().toISOString(),
-          source: 'api-football'
-        });
-
-        teamsRefreshed++;
-        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
-          leagueStats.get(teamLeagueId as number)!.fetched++;
-        }
-        
-        if (teamsRefreshed % 20 === 0) {
-          console.log(`[stats-refresh] Progress: ${teamsRefreshed}/${teamArray.length} teams refreshed`);
-        }
-      } catch (error) {
-        console.error(`[stats-refresh] Failed to process team ${teamId}:`, error);
-        failures++;
-        if (typeof teamLeagueId === "number" && leagueStats.has(teamLeagueId as number)) {
-          leagueStats.get(teamLeagueId as number)!.errors++;
-        }
+        await supabase.rpc("release_cron_lock", { p_job_name: "stats-refresh" });
+      } catch (releaseError) {
+        console.error("[stats-refresh] Failed to release lock after schedule failure:", releaseError);
       }
+
+      return errorResponse("Failed to schedule background job", origin, 500, req);
     }
 
-    // Log per-league summary
-    console.log("[stats-refresh] Per-league summary:");
-    for (const [leagueId, stats] of leagueStats) {
-      const leagueName = LEAGUE_NAMES[leagueId] || `League ${leagueId}`;
-      console.log(`  ${leagueName} (${leagueId}): ${stats.total} teams, ${stats.fetched} fetched, ${stats.skipped} skipped, ${stats.errors} errors`);
-    }
-
-    console.log("[stats-refresh] Job complete", {
-      teamsScanned,
-      teamsRefreshed,
-      skippedTTL,
-      apiCalls,
-      failures,
-    });
-
-    // Release mutex
-    await supabase.rpc('release_cron_lock', { p_job_name: 'stats-refresh' });
-
-    // Log run to optimizer_run_logs
-    const finishedAt = new Date();
-    const durationMs = finishedAt.getTime() - startedAt.getTime();
-    
-    await supabase.from("optimizer_run_logs").insert({
-      id: crypto.randomUUID(),
-      run_type: "stats-refresh",
-      window_start: now.toISOString(),
-      window_end: windowEnd.toISOString(),
-      scope: { 
-        teams: allTeamIds.size, 
-        window_hours, 
-        stats_ttl_hours,
-        force
-      },
-      scanned: teamsScanned,
-      with_odds: 0,
-      upserted: teamsRefreshed,
-      skipped: skippedTTL,
-      failed: failures,
-      started_at: startedAt.toISOString(),
-      finished_at: finishedAt.toISOString(),
-      duration_ms: durationMs,
-    });
-
+    // Immediate HTTP response – job continues in background
     return jsonResponse(
       {
         ok: true,
@@ -457,20 +515,15 @@ Deno.serve(async (req) => {
         job: "stats-refresh",
         mode: force ? "force" : "standard",
         started: true,
-        statsResult: "completed",
+        statsResult: "started",
         window_hours,
         stats_ttl_hours,
-        teamsScanned,
-        teamsRefreshed,
-        skippedTTL,
-        apiCalls,
-        failures,
-        duration_ms: durationMs,
       },
       origin,
       200,
       req,
     );
+
 
   } catch (error) {
     console.error("[stats-refresh] Fatal error:", error);
