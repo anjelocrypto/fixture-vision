@@ -498,6 +498,20 @@ const Index = () => {
         },
       });
 
+      // Check for NO_CANDIDATES (optimizer not populated yet)
+      if (data?.code === "NO_CANDIDATES") {
+        const suggestions = data.suggestions?.join(" • ") || "Try again in a minute or adjust your parameters.";
+        toast({ 
+          title: "No Candidates Available", 
+          description: suggestions,
+          duration: 8000,
+        });
+        await refreshAccess();
+        setGeneratingTicket(false);
+        setTicketCreatorOpen(false);
+        return;
+      }
+
       // Check for NO_FIXTURES_AVAILABLE before checking error
       if (data?.code === "NO_FIXTURES_AVAILABLE") {
         toast({ 
@@ -531,7 +545,23 @@ const Index = () => {
         }
         // If the function returned a non-2xx status, try to surface a friendly message if available
         const friendly = (error as any)?.message || "Failed to generate ticket";
-        toast({ title: "Could not generate ticket", description: friendly, variant: "destructive" });
+        const errorDetails = (error as any)?.context?.body?.details || "";
+        const fullMessage = errorDetails ? `${friendly}: ${errorDetails}` : friendly;
+        
+        console.error("[Ticket Creator] Edge function error:", {
+          error,
+          message: friendly,
+          details: errorDetails,
+          status: (error as any)?.status,
+          context: (error as any)?.context
+        });
+        
+        toast({ 
+          title: "Could not generate ticket", 
+          description: fullMessage, 
+          variant: "destructive",
+          duration: 8000,
+        });
         return;
       }
 
@@ -583,13 +613,12 @@ const Index = () => {
             duration: 6000,
           });
           return;
-        } else if (data.code === "INSUFFICIENT_CANDIDATES") {
+        } else if (data.code === "INSUFFICIENT_CANDIDATES" || data.code === "POOL_EMPTY") {
           // Show suggestions from the response
           const suggestions = data.suggestions?.join(" • ") || "Try refreshing fixture data or adjusting your parameters.";
           toast({ 
-            title: "Not Enough Valid Selections", 
+            title: data.code === "POOL_EMPTY" ? "No Valid Selections" : "Not Enough Valid Selections",
             description: suggestions,
-            variant: "destructive",
             duration: 8000,
           });
           return;

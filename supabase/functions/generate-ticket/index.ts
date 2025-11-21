@@ -1,3 +1,32 @@
+/*
+ * TICKET CREATOR EDGE FUNCTION
+ * 
+ * Generates optimized betting tickets based on user constraints (odds range, markets, legs).
+ * 
+ * TWO MODES:
+ * 1. Global Mode (no fixtureIds): Searches across all upcoming fixtures in next 48h
+ * 2. Specific Mode (with fixtureIds): Only processes specified fixtures
+ * 
+ * DATA FLOW:
+ * - Attempts to use pre-optimized selections from `optimized_selections` table (populated by optimizer)
+ * - If empty, falls back to on-the-fly computation via processFixtureToPool (analyze-fixture + fetch-odds)
+ * - Applies strict validation: odds band [1.25, 5.0], combined stats qualification, suspicious odds guards
+ * - Uses stochastic beam search to find best ticket combination within target odds range
+ * 
+ * ERROR HANDLING (all return 200 with error codes, never 5xx):
+ * - NO_FIXTURES_AVAILABLE: No upcoming fixtures found (user needs to fetch fixtures)
+ * - NO_CANDIDATES: Zero valid selections after filtering (optimizer may be recalculating, or constraints too strict)
+ * - INSUFFICIENT_CANDIDATES: Found some candidates but fewer than minLegs required
+ * - IMPOSSIBLE_TARGET: Target odds range mathematically impossible with current pool
+ * - NO_SOLUTION_IN_BAND: Search completed but no combination within target range (returns near-miss)
+ * 
+ * BUG FIX (2025-01-21):
+ * - After clearing optimized_selections for corners data refresh, function would fail with generic 500 error
+ * - Root cause: Empty candidate pool not properly handled as business outcome, caused unhandled exceptions
+ * - Fix: Added NO_CANDIDATES error code with friendly message, try-catch around processFixtureToPool, improved logging
+ * - Now returns clean 200 responses with actionable suggestions even when pool is empty during optimizer refresh
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickLine, Market } from "../_shared/ticket_rules.ts";
@@ -428,13 +457,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (fixtures && fixtures.length > 0) {
         logs.push(`[Global Mode] Processing ${fixtures.length} fixtures...`);
         for (const f of fixtures) {
-          const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds);
-          if (result.legs.length > 0) {
-            candidatePool.push(...result.legs);
-            if (result.usedLive) usedLive = true;
-            if (result.fallback) fallbackToPrematch = true;
+          try {
+            const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds);
+            if (result.legs.length > 0) {
+              candidatePool.push(...result.legs);
+              if (result.usedLive) usedLive = true;
+              if (result.fallback) fallbackToPrematch = true;
+            }
+            logs.push(...result.logs);
+          } catch (fixtureError) {
+            console.error(`[Global Mode] Error processing fixture ${f.id}:`, fixtureError);
+            logs.push(`[ERROR] fixture:${f.id} - ${fixtureError instanceof Error ? fixtureError.message : "Unknown error"}`);
+            // Continue with other fixtures instead of failing completely
           }
-          logs.push(...result.logs);
         }
       } else {
         logs.push("[Global Mode] No fixtures found for next 48h");
@@ -551,13 +586,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     // SPECIFIC FIXTURES MODE
     logs.push(`[Specific Mode] Processing ${fixtureIds!.length} fixtures...`);
     for (const fid of fixtureIds!) {
-      const result = await processFixtureToPool(fid, supabase, token, markets, useLiveOdds);
-      if (result.legs.length > 0) {
-        candidatePool.push(...result.legs);
-        if (result.usedLive) usedLive = true;
-        if (result.fallback) fallbackToPrematch = true;
+      try {
+        const result = await processFixtureToPool(fid, supabase, token, markets, useLiveOdds);
+        if (result.legs.length > 0) {
+          candidatePool.push(...result.legs);
+          if (result.usedLive) usedLive = true;
+          if (result.fallback) fallbackToPrematch = true;
+        }
+        logs.push(...result.logs);
+      } catch (fixtureError) {
+        console.error(`[Specific Mode] Error processing fixture ${fid}:`, fixtureError);
+        logs.push(`[ERROR] fixture:${fid} - ${fixtureError instanceof Error ? fixtureError.message : "Unknown error"}`);
+        // Continue with other fixtures
       }
-      logs.push(...result.logs);
     }
   }
 
@@ -598,8 +639,14 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     };
     return new Response(
       JSON.stringify({
-        code: "INSUFFICIENT_CANDIDATES",
-        message: `No selections within ${ODDS_MIN}–${ODDS_MAX} odds for current settings`,
+        code: "NO_CANDIDATES",
+        message: `No valid selections found for your settings. This might be because: 1) Optimized selections are being recalculated (try again in 1 minute), 2) No matches qualify for selected markets/odds, or 3) Stats data is being refreshed.`,
+        suggestions: [
+          "Wait 1-2 minutes and try again (optimizer may be recalculating)",
+          "Click 'Refresh' in Admin panel to trigger optimizer refresh",
+          "Try different markets or widen your odds range",
+          "Enable more markets (Goals, Corners, Cards)"
+        ],
         diagnostic: debug ? diagnostic : undefined,
         logs,
       }),
