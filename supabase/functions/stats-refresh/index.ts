@@ -4,10 +4,11 @@
 // Refreshes team statistics cache from API-Football for upcoming fixtures.
 // Supports configurable time windows, TTL, and force refresh.
 // 
-// Recent fixes (2025-01-21):
-// - Added comprehensive CORS headers on all response paths
-// - Enhanced error logging for CORS debugging
-// - Added force parameter support
+// Recent fixes (2025-11-21):
+// - CORS headers verified on ALL response paths via cors.ts helpers
+// - OPTIONS preflight handled at top of handler
+// - All returns use jsonResponse/errorResponse (no raw Response objects)
+// - Deployment timestamp: 2025-11-21T16:30:00Z
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -87,13 +88,13 @@ async function computeWithRetry(teamId: number) {
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   
-  console.log(`[stats-refresh] Request received: method=${req.method}, origin=${origin}`);
-  
-  // Handle CORS preflight
+  // Handle CORS preflight FIRST (critical for browser requests)
   if (req.method === 'OPTIONS') {
-    console.log('[stats-refresh] Returning preflight response with CORS headers');
+    console.log('[stats-refresh] OPTIONS preflight request, returning CORS headers');
     return handlePreflight(origin, req);
   }
+  
+  console.log(`[stats-refresh] ${req.method} request received from origin: ${origin || 'none'}`);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
