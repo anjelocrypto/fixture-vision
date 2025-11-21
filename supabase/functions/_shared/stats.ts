@@ -29,7 +29,21 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   }
   
   const json = await res.json();
-  const ids = (json?.response ?? [])
+  const fixtures = json?.response ?? [];
+  
+  // Enhanced logging for Man City (team_id 50)
+  if (teamId === 50) {
+    console.log(`[stats] 🔍 DEBUG Man City - Raw fixtures response:`, JSON.stringify(fixtures.map((f: any) => ({
+      fixture_id: f.fixture?.id,
+      date: f.fixture?.date,
+      league: f.league?.name,
+      home: f.teams?.home?.name,
+      away: f.teams?.away?.name,
+      status: f.fixture?.status?.short
+    })), null, 2));
+  }
+  
+  const ids = fixtures
     .map((f: any) => Number(f.fixture?.id))
     .filter(Number.isFinite);
   
@@ -54,6 +68,7 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const fixture = fixtureJson?.response?.[0];
   
   let goals = 0;
+  let teamSide = "unknown";
   if (fixture) {
     const homeId = fixture?.teams?.home?.id;
     const awayId = fixture?.teams?.away?.id;
@@ -62,9 +77,11 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
     
     if (teamId === homeId) {
       goals = gHome;
+      teamSide = "home";
       console.log(`[stats] Team ${teamId} is home team: ${gHome} goals`);
     } else if (teamId === awayId) {
       goals = gAway;
+      teamSide = "away";
       console.log(`[stats] Team ${teamId} is away team: ${gAway} goals`);
     }
   }
@@ -80,15 +97,32 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   
   const statsJson = await statsRes.json();
   
+  // Enhanced logging for Man City (team_id 50)
+  if (teamId === 50) {
+    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} - Raw statistics response:`, JSON.stringify(statsJson?.response?.map((r: any) => ({
+      team_id: r?.team?.id,
+      team_name: r?.team?.name,
+      statistics_count: r?.statistics?.length
+    })), null, 2));
+  }
+  
   // Find the statistics for this specific team
   const teamStats = (statsJson?.response ?? []).find((r: any) => r?.team?.id === teamId);
   
   if (!teamStats) {
-    console.warn(`[stats] No statistics found for team ${teamId} in fixture ${fixtureId}`);
+    console.warn(`[stats] ❌ No statistics found for team ${teamId} in fixture ${fixtureId}`);
+    if (teamId === 50) {
+      console.log(`[stats] 🔍 Available team IDs in response:`, (statsJson?.response ?? []).map((r: any) => r?.team?.id));
+    }
     return { goals, corners: 0, offsides: 0, fouls: 0, cards: 0 };
   }
   
   const statsArr = teamStats?.statistics ?? [];
+  
+  // Enhanced logging for Man City
+  if (teamId === 50) {
+    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} - All statistics types:`, statsArr.map((s: any) => `${s?.type}: ${s?.value}`));
+  }
   
   // Helper: find numeric value by type
   const val = (type: string) => {
@@ -113,6 +147,11 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const cards = yellow + red;
   
   console.log(`[stats] Team ${teamId} fixture ${fixtureId}: goals=${goals}, corners=${corners}, cards=${cards}, fouls=${fouls}, offsides=${offsides}`);
+  
+  // Enhanced logging for Man City
+  if (teamId === 50) {
+    console.log(`[stats] 🔍 DEBUG Man City fixture ${fixtureId} SUMMARY: ${fixture?.teams?.home?.name} vs ${fixture?.teams?.away?.name} | Team side: ${teamSide} | Corners: ${corners}`);
+  }
   
   return { goals, corners, offsides, fouls, cards };
 }
@@ -152,6 +191,19 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   };
   
   console.log(`[stats] Team ${teamId} averages (${n} matches): goals=${result.goals.toFixed(2)}, corners=${result.corners.toFixed(2)}, cards=${result.cards.toFixed(2)}`);
+  
+  // Enhanced logging for Man City (team_id 50)
+  if (teamId === 50) {
+    console.log(`[stats] 🔍 DEBUG Man City FINAL SUMMARY:`);
+    console.log(`[stats] 🔍 Fixtures analyzed: [${fixtures.join(', ')}]`);
+    console.log(`[stats] 🔍 Per-match breakdown:`);
+    stats.forEach((s, i) => {
+      console.log(`[stats] 🔍   Match ${i + 1} (fixture ${fixtures[i]}): ${s.corners} corners`);
+    });
+    console.log(`[stats] 🔍 Total corners sum: ${sum("corners")}`);
+    console.log(`[stats] 🔍 Average corners: ${result.corners.toFixed(2)}`);
+    console.log(`[stats] 🔍 Sample size: ${n} matches`);
+  }
   
   return result;
 }
