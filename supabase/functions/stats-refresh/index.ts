@@ -1,3 +1,15 @@
+// ============================================================================
+// stats-refresh Edge Function
+// ============================================================================
+// Refreshes team statistics cache from API-Football for upcoming fixtures.
+// Supports configurable time windows, TTL, and force refresh.
+// 
+// Recent fixes (2025-01-21):
+// - Added comprehensive CORS headers on all response paths
+// - Enhanced error logging for CORS debugging
+// - Added force parameter support
+// ============================================================================
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fetchTeamLast5FixtureIds, computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -75,8 +87,11 @@ async function computeWithRetry(teamId: number) {
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   
+  console.log(`[stats-refresh] Request received: method=${req.method}, origin=${origin}`);
+  
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
+    console.log('[stats-refresh] Returning preflight response with CORS headers');
     return handlePreflight(origin, req);
   }
 
@@ -106,7 +121,9 @@ Deno.serve(async (req) => {
       if (body.stats_ttl_hours) stats_ttl_hours = parseInt(body.stats_ttl_hours);
       if (typeof body.force === 'boolean') force = body.force;
       if (body.season) season = parseInt(body.season);
-    } catch {
+      console.log(`[stats-refresh] Parsed body: window_hours=${window_hours}, stats_ttl_hours=${stats_ttl_hours}, force=${force}, season=${season}`);
+    } catch (e) {
+      console.log('[stats-refresh] No body or invalid JSON, using defaults');
       // Use defaults if no body or invalid JSON
     }
 
@@ -420,7 +437,8 @@ Deno.serve(async (req) => {
     }, origin, 200, req);
 
   } catch (error) {
-    console.error("[stats-refresh] Error:", error);
+    console.error("[stats-refresh] Fatal error:", error);
+    console.error("[stats-refresh] Error stack:", error instanceof Error ? error.stack : 'no stack');
     
     // Release mutex on error
     try {
@@ -435,6 +453,7 @@ Deno.serve(async (req) => {
     }
     
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.log(`[stats-refresh] Returning error response with CORS headers: ${errorMessage}`);
     return errorResponse(errorMessage, origin, 500, req);
   }
 });

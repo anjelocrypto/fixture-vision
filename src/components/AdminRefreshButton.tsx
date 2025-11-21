@@ -177,11 +177,12 @@ export const AdminRefreshButton = () => {
     }
   };
 
-  const handleRefreshStats = async (windowHours: number) => {
+  const handleRefreshStats = async (windowHours: number, force: boolean = false) => {
     setIsRefreshingStats(true);
     
     try {
-      toast.info(`Refreshing stats for ${windowHours}h window...`);
+      const forceLabel = force ? " (force=true)" : "";
+      toast.info(`Refreshing stats for ${windowHours}h window${forceLabel}...`);
       
       // Get current session to ensure we have a valid token
       const { data: { session } } = await supabase.auth.getSession();
@@ -193,7 +194,11 @@ export const AdminRefreshButton = () => {
       const { data, error } = await supabase.functions.invoke(
         "stats-refresh",
         { 
-          body: { window_hours: windowHours, stats_ttl_hours: 24 },
+          body: { 
+            window_hours: windowHours, 
+            stats_ttl_hours: 24,
+            force: force
+          },
           headers: {
             Authorization: `Bearer ${session.access_token}`
           }
@@ -615,13 +620,13 @@ export const AdminRefreshButton = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleRefreshStats(168)}>
+              <DropdownMenuItem onClick={() => handleRefreshStats(168, false)}>
                 📆 7 days (168h)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleRefreshStats(120)}>
-                🏟️ 5 days (120h)
+              <DropdownMenuItem onClick={() => handleRefreshStats(120, true)}>
+                🏟️ 5 days (120h) • force
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleRefreshStats(72)}>
+              <DropdownMenuItem onClick={() => handleRefreshStats(72, false)}>
                 📅 3 days (72h)
               </DropdownMenuItem>
             </DropdownMenuContent>
