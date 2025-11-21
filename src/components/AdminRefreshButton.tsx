@@ -626,18 +626,18 @@ export const AdminRefreshButton = () => {
   };
 
   return (
-    <div className="flex flex-col gap-2 min-w-max">
-      <div className="flex items-center gap-2 px-2">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 sm:gap-2 px-1 sm:px-2">
         <Globe className="h-3 w-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground font-medium">Admin: All Countries</span>
+        <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">Admin: All Countries</span>
       </div>
-      <div className="flex gap-2 px-2">
+      <div className="flex flex-wrap gap-1 sm:gap-2 px-1 sm:px-2 text-[11px] sm:text-xs">
         <Button
           onClick={handleFetchFixtures}
           disabled={isFetchingFixtures}
           variant="outline"
           size="sm"
-          className="gap-2 relative"
+          className="gap-1 sm:gap-2 relative h-8 px-3"
         >
           <Calendar className={`h-4 w-4 ${isFetchingFixtures ? "animate-pulse" : ""}`} />
           {isFetchingFixtures
@@ -651,7 +651,7 @@ export const AdminRefreshButton = () => {
         <Button
           variant="default"
           size="sm"
-          className="gap-2 animate-in fade-in-from-left-2"
+          className="gap-1 sm:gap-2 h-8 px-3 animate-in fade-in-from-left-2"
           onClick={() => {
             handleRefresh(120);
             setShowWarmupPrompt(false);
@@ -670,7 +670,7 @@ export const AdminRefreshButton = () => {
                 disabled={isRefreshingStats}
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="gap-1 sm:gap-2 h-8 px-3"
               >
                 <RefreshCw className={`h-4 w-4 ${isRefreshingStats ? "animate-spin" : ""}`} />
                 {isRefreshingStats ? "Refreshing..." : "Refresh Stats"}
@@ -696,11 +696,11 @@ export const AdminRefreshButton = () => {
                 disabled={isRefreshing}
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="gap-1 sm:gap-2 h-8 px-3"
               >
                 <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
                 {isRefreshing ? "Warming..." : "Warmup"}
-                <span className="text-xs font-mono bg-primary/10 px-1.5 py-0.5 rounded ml-1">
+                <span className="hidden sm:inline text-[10px] font-mono bg-primary/10 px-1.5 py-0.5 rounded ml-1">
                   {selectedWindow}h • force
                 </span>
                 <ChevronDown className="h-3 w-3 opacity-50" />
@@ -730,7 +730,7 @@ export const AdminRefreshButton = () => {
             disabled={isOptimizerRefreshing}
             variant="outline"
             size="sm"
-            className="gap-2"
+            className="gap-1 sm:gap-2 h-8 px-3"
           >
             <Activity className={`h-4 w-4 ${isOptimizerRefreshing ? "animate-spin" : ""}`} />
             {isOptimizerRefreshing ? "Running..." : "Optimizer (120h)"}
@@ -741,7 +741,7 @@ export const AdminRefreshButton = () => {
             disabled={isRefreshingResults}
             variant="outline"
             size="sm"
-            className="gap-2"
+            className="gap-1 sm:gap-2 h-8 px-3"
           >
             <CheckCircle2 className={`h-4 w-4 ${isRefreshingResults ? "animate-pulse" : ""}`} />
             {isRefreshingResults ? "Refreshing..." : "Refresh Results (6h)"}
@@ -753,7 +753,7 @@ export const AdminRefreshButton = () => {
                 disabled={isFetchingPredictions || isPopulatingOutcomes}
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="gap-1 sm:gap-2 h-8 px-3"
               >
                 <RefreshCw className={`h-4 w-4 ${(isFetchingPredictions || isPopulatingOutcomes) ? "animate-spin" : ""}`} />
                 Winner Pipeline
@@ -776,7 +776,7 @@ export const AdminRefreshButton = () => {
                 disabled={isVerifyingTeamTotals || isPopulatingTeamTotals}
                 variant="outline"
                 size="sm"
-                className="gap-2"
+                className="gap-1 sm:gap-2 h-8 px-3"
               >
                 <Search className={`h-4 w-4 ${(isVerifyingTeamTotals || isPopulatingTeamTotals) ? "animate-pulse" : ""}`} />
                 Team Totals
