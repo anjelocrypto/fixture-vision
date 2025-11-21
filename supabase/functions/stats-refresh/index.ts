@@ -188,36 +188,63 @@ Deno.serve(async (req) => {
 
     console.log(`[stats-refresh] Starting stats refresh job (${window_hours}h window, ${stats_ttl_hours}h TTL, force=${force})`);
 
-    const { data: lockAcquired, error: lockError } = await supabase.rpc('acquire_cron_lock', {
-      p_job_name: 'stats-refresh',
-      p_duration_minutes: 60
+    const { data: lockAcquired, error: lockError } = await supabase.rpc("acquire_cron_lock", {
+      p_job_name: "stats-refresh",
+      p_duration_minutes: 60,
     });
 
     if (lockError) {
-      console.error('[stats-refresh] Failed to acquire lock:', lockError);
-      return errorResponse('Failed to acquire lock', origin, 500, req);
+      console.error("[stats-refresh] Failed to acquire lock:", lockError);
+      return errorResponse("Failed to acquire lock", origin, 500, req);
     }
 
     if (!lockAcquired) {
-      console.log('[stats-refresh] Another instance is already running, skipping');
-      // Optional: write lightweight log row for visibility
-      try {
-        await supabase.from('optimizer_run_logs').insert({
-          run_type: 'stats-refresh',
-          started_at: new Date().toISOString(),
-          finished_at: new Date().toISOString(),
-          status: 'already-running',
-          notes: `window_hours=${window_hours}; ttl=${stats_ttl_hours}; force=${force}`,
-        });
-      } catch (_) {}
+      console.log("[stats-refresh] Another instance is already running, skipping");
 
-      return jsonResponse({ 
-        success: true, 
-        skipped: true,
-        started: false,
-        statsResult: 'already-running',
-        reason: 'Another stats-refresh is already running'
-      }, origin, 200, req);
+      // Best-effort telemetry log; ignore failures
+      try {
+        const nowIso = new Date().toISOString();
+        await supabase.from("optimizer_run_logs").insert({
+          id: crypto.randomUUID(),
+          run_type: "stats-refresh",
+          window_start: nowIso,
+          window_end: nowIso,
+          scope: {
+            window_hours,
+            stats_ttl_hours,
+            force,
+          },
+          scanned: 0,
+          with_odds: 0,
+          upserted: 0,
+          skipped: 0,
+          failed: 0,
+          started_at: nowIso,
+          finished_at: nowIso,
+          duration_ms: 0,
+        });
+      } catch (_) {
+        // no-op
+      }
+
+      return jsonResponse(
+        {
+          ok: false,
+          success: false,
+          job: "stats-refresh",
+          mode: force ? "force" : "standard",
+          window_hours,
+          stats_ttl_hours,
+          skipped: true,
+          started: false,
+          statsResult: "already-running",
+          reason: "LOCK_HELD",
+          message: "Stats refresh is already running",
+        },
+        origin,
+        200,
+        req,
+      );
     }
 
     // Get upcoming fixtures
@@ -422,19 +449,27 @@ Deno.serve(async (req) => {
       duration_ms: durationMs,
     });
 
-    return jsonResponse({
-      success: true,
-      started: true,
-      statsResult: 'completed',
-      window_hours,
-      stats_ttl_hours,
-      teamsScanned,
-      teamsRefreshed,
-      skippedTTL,
-      apiCalls,
-      failures,
-      duration_ms: durationMs,
-    }, origin, 200, req);
+    return jsonResponse(
+      {
+        ok: true,
+        success: true,
+        job: "stats-refresh",
+        mode: force ? "force" : "standard",
+        started: true,
+        statsResult: "completed",
+        window_hours,
+        stats_ttl_hours,
+        teamsScanned,
+        teamsRefreshed,
+        skippedTTL,
+        apiCalls,
+        failures,
+        duration_ms: durationMs,
+      },
+      origin,
+      200,
+      req,
+    );
 
   } catch (error) {
     console.error("[stats-refresh] Fatal error:", error);

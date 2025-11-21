@@ -37,27 +37,20 @@ function isOriginAllowed(origin: string | null): boolean {
 }
 
 /**
- * Get CORS headers for the given request origin
- * Returns the specific origin if allowed, otherwise uses default
+ * Get CORS headers for the given request origin.
+ * - Echoes known allowed origins (ticketai.bet, preview envs)
+ * - Falls back to "*" for non-browser/internal calls
  */
-export function getCorsHeaders(origin: string | null, request?: Request): HeadersInit {
-  // Allow all origins for robustness; echo specific origin when available
-  const allowedOrigin = origin || '*';
-  
-  // Echo requested headers for preflight robustness
-  const requestedHeaders = request?.headers.get('access-control-request-headers');
-  const allowHeaders = requestedHeaders && requestedHeaders.length > 0
-    ? requestedHeaders
-    : 'authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key';
-  
+export function getCorsHeaders(origin: string | null, _request?: Request): HeadersInit {
+  const allowedOrigin = origin && isOriginAllowed(origin) ? origin : "*";
+
   return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': allowHeaders,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Expose-Headers': 'content-type, x-supabase-api-version',
-    'Access-Control-Max-Age': '86400', // 24 hours
-    'Vary': 'Origin',
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key",
+    "Access-Control-Max-Age": "86400", // 24 hours
+    Vary: "Origin",
   };
 }
 
@@ -98,5 +91,5 @@ export function errorResponse(
   status = 500,
   request?: Request
 ): Response {
-  return jsonResponse({ success: false, error: message }, origin, status, request);
+  return jsonResponse({ ok: false, success: false, error: message }, origin, status, request);
 }

@@ -199,40 +199,73 @@ export const AdminRefreshButton = () => {
 
   const handleRefreshStats = async (windowHours: number, force: boolean = false) => {
     setIsRefreshingStats(true);
-    
+
     try {
       const forceLabel = force ? " (force=true)" : "";
       toast.info(`Refreshing stats for ${windowHours}h window${forceLabel}...`);
-      
+
       // Get current session to ensure we have a valid token
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session) {
         throw new Error("Not authenticated. Please log in again.");
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        "stats-refresh",
-        { 
-          body: { 
-            window_hours: windowHours, 
-            stats_ttl_hours: 24,
-            force: force
-          },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("stats-refresh", {
+        body: {
+          window_hours: windowHours,
+          stats_ttl_hours: 24,
+          force,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
       if (error) {
         console.error("Stats refresh error:", error);
-        throw error;
+
+        const isNetworkLikeError =
+          error.name === "FunctionsFetchError" ||
+          error.name === "FunctionsRelayError" ||
+          typeof error.message === "string";
+
+        if (isNetworkLikeError) {
+          toast.error(
+            "Stats refresh failed due to a network/CORS issue. See console for full details.",
+          );
+        } else {
+          toast.error(`Stats refresh failed: ${error.message || "Unknown error"}`);
+        }
+
+        return;
       }
 
       console.log("Stats refresh result:", data);
-      toast.success(data?.message || "Stats refreshed successfully");
 
+      // Lock-held / already-running case
+      if (data?.reason === "LOCK_HELD" || data?.statsResult === "already-running") {
+        toast.info("Stats refresh is already running; no new job was started.");
+        return;
+      }
+
+      if (data?.ok || data?.success) {
+        const effectiveWindow = data.window_hours ?? windowHours;
+        const modeLabel = data.mode === "force" || force ? " (force)" : "";
+        toast.success(
+          `Stats refresh completed for last ${effectiveWindow}h${modeLabel}.`,
+        );
+        return;
+      }
+
+      // Fallback: unknown payload shape
+      toast.error(
+        data?.error
+          ? `Stats refresh failed: ${data.error}`
+          : "Stats refresh finished with an unexpected response. Check console for details.",
+      );
     } catch (error) {
       console.error("Stats refresh error:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
