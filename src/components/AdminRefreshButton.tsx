@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Calendar, CheckCircle2, Globe, Search } from "lucide-react";
+import { RefreshCw, Calendar, CheckCircle2, Globe, Search, Activity } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -66,6 +66,7 @@ export const AdminRefreshButton = () => {
   const [isPopulatingOutcomes, setIsPopulatingOutcomes] = useState(false);
   const [isVerifyingTeamTotals, setIsVerifyingTeamTotals] = useState(false);
   const [isPopulatingTeamTotals, setIsPopulatingTeamTotals] = useState(false);
+  const [isOptimizerRefreshing, setIsOptimizerRefreshing] = useState(false);
   const [selectedWindow, setSelectedWindow] = useState(120);
   const [currentAttempt, setCurrentAttempt] = useState(0);
   const [showWarmupPrompt, setShowWarmupPrompt] = useState(false);
@@ -567,6 +568,63 @@ export const AdminRefreshButton = () => {
     }
   };
 
+  const handleOptimizerRefresh = async () => {
+    setIsOptimizerRefreshing(true);
+    
+    try {
+      toast.info("⚙️ Running optimizer refresh (120h • force)...");
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated. Please log in again.");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "optimize-selections-refresh",
+        { 
+          body: { 
+            window_hours: 120,
+            force: true
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) {
+        console.error("Optimizer refresh error:", error);
+        throw error;
+      }
+
+      console.log("Optimizer refresh result:", data);
+      
+      const result = data as {
+        success: boolean;
+        scanned?: number;
+        with_odds?: number;
+        inserted?: number;
+        skipped?: number;
+        duration_ms?: number;
+        message?: string;
+      };
+      
+      if (result.scanned !== undefined) {
+        const summary = `${result.scanned} scanned • ${result.with_odds || 0} with odds • ${result.inserted || 0} inserted • ${result.skipped || 0} skipped`;
+        toast.success(`Optimizer: ${summary}`);
+      } else {
+        toast.success(result.message || "Optimizer refresh completed");
+      }
+
+    } catch (error) {
+      console.error("Optimizer refresh error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Optimizer failed: ${errorMessage}`);
+    } finally {
+      setIsOptimizerRefreshing(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-2">
@@ -666,6 +724,17 @@ export const AdminRefreshButton = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            onClick={handleOptimizerRefresh}
+            disabled={isOptimizerRefreshing}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <Activity className={`h-4 w-4 ${isOptimizerRefreshing ? "animate-spin" : ""}`} />
+            {isOptimizerRefreshing ? "Running..." : "Optimizer (120h)"}
+          </Button>
 
           <Button
             onClick={() => handleRefreshResults(6)}
