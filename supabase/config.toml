@@ -71,3 +71,6 @@ verify_jwt = true
 
 [functions.populate-team-totals-candidates]
 verify_jwt = false
+
+[functions.debug-team-stats]
+verify_jwt = false
