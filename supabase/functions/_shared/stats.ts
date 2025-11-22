@@ -19,11 +19,8 @@ export type Last5Result = {
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
   console.log(`[stats] Fetching last 5 fixture IDs for team ${teamId}`);
   
-  // Determine current season (Nov-June = current year, July-Oct = next year)
-  const now = new Date();
-  const month = now.getMonth(); // 0-11
-  const year = now.getFullYear();
-  const season = (month >= 6) ? year : year - 1; // Season starts in July/August
+  // Determine current season
+  const season = new Date().getFullYear();
   
   // Fetch finished fixtures for current season, sorted by date descending
   const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&status=FT`;
