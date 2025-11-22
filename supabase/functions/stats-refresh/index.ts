@@ -11,8 +11,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
-// Batch size per invocation (tuned to stay under ~50s execution time)
-const BATCH_SIZE = 150;
+// Batch size per invocation (tuned to stay under 60s Edge Function timeout)
+// With ~1.25s per team, 25 teams = ~31s (safe margin)
+const BATCH_SIZE = 25;
 
 // Simple delay helper
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -206,7 +207,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      console.log(`[stats-refresh] Selected ${teamsToProcess.length} teams to process (batch size: ${BATCH_SIZE})`);
+      console.log(`[stats-refresh] Selected ${teamsToProcess.length} teams to process (max batch size: ${BATCH_SIZE}, ~${Math.ceil(teamsToProcess.length * 1.25)}s estimated)`);
 
       // Process selected teams
       for (let i = 0; i < teamsToProcess.length; i++) {
