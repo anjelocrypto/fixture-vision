@@ -12,6 +12,14 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
+  // ============================================================================
+  // cron-warmup-odds: Production cron job for automated odds & selections refresh
+  // ============================================================================
+  // Called by pg_cron every 30 minutes
+  // Runs batched backfill-odds → optimize-selections-refresh pipeline
+  // Always returns HTTP 200 for pg_cron stability
+  // ============================================================================
+  
   const jobName = 'cron-warmup-odds';
   let lockAcquired = false;
   let supabase: any = null;
@@ -59,16 +67,18 @@ serve(async (req) => {
     lockAcquired = true;
     console.log('[cron-warmup-odds] Lock acquired, starting job');
 
-    // 4. Parse window_hours
+    // 4. Parse window_hours (default 120h for cron)
     const { window_hours = 120 } = await req.json().catch(() => ({ window_hours: 120 }));
-    console.log(`[cron-warmup-odds] Warming up odds for next ${window_hours}h`);
+    console.log(`[cron-warmup-odds] Processing ${window_hours}h window`);
 
-    // 5. Call backfill-odds via direct fetch (don't throw on error, capture it)
-    console.log('[cron-warmup-odds] Step 1: Calling backfill-odds...');
+    // 5. Call batched backfill-odds once (processes up to 30 fixtures)
+    console.log(`[cron-warmup-odds] Step 1: Calling backfill-odds (batch mode, window=${window_hours}h)...`);
     let backfillOk = false;
+    let backfillError = null;
     let backfillData: any = null;
-    let backfillError: string | null = null;
-
+    let backfillScanned = 0;
+    let backfillFetched = 0;
+    
     try {
       const backfillUrl = `${supabaseUrl}/functions/v1/backfill-odds`;
       const backfillResponse = await fetch(backfillUrl, {
@@ -79,26 +89,31 @@ serve(async (req) => {
         },
         body: JSON.stringify({ window_hours })
       });
-
+      
       if (!backfillResponse.ok) {
-        backfillError = `backfill-odds failed with status ${backfillResponse.status}`;
+        const errorText = await backfillResponse.text().catch(() => 'No response body');
+        backfillError = `backfill-odds failed with status ${backfillResponse.status}: ${errorText.substring(0, 200)}`;
         console.error('[cron-warmup-odds]', backfillError);
       } else {
         backfillData = await backfillResponse.json();
         backfillOk = true;
-        console.log('[cron-warmup-odds] backfill-odds success:', backfillData);
+        backfillScanned = backfillData.scanned || 0;
+        backfillFetched = backfillData.fetched || 0;
+        console.log(`[cron-warmup-odds] backfill-odds success: scanned=${backfillScanned}, fetched=${backfillFetched}`);
       }
     } catch (err: any) {
       backfillError = `backfill-odds exception: ${err.message}`;
       console.error('[cron-warmup-odds]', backfillError);
     }
 
-    // 6. Call optimize-selections-refresh via direct fetch (don't throw on error, capture it)
-    console.log('[cron-warmup-odds] Step 2: Calling optimize-selections-refresh...');
+    // 6. Call optimize-selections-refresh once (uses latest stats + odds)
+    console.log(`[cron-warmup-odds] Step 2: Calling optimize-selections-refresh (window=${window_hours}h)...`);
     let optimizeOk = false;
+    let optimizeError = null;
     let optimizeData: any = null;
-    let optimizeError: string | null = null;
-
+    let optimizeScanned = 0;
+    let optimizeUpserted = 0;
+    
     try {
       const optimizeUrl = `${supabaseUrl}/functions/v1/optimize-selections-refresh`;
       const optimizeResponse = await fetch(optimizeUrl, {
@@ -109,65 +124,78 @@ serve(async (req) => {
         },
         body: JSON.stringify({ window_hours })
       });
-
+      
       if (!optimizeResponse.ok) {
-        optimizeError = `optimize-selections-refresh failed with status ${optimizeResponse.status}`;
+        const errorText = await optimizeResponse.text().catch(() => 'No response body');
+        optimizeError = `optimize-selections-refresh failed with status ${optimizeResponse.status}: ${errorText.substring(0, 200)}`;
         console.error('[cron-warmup-odds]', optimizeError);
       } else {
         optimizeData = await optimizeResponse.json();
         optimizeOk = true;
-        console.log('[cron-warmup-odds] optimize-selections-refresh success:', optimizeData);
+        optimizeScanned = optimizeData.scanned || 0;
+        optimizeUpserted = optimizeData.upserted || 0;
+        console.log(`[cron-warmup-odds] optimize-selections-refresh success: scanned=${optimizeScanned}, upserted=${optimizeUpserted}`);
       }
     } catch (err: any) {
       optimizeError = `optimize-selections-refresh exception: ${err.message}`;
       console.error('[cron-warmup-odds]', optimizeError);
     }
 
-    const finishTime = Date.now();
-    const durationMs = finishTime - startTime;
-
+    // 7. Log comprehensive run details with metrics from both steps
+    const durationMs = Date.now() - startTime;
     const totalFailed = (backfillOk ? 0 : 1) + (optimizeOk ? 0 : 1);
+    
     console.log(`[cron-warmup-odds] Complete in ${durationMs}ms (backfill: ${backfillOk ? 'OK' : 'FAIL'}, optimize: ${optimizeOk ? 'OK' : 'FAIL'})`);
-
-    // 7. Log run to optimizer_run_logs (ALWAYS, even on partial failure)
-    const now = new Date(startTime);
-    const windowEnd = new Date(now.getTime() + window_hours * 60 * 60 * 1000);
-
-    await supabase.from('optimizer_run_logs').insert({
+    console.log(`[cron-warmup-odds] Metrics: backfill=${backfillScanned} scanned/${backfillFetched} fetched, optimize=${optimizeScanned} scanned/${optimizeUpserted} upserted`);
+    
+    const { error: logError } = await supabase.from('optimizer_run_logs').insert({
+      id: crypto.randomUUID(),
       run_type: 'cron-warmup-odds',
-      window_start: now.toISOString(),
-      window_end: windowEnd.toISOString(),
-      scanned: (backfillData?.scanned || 0) + (optimizeData?.scanned || 0),
-      with_odds: backfillData?.fetched || 0,
-      upserted: optimizeData?.upserted || 0,
-      skipped: (backfillData?.skipped || 0) + (optimizeData?.skipped || 0),
-      failed: totalFailed,
-      started_at: now.toISOString(),
-      finished_at: new Date(finishTime).toISOString(),
-      duration_ms: durationMs,
-      notes: backfillError || optimizeError 
-        ? `Errors: ${backfillError || ''} ${optimizeError || ''}`.trim()
-        : null,
+      window_start: new Date().toISOString(),
+      window_end: new Date(Date.now() + window_hours * 60 * 60 * 1000).toISOString(),
       scope: {
-        window_hours,
         trigger: 'cron',
+        window_hours,
         backfill_ok: backfillOk,
         optimize_ok: optimizeOk,
-      }
+        backfill_scanned: backfillScanned,
+        backfill_fetched: backfillFetched,
+        optimize_scanned: optimizeScanned,
+        optimize_upserted: optimizeUpserted
+      },
+      scanned: optimizeScanned,
+      upserted: optimizeUpserted,
+      with_odds: backfillFetched,
+      failed: totalFailed,
+      started_at: new Date(startTime).toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: durationMs
     });
 
-    // 8. ALWAYS return 200 to keep pg_cron happy
+    // 8. Always return HTTP 200 for pg_cron stability (even if steps failed)
     return new Response(
       JSON.stringify({
-        ok: backfillOk && optimizeOk,
+        ok: true,
+        job: 'cron-warmup-odds',
         window_hours,
-        steps: {
-          backfill: { ok: backfillOk, data: backfillData, error: backfillError },
-          optimize: { ok: optimizeOk, data: optimizeData, error: optimizeError }
+        backfill: {
+          status: backfillOk ? 'success' : 'failed',
+          scanned: backfillScanned,
+          fetched: backfillFetched,
+          error: backfillError
         },
-        duration_ms: durationMs,
+        optimize: {
+          status: optimizeOk ? 'success' : 'failed',
+          scanned: optimizeScanned,
+          upserted: optimizeUpserted,
+          error: optimizeError
+        },
+        duration_ms: durationMs
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
     );
   } catch (error: any) {
     console.error('[cron-warmup-odds] Unexpected error:', error);
