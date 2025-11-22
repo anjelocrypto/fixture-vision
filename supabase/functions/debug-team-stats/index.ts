@@ -22,7 +22,8 @@ serve(async (req) => {
 
   try {
     // Parse request
-    const { teamId } = await req.json();
+    const body = await req.json();
+    const { teamId, forceRecompute } = body;
     
     if (!teamId || typeof teamId !== 'number') {
       return new Response(
@@ -31,7 +32,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[debug-team-stats] 🔍 Diagnosing team ${teamId}`);
+    console.log(`[debug-team-stats] 🔍 Diagnosing team ${teamId}, forceRecompute: ${!!forceRecompute}`);
 
     // Initialize Supabase client
     const supabaseClient = createClient(
@@ -249,7 +250,49 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // STEP 6: Return diagnostic report
+    // STEP 6: Force recomputation if requested
+    // ========================================================================
+    let recomputedStats: any = null;
+    
+    if (forceRecompute) {
+      console.log(`[debug-team-stats] 🔄 Force recomputing stats for team ${teamId}`);
+      
+      try {
+        // Import computeLastFiveAverages
+        const { computeLastFiveAverages } = await import("../_shared/stats.ts");
+        
+        // Compute fresh stats
+        const freshStats = await computeLastFiveAverages(teamId);
+        
+        // Upsert to stats_cache
+        await supabaseClient.from("stats_cache").upsert({
+          team_id: freshStats.team_id,
+          goals: freshStats.goals,
+          cards: freshStats.cards,
+          offsides: freshStats.offsides,
+          corners: freshStats.corners,
+          fouls: freshStats.fouls,
+          sample_size: freshStats.sample_size,
+          last_five_fixture_ids: freshStats.last_five_fixture_ids,
+          last_final_fixture: freshStats.last_final_fixture,
+          computed_at: new Date().toISOString(),
+          source: 'api-football'
+        });
+        
+        console.log(`[debug-team-stats] ✅ Recomputed and stored stats for team ${teamId}`);
+        console.log(`[debug-team-stats]    New corners: ${freshStats.corners}`);
+        console.log(`[debug-team-stats]    New fouls: ${freshStats.fouls}`);
+        console.log(`[debug-team-stats]    New cards: ${freshStats.cards}`);
+        
+        recomputedStats = freshStats;
+      } catch (error) {
+        console.error(`[debug-team-stats] ❌ Failed to recompute stats:`, error);
+        recomputedStats = { error: String(error) };
+      }
+    }
+
+    // ========================================================================
+    // STEP 7: Return diagnostic report
     // ========================================================================
     return new Response(
       JSON.stringify({
@@ -258,11 +301,13 @@ serve(async (req) => {
         fixtures: fixtureDetails,
         true_averages: trueAverages,
         cached_stats: cachedStats || null,
+        recomputed_stats: recomputedStats,
         comparison: cacheComparison,
         summary: {
           total_fixtures_in_season: allFixtures.length,
           last_5_count: fixtureDetails.length,
           cache_exists: !!cachedStats,
+          recomputed: !!recomputedStats,
           all_metrics_match: cacheComparison
             ? Object.values(cacheComparison).every((c: any) => c.status === 'OK')
             : false,
