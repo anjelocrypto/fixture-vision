@@ -21,6 +21,7 @@ const AdminRequestSchema = z.object({
 
 // Batch size per invocation (tuned to stay under 60s Edge Function timeout)
 // With ~1.25s per team, 25 teams = ~31s (safe margin)
+// Updated 2025-11-22: Added season-aware stats fetching with enhanced debug logging
 const BATCH_SIZE = 25;
 
 // Simple delay helper
