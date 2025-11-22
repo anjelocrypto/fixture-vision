@@ -37,10 +37,14 @@ async function computeWithRetry(teamId: number, retries = 3) {
 }
 
 Deno.serve(async (req) => {
-  const origin = req.headers.get('origin');
+  const origin = req.headers.get('origin') ?? null;
+  
+  // Debug: Log every request
+  console.log(`[stats-refresh] Request: ${req.method}, origin: ${origin || '(none)'}`);
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
+    console.log('[stats-refresh] OPTIONS preflight');
     return handlePreflight(origin, req);
   }
 
