@@ -816,6 +816,22 @@ export type Database = {
           },
         ]
       }
+      pipeline_health_check: {
+        Row: {
+          active_pipeline_cron_jobs: number | null
+          checked_at: string | null
+          coverage_pct: number | null
+          fresh_stats: number | null
+          health_status: string | null
+          last_stats_batch: string | null
+          last_warmup_optimizer: string | null
+          stats_batch_minutes_ago: number | null
+          total_cron_jobs: number | null
+          total_teams: number | null
+          warmup_minutes_ago: number | null
+        }
+        Relationships: []
+      }
       v_best_outcome_prices_prematch: {
         Row: {
           bookmaker: string | null
