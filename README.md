@@ -1,8 +1,22 @@
-# Welcome to your Lovable project
+# TicketAI
+
+Sports betting optimization platform with automated data pipeline.
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/f8241af7-9ba1-484e-bd18-215507503e86
+
+## 🤖 Automated Data Pipeline
+
+This project runs a **fully automated 24/7 data pipeline** that continuously refreshes stats, odds, and optimized selections without manual intervention.
+
+📖 **See [AUTOMATED_PIPELINE.md](./AUTOMATED_PIPELINE.md) for complete documentation**
+
+### Quick Summary
+- ⏰ **Stats refresh:** Every 10 minutes (25 teams per batch)
+- 🔄 **Odds & Optimizer:** Every 30 minutes (120h window)
+- 🎯 **Current coverage:** 100% (921/921 teams fresh)
+- 📊 **No manual clicks required** - Admin buttons available as overrides
 
 ## How can I edit this code?
 
