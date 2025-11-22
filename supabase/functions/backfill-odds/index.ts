@@ -2,6 +2,7 @@
 // backfill-odds: Batch-processed odds refresh for upcoming fixtures
 // ============================================================================
 // Redesigned 2025-11-22: Batch processing to avoid Edge function timeouts
+// Deployment trigger: 2025-11-22 16:24:45 UTC
 //
 // Processes BATCH_SIZE fixtures per invocation (default: 30 fixtures).
 // Selects fixtures with missing or stale odds (>45 min old).
