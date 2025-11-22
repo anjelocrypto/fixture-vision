@@ -1,7 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
+
+// Validation schema for admin request parameters
+const AdminRequestSchema = z.object({
+  window_hours: z.number().int().min(1).max(720).optional(),
+  league_whitelist: z.array(z.number().int().positive()).max(200).optional(),
+});
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -154,17 +161,34 @@ serve(async (req) => {
       return errorResponse("Unauthorized", origin, 401, req);
     }
 
-    let body: RequestBody = {};
+    // Parse and validate request body
+    let windowHours = 120;
+    let leagueWhitelist: number[] | undefined;
+    
     try {
-      if (req.method === "POST") {
-        body = await req.json();
+      const body = await req.json().catch(() => ({}));
+      const parsed = AdminRequestSchema.parse(body);
+      
+      if (parsed.window_hours !== undefined) windowHours = parsed.window_hours;
+      if (parsed.league_whitelist) leagueWhitelist = parsed.league_whitelist;
+    } catch (e: any) {
+      if (e.errors) {
+        // Zod validation error
+        console.error("[team-totals] Invalid request body:", e.errors);
+        return new Response(
+          JSON.stringify({
+            error: "Invalid request body",
+            details: e.errors,
+          }),
+          {
+            status: 422,
+            headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" },
+          }
+        );
       }
-    } catch (e) {
-      console.warn("[team-totals] Failed to parse body:", e);
+      // JSON parse error - use defaults
+      console.warn("[team-totals] Using defaults (invalid JSON)");
     }
-
-    const windowHours = body.window_hours ?? 120;
-    const leagueWhitelist = body.league_whitelist;
 
     console.log(`[team-totals] Starting: window=${windowHours}h`);
 

@@ -8,8 +8,16 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+
+// Validation schema for admin request parameters
+const AdminRequestSchema = z.object({
+  window_hours: z.number().int().min(1).max(720).optional(),
+  stats_ttl_hours: z.number().int().min(1).max(168).optional(),
+  force: z.boolean().optional(),
+});
 
 // Batch size per invocation (tuned to stay under 60s Edge Function timeout)
 // With ~1.25s per team, 25 teams = ~31s (safe margin)
@@ -60,19 +68,37 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Parse request body
+    // Parse and validate request body
     let window_hours = 120;
     let stats_ttl_hours = 24;
     let force = false;
     
     try {
-      const body = await req.json();
-      if (body.window_hours) window_hours = parseInt(body.window_hours);
-      if (body.stats_ttl_hours) stats_ttl_hours = parseInt(body.stats_ttl_hours);
-      if (typeof body.force === 'boolean') force = body.force;
+      const body = await req.json().catch(() => ({}));
+      const parsed = AdminRequestSchema.parse(body);
+      
+      if (parsed.window_hours !== undefined) window_hours = parsed.window_hours;
+      if (parsed.stats_ttl_hours !== undefined) stats_ttl_hours = parsed.stats_ttl_hours;
+      if (parsed.force !== undefined) force = parsed.force;
+      
       console.log(`[stats-refresh] window_hours=${window_hours}, stats_ttl_hours=${stats_ttl_hours}, force=${force}`);
-    } catch (e) {
-      console.log('[stats-refresh] Using defaults');
+    } catch (e: any) {
+      if (e.errors) {
+        // Zod validation error
+        console.error("[stats-refresh] Invalid request body:", e.errors);
+        return new Response(
+          JSON.stringify({
+            error: "Invalid request body",
+            details: e.errors,
+          }),
+          {
+            status: 422,
+            headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" },
+          }
+        );
+      }
+      // JSON parse error - use defaults
+      console.log('[stats-refresh] Using defaults (invalid JSON)');
     }
 
     // Auth check
