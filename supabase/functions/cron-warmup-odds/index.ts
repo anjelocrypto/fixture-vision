@@ -63,23 +63,29 @@ serve(async (req) => {
     const { window_hours = 120 } = await req.json().catch(() => ({ window_hours: 120 }));
     console.log(`[cron-warmup-odds] Warming up odds for next ${window_hours}h`);
 
-    // 5. Call backfill-odds (don't throw on error, capture it)
+    // 5. Call backfill-odds via direct fetch (don't throw on error, capture it)
     console.log('[cron-warmup-odds] Step 1: Calling backfill-odds...');
     let backfillOk = false;
     let backfillData: any = null;
     let backfillError: string | null = null;
 
     try {
-      const backfillResponse = await supabase.functions.invoke('backfill-odds', {
-        body: { window_hours }
+      const backfillUrl = `${supabaseUrl}/functions/v1/backfill-odds`;
+      const backfillResponse = await fetch(backfillUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ window_hours })
       });
 
-      if (backfillResponse.error) {
-        backfillError = `backfill-odds error: ${JSON.stringify(backfillResponse.error)}`;
+      if (!backfillResponse.ok) {
+        backfillError = `backfill-odds failed with status ${backfillResponse.status}`;
         console.error('[cron-warmup-odds]', backfillError);
       } else {
+        backfillData = await backfillResponse.json();
         backfillOk = true;
-        backfillData = backfillResponse.data;
         console.log('[cron-warmup-odds] backfill-odds success:', backfillData);
       }
     } catch (err: any) {
@@ -87,23 +93,29 @@ serve(async (req) => {
       console.error('[cron-warmup-odds]', backfillError);
     }
 
-    // 6. Call optimize-selections-refresh (don't throw on error, capture it)
+    // 6. Call optimize-selections-refresh via direct fetch (don't throw on error, capture it)
     console.log('[cron-warmup-odds] Step 2: Calling optimize-selections-refresh...');
     let optimizeOk = false;
     let optimizeData: any = null;
     let optimizeError: string | null = null;
 
     try {
-      const optimizeResponse = await supabase.functions.invoke('optimize-selections-refresh', {
-        body: { window_hours }
+      const optimizeUrl = `${supabaseUrl}/functions/v1/optimize-selections-refresh`;
+      const optimizeResponse = await fetch(optimizeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ window_hours })
       });
 
-      if (optimizeResponse.error) {
-        optimizeError = `optimize-selections-refresh error: ${JSON.stringify(optimizeResponse.error)}`;
+      if (!optimizeResponse.ok) {
+        optimizeError = `optimize-selections-refresh failed with status ${optimizeResponse.status}`;
         console.error('[cron-warmup-odds]', optimizeError);
       } else {
+        optimizeData = await optimizeResponse.json();
         optimizeOk = true;
-        optimizeData = optimizeResponse.data;
         console.log('[cron-warmup-odds] optimize-selections-refresh success:', optimizeData);
       }
     } catch (err: any) {
