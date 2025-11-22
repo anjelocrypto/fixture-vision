@@ -19,22 +19,35 @@ export type Last5Result = {
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
   console.log(`[stats] Fetching last 5 fixture IDs for team ${teamId}`);
   
-  const url = `${API_BASE}/fixtures?team=${teamId}&last=5&status=FT`;
+  // Determine current season (Nov-June = current year, July-Oct = next year)
+  const now = new Date();
+  const month = now.getMonth(); // 0-11
+  const year = now.getFullYear();
+  const season = (month >= 6) ? year : year - 1; // Season starts in July/August
+  
+  // Fetch finished fixtures for current season, sorted by date descending
+  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&status=FT`;
+  console.log(`[stats] 🔍 API Request: ${url}`);
+  
   const res = await fetch(url, { headers: apiHeaders() });
   
   if (!res.ok) {
-    console.error(`[stats] Failed to fetch fixtures for team ${teamId}: ${res.status}`);
+    console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: ${res.status}`);
     return [];
   }
   
   const json = await res.json();
   const fixtures = json?.response ?? [];
   
-  const ids = fixtures
-    .map((f: any) => Number(f.fixture?.id))
-    .filter(Number.isFinite);
+  // Sort by date descending (most recent first) and take first 5
+  const sorted = fixtures
+    .filter((f: any) => f?.fixture?.id && f?.fixture?.timestamp)
+    .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp)
+    .slice(0, 5);
   
-  console.log(`[stats] Found ${ids.length} finished fixtures for team ${teamId}: [${ids.join(', ')}]`);
+  const ids = sorted.map((f: any) => Number(f.fixture.id)).filter(Number.isFinite);
+  
+  console.log(`[stats] ✅ Found ${ids.length} finished fixtures for team ${teamId} (season ${season}): [${ids.join(', ')}]`);
   return ids;
 }
 
@@ -132,30 +145,40 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
 }
 
 export async function computeLastFiveAverages(teamId: number): Promise<Last5Result> {
-  console.log(`[stats] Computing last 5 averages for team ${teamId}`);
+  console.log(`[stats] 🔍 Computing last 5 averages for team ${teamId}`);
   
   const fixtures = await fetchTeamLast5FixtureIds(teamId);
   const stats: Array<{ goals: number; corners: number; offsides: number; fouls: number; cards: number }> = [];
   const validFixtures: number[] = [];
+  const debugDetails: Array<{fxId: number, goals: number, corners: number, cards: number, fouls: number, offsides: number}> = [];
   
-  // Fetch stats for each fixture, only include those with valid data
+  // Fetch stats for each fixture
   for (const fxId of fixtures) {
     try {
       const s = await fetchFixtureTeamStats(fxId, teamId);
       
-      // Only include matches where we got actual stats (not all zeros due to missing data)
-      // At minimum we should have goals data for a finished match
-      const hasValidData = s.goals !== undefined || s.corners > 0 || s.cards > 0;
+      // DEBUG: Log each match's raw stats
+      console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
+      debugDetails.push({ fxId, ...s });
       
-      if (hasValidData || stats.length < 5) {
-        // Always add to maintain up to 5 matches even if some have zero stats
+      // Only include matches where we got actual meaningful stats
+      // Check if at least one metric is defined (goals should always be defined for FT matches)
+      const hasAnyData = (
+        (typeof s.goals === 'number') ||
+        (typeof s.corners === 'number' && s.corners > 0) ||
+        (typeof s.cards === 'number' && s.cards > 0) ||
+        (typeof s.fouls === 'number' && s.fouls > 0) ||
+        (typeof s.offsides === 'number' && s.offsides > 0)
+      );
+      
+      if (hasAnyData) {
         stats.push(s);
         validFixtures.push(fxId);
       } else {
-        console.warn(`[stats] Fixture ${fxId} has no valid stats, skipping`);
+        console.warn(`[stats] ⚠️ Fixture ${fxId} has no valid stats data, excluding from average`);
       }
     } catch (error) {
-      console.error(`[stats] Error fetching stats for fixture ${fxId}:`, error);
+      console.error(`[stats] ❌ Error fetching stats for fixture ${fxId}:`, error);
     }
   }
   
@@ -178,11 +201,32 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
     source: "api-football",
   };
   
-  console.log(`[stats] Team ${teamId} averages (${n} matches): goals=${result.goals.toFixed(2)}, corners=${result.corners.toFixed(2)}, cards=${result.cards.toFixed(2)}`);
+  // DETAILED DEBUG LOG
+  console.log(`[stats] ✅ Team ${teamId} FINAL AVERAGES (${n} valid matches):`);
+  console.log(`[stats]    Goals: ${result.goals.toFixed(2)} (total: ${sum("goals")})`);
+  console.log(`[stats]    Corners: ${result.corners.toFixed(2)} (total: ${sum("corners")})`);
+  console.log(`[stats]    Cards: ${result.cards.toFixed(2)} (total: ${sum("cards")})`);
+  console.log(`[stats]    Fouls: ${result.fouls.toFixed(2)} (total: ${sum("fouls")})`);
+  console.log(`[stats]    Offsides: ${result.offsides.toFixed(2)} (total: ${sum("offsides")})`);
+  console.log(`[stats]    Fixture IDs: [${validFixtures.join(', ')}]`);
   
-  // Log warning for teams with suspicious low corners (possible data extraction issue)
-  if (result.corners < 3 && n === 5) {
-    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)} from ${n} matches). Check fixture IDs: [${validFixtures.join(', ')}]`);
+  // Log detailed match breakdown
+  console.log(`[stats] 📋 Match-by-match breakdown for team ${teamId}:`);
+  debugDetails.forEach((d) => {
+    console.log(`[stats]    Fixture ${d.fxId}: G=${d.goals}, C=${d.corners}, Cards=${d.cards}, F=${d.fouls}, O=${d.offsides}`);
+  });
+  
+  // Validation warnings
+  if (n < 5) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has only ${n} matches with valid stats (expected 5)`);
+  }
+  
+  if (result.corners < 3 && n >= 3) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)} from ${n} matches)`);
+  }
+  
+  if (result.goals < 0.5 && n >= 3) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low goals average (${result.goals.toFixed(2)} from ${n} matches)`);
   }
   
   return result;
