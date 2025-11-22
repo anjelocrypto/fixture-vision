@@ -1,4 +1,5 @@
 // Shared stats computation utilities
+// Deployment trigger: 2025-11-22 22:50:00 UTC - Fix last-5 stats to use FT fixtures only
 
 import { API_BASE, apiHeaders } from "./api.ts";
 
@@ -17,34 +18,57 @@ export type Last5Result = {
 };
 
 export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
-  console.log(`[stats] Fetching last 5 fixture IDs for team ${teamId}`);
+  console.log(`[stats] 🔍 Fetching last 5 fixture IDs for team ${teamId}`);
   
-  // Determine current season
+  // Use current year as season (Nov 2025 = season 2025-2026)
   const season = new Date().getFullYear();
   
-  // Fetch finished fixtures for current season, sorted by date descending
+  // CRITICAL: Fetch ONLY finished fixtures (status=FT) for current season
   const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&status=FT`;
-  console.log(`[stats] 🔍 API Request: ${url}`);
+  console.log(`[stats] 📡 API-Football Request: ${url}`);
+  console.log(`[stats] 📅 Season: ${season}, Status Filter: FT (Finished matches only)`);
   
   const res = await fetch(url, { headers: apiHeaders() });
   
   if (!res.ok) {
-    console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: ${res.status}`);
+    console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: HTTP ${res.status}`);
     return [];
   }
   
   const json = await res.json();
   const fixtures = json?.response ?? [];
   
+  console.log(`[stats] 📥 API-Football returned ${fixtures.length} FT fixtures for team ${teamId}`);
+  
+  // CRITICAL: Verify all fixtures are actually FT status
+  const validFixtures = fixtures.filter((f: any) => {
+    const status = f?.fixture?.status?.short || f?.fixture?.status;
+    const isFT = status === 'FT';
+    if (!isFT) {
+      console.warn(`[stats] ⚠️ Fixture ${f?.fixture?.id} has status ${status}, not FT - excluding`);
+    }
+    return isFT && f?.fixture?.id && f?.fixture?.timestamp;
+  });
+  
+  console.log(`[stats] ✅ After filtering, ${validFixtures.length} fixtures have FT status`);
+  
   // Sort by date descending (most recent first) and take first 5
-  const sorted = fixtures
-    .filter((f: any) => f?.fixture?.id && f?.fixture?.timestamp)
+  const sorted = validFixtures
     .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp)
     .slice(0, 5);
   
   const ids = sorted.map((f: any) => Number(f.fixture.id)).filter(Number.isFinite);
   
-  console.log(`[stats] ✅ Found ${ids.length} finished fixtures for team ${teamId} (season ${season}): [${ids.join(', ')}]`);
+  console.log(`[stats] ✅ Final last-5 FT fixture IDs for team ${teamId}: [${ids.join(', ')}]`);
+  
+  // Log match details for debugging
+  sorted.forEach((f: any, idx: number) => {
+    const date = new Date(f.fixture.timestamp * 1000).toISOString().split('T')[0];
+    const home = f.teams?.home?.name || '?';
+    const away = f.teams?.away?.name || '?';
+    console.log(`[stats]   ${idx+1}. Fixture ${f.fixture.id} - ${date}: ${home} vs ${away}`);
+  });
+  
   return ids;
 }
 
@@ -159,9 +183,9 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
       debugDetails.push({ fxId, ...s });
       
       // Only include matches where we got actual meaningful stats
-      // Check if at least one metric is defined (goals should always be defined for FT matches)
+      // CRITICAL: At least ONE metric must be > 0 (not just defined as a number)
       const hasAnyData = (
-        (typeof s.goals === 'number') ||
+        (typeof s.goals === 'number' && s.goals > 0) ||
         (typeof s.corners === 'number' && s.corners > 0) ||
         (typeof s.cards === 'number' && s.cards > 0) ||
         (typeof s.fouls === 'number' && s.fouls > 0) ||
@@ -172,7 +196,7 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
         stats.push(s);
         validFixtures.push(fxId);
       } else {
-        console.warn(`[stats] ⚠️ Fixture ${fxId} has no valid stats data, excluding from average`);
+        console.warn(`[stats] ⚠️ Fixture ${fxId} has all-zero stats, excluding from average`);
       }
     } catch (error) {
       console.error(`[stats] ❌ Error fetching stats for fixture ${fxId}:`, error);
@@ -207,7 +231,7 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   console.log(`[stats]    Offsides: ${result.offsides.toFixed(2)} (total: ${sum("offsides")})`);
   console.log(`[stats]    Fixture IDs: [${validFixtures.join(', ')}]`);
   
-  // Log detailed match breakdown
+  // Log detailed match-by-match breakdown
   console.log(`[stats] 📋 Match-by-match breakdown for team ${teamId}:`);
   debugDetails.forEach((d) => {
     console.log(`[stats]    Fixture ${d.fxId}: G=${d.goals}, C=${d.corners}, Cards=${d.cards}, F=${d.fouls}, O=${d.offsides}`);
