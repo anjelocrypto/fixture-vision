@@ -1,5 +1,6 @@
 // Backfill historical fixture_results for last 12 months
-// Deployed: 2025-11-23
+// STRATEGY: Fetch FT fixtures directly from API-Football, not from fixtures table
+// Deployed: 2025-11-23 (v2 - direct API fetch)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
@@ -63,13 +64,12 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check - allow unauthenticated requests since verify_jwt=false and this is admin-only
+    // Auth check
     const cronKeyHeader = req.headers.get("x-cron-key");
     const authHeader = req.headers.get("authorization");
     
     let isAuthorized = false;
 
-    // If no auth headers provided at all, allow (admin UI access)
     if (!cronKeyHeader && !authHeader) {
       isAuthorized = true;
       console.log("[backfill-fixture-results] Authorized via no-auth (admin UI)");
@@ -108,6 +108,7 @@ Deno.serve(async (req: Request) => {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const batchSize = body.batch_size || 50;
     const monthsBack = body.months_back || 12;
+    const leagueId = body.league_id; // Optional: target specific league
 
     const startTime = Date.now();
     const lookbackDate = new Date();
@@ -115,97 +116,155 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[backfill-fixture-results] Starting backfill for last ${monthsBack} months (batch size: ${batchSize})`);
     console.log(`[backfill-fixture-results] Lookback date: ${lookbackDate.toISOString()}`);
-
-    // Find finished fixtures without results
-    const { data: fixtures, error: fixturesError } = await supabase
-      .from("fixtures")
-      .select("id, league_id, timestamp, status")
-      .eq("status", "FT")
-      .gte("date", lookbackDate.toISOString().split("T")[0])
-      .order("timestamp", { ascending: false })
-      .limit(batchSize);
-
-    if (fixturesError) {
-      console.error("[backfill-fixture-results] Error fetching fixtures:", fixturesError);
-      return errorResponse(`Failed to fetch fixtures: ${fixturesError.message}`, origin, 500, req);
+    if (leagueId) {
+      console.log(`[backfill-fixture-results] Targeting league_id: ${leagueId}`);
     }
 
-    console.log(`[backfill-fixture-results] Query returned ${fixtures?.length || 0} FT fixtures from DB`);
+    // STRATEGY: Fetch historical FT fixtures directly from API-Football by season
+    const currentYear = new Date().getFullYear();
+    const seasons = [currentYear, currentYear - 1]; // Current and previous season
+    
+    console.log(`[backfill-fixture-results] Fetching FT fixtures for seasons: ${seasons.join(', ')}`);
 
-    if (!fixtures || fixtures.length === 0) {
-      console.log("[backfill-fixture-results] No fixtures to backfill");
+    // Get leagues with their seasons
+    const { data: leagues, error: leaguesError } = await supabase
+      .from("leagues")
+      .select("id, season");
+    
+    if (leaguesError || !leagues) {
+      return errorResponse(`Failed to fetch leagues: ${leaguesError?.message}`, origin, 500, req);
+    }
+
+    const targetLeagues = leagueId 
+      ? leagues.filter(l => l.id === leagueId)
+      : leagues.slice(0, 30); // Limit to first 30 leagues
+    
+    console.log(`[backfill-fixture-results] Targeting ${targetLeagues.length} leagues`);
+
+    let allApiFixtures: any[] = [];
+    let apiCallCount = 0;
+
+    // Fetch finished fixtures from API for each league/season combo
+    for (const league of targetLeagues) {
+      for (const season of seasons) {
+        try {
+          // Use season-based query which is more reliable
+          const apiUrl = `${API_BASE}/fixtures?league=${league.id}&season=${season}&status=FT&last=50`;
+          console.log(`[backfill-fixture-results] API call ${apiCallCount + 1}: league ${league.id}, season ${season}...`);
+          
+          const res = await fetchWithRetry(apiUrl, apiHeaders());
+          apiCallCount++;
+          
+          if (!res.ok) {
+            console.warn(`[backfill-fixture-results] API error for league ${league.id} season ${season}: ${res.status}`);
+            continue;
+          }
+
+          const json = await res.json();
+          const fixtures = json.response || [];
+          console.log(`[backfill-fixture-results] League ${league.id} season ${season}: got ${fixtures.length} FT fixtures`);
+          
+          if (fixtures.length > 0) {
+            // Filter to last 12 months only
+            const twelveMonthsAgo = lookbackDate.getTime();
+            const recentFixtures = fixtures.filter((f: any) => {
+              const fixtureDate = new Date(f.fixture.date).getTime();
+              return fixtureDate >= twelveMonthsAgo;
+            });
+            
+            console.log(`[backfill-fixture-results] After 12-month filter: ${recentFixtures.length} fixtures`);
+            allApiFixtures.push(...recentFixtures);
+          }
+
+          // Rate limiting: 1300ms between requests = ~46 RPM
+          await new Promise(resolve => setTimeout(resolve, 1300));
+        } catch (err) {
+          console.error(`[backfill-fixture-results] Error fetching league ${league.id} season ${season}:`, err);
+        }
+
+        if (allApiFixtures.length >= batchSize * 3) {
+          console.log(`[backfill-fixture-results] Collected ${allApiFixtures.length} fixtures, stopping API fetch`);
+          break;
+        }
+      }
+      
+      if (allApiFixtures.length >= batchSize * 3) break;
+    }
+
+    console.log(`[backfill-fixture-results] Total fixtures from API: ${allApiFixtures.length} (${apiCallCount} API calls)`);
+
+    if (allApiFixtures.length === 0) {
+      console.log("[backfill-fixture-results] No fixtures found from API");
       return jsonResponse({
         success: true,
         scanned: 0,
         inserted: 0,
         skipped: 0,
-        errors: 0
+        errors: 0,
+        api_calls: apiCallCount
       }, origin, 200, req);
     }
 
-    console.log(`[backfill-fixture-results] Found ${fixtures.length} fixtures to process`);
-
-    // Filter out fixtures already in fixture_results
+    // Check which already have results
+    const apiFixtureIds = allApiFixtures.map(f => f.fixture.id);
     const { data: existingResults } = await supabase
       .from("fixture_results")
       .select("fixture_id")
-      .in("fixture_id", fixtures.map((f: any) => f.id));
+      .in("fixture_id", apiFixtureIds);
 
     const existingIds = new Set(existingResults?.map((r: any) => r.fixture_id) || []);
-    const fixturesNeedingResults = fixtures.filter((f: any) => !existingIds.has(f.id));
+    const fixtures = allApiFixtures.filter(f => !existingIds.has(f.fixture.id)).slice(0, batchSize);
 
-    console.log(`[backfill-fixture-results] Existing results: ${existingIds.size}, Need processing: ${fixturesNeedingResults.length}`);
+    console.log(`[backfill-fixture-results] Already have results: ${existingIds.size}, Need processing: ${fixtures.length}`);
 
-    if (fixturesNeedingResults.length === 0) {
+    if (fixtures.length === 0) {
       return jsonResponse({
         success: true,
-        scanned: fixtures.length,
+        scanned: allApiFixtures.length,
         inserted: 0,
-        skipped: fixtures.length,
-        errors: 0
+        skipped: existingIds.size,
+        errors: 0,
+        api_calls: apiCallCount
       }, origin, 200, req);
     }
 
     const results: FixtureResultRow[] = [];
+    const fixturesForUpsert: any[] = [];
     let inserted = 0;
     let skipped = 0;
     let errors = 0;
 
-    console.log(`[backfill-fixture-results] Processing ${fixturesNeedingResults.length} fixtures...`);
+    console.log(`[backfill-fixture-results] Processing ${fixtures.length} fixtures...`);
 
-    for (const fixture of fixturesNeedingResults) {
+    for (const apiFixture of fixtures) {
       try {
-        console.log(`[backfill-fixture-results] Fetching fixture ${fixture.id}...`);
+        const fixtureId = apiFixture.fixture.id;
+        const leagueId = apiFixture.league.id;
+        const timestamp = apiFixture.fixture.timestamp;
         
-        // Fetch fixture details and statistics
-        const fixtureUrl = `${API_BASE}/fixtures?id=${fixture.id}`;
-        const fixtureRes = await fetchWithRetry(fixtureUrl, apiHeaders());
+        console.log(`[backfill-fixture-results] Processing fixture ${fixtureId}...`);
         
-        if (!fixtureRes.ok) {
-          console.warn(`[backfill-fixture-results] API error for fixture ${fixture.id}: ${fixtureRes.status}`);
-          errors++;
-          continue;
-        }
-
-        const fixtureJson = await fixtureRes.json();
-        const apiFixture = fixtureJson.response?.[0];
+        // Upsert into fixtures table
+        fixturesForUpsert.push({
+          id: fixtureId,
+          league_id: leagueId,
+          date: new Date(timestamp * 1000).toISOString().split('T')[0],
+          timestamp: timestamp,
+          teams_home: apiFixture.teams.home,
+          teams_away: apiFixture.teams.away,
+          status: apiFixture.fixture.status.short,
+        });
         
-        if (!apiFixture || !apiFixture.score) {
-          console.warn(`[backfill-fixture-results] Incomplete data for fixture ${fixture.id}`);
-          skipped++;
-          continue;
-        }
-
         const goalsHome = apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0;
         const goalsAway = apiFixture.goals?.away ?? apiFixture.score?.fulltime?.away ?? 0;
         
-        // Fetch statistics separately
+        // Fetch detailed statistics
         let cornersHome: number | null = null;
         let cornersAway: number | null = null;
         let cardsHome: number | null = null;
         let cardsAway: number | null = null;
 
-        const statsData = await fetchFixtureStatistics(fixture.id);
+        const statsData = await fetchFixtureStatistics(fixtureId);
         
         if (statsData && Array.isArray(statsData) && statsData.length === 2) {
           const homeStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.home?.id);
@@ -235,9 +294,9 @@ Deno.serve(async (req: Request) => {
         }
 
         const result: FixtureResultRow = {
-          fixture_id: fixture.id,
-          league_id: fixture.league_id,
-          kickoff_at: new Date(fixture.timestamp * 1000).toISOString(),
+          fixture_id: fixtureId,
+          league_id: leagueId,
+          kickoff_at: new Date(timestamp * 1000).toISOString(),
           finished_at: new Date().toISOString(),
           goals_home: goalsHome,
           goals_away: goalsAway,
@@ -245,35 +304,49 @@ Deno.serve(async (req: Request) => {
           corners_away: cornersAway ?? undefined,
           cards_home: cardsHome ?? undefined,
           cards_away: cardsAway ?? undefined,
-          status: apiFixture.fixture?.status?.short || "FT",
+          status: apiFixture.fixture.status.short,
           source: "api-football",
           fetched_at: new Date().toISOString(),
         };
 
         results.push(result);
-        console.log(`[backfill-fixture-results] ✓ Fixture ${fixture.id}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}`);
+        console.log(`[backfill-fixture-results] ✓ Fixture ${fixtureId}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}`);
 
-        // Rate limiting: 1200ms between requests = ~50 RPM
+        // Rate limiting: 1200ms between fixture stats requests
         await new Promise(resolve => setTimeout(resolve, 1200));
       } catch (err) {
-        console.error(`[backfill-fixture-results] Error processing fixture ${fixture.id}:`, err);
+        console.error(`[backfill-fixture-results] Error processing fixture:`, err);
         errors++;
       }
     }
 
-    // Batch upsert results
+    // Upsert fixtures first
+    if (fixturesForUpsert.length > 0) {
+      console.log(`[backfill-fixture-results] Upserting ${fixturesForUpsert.length} fixtures...`);
+      const { error: fixturesUpsertError } = await supabase
+        .from("fixtures")
+        .upsert(fixturesForUpsert, { onConflict: "id" });
+
+      if (fixturesUpsertError) {
+        console.error("[backfill-fixture-results] Fixtures upsert error:", fixturesUpsertError);
+      } else {
+        console.log(`[backfill-fixture-results] ✓ Upserted ${fixturesForUpsert.length} fixtures`);
+      }
+    }
+
+    // Upsert results
     if (results.length > 0) {
       const { error: upsertError } = await supabase
         .from("fixture_results")
         .upsert(results, { onConflict: "fixture_id" });
 
       if (upsertError) {
-        console.error("[backfill-fixture-results] Upsert error:", upsertError);
+        console.error("[backfill-fixture-results] Results upsert error:", upsertError);
         return errorResponse(`Failed to upsert results: ${upsertError.message}`, origin, 500, req);
       }
 
       inserted = results.length;
-      console.log(`[backfill-fixture-results] Successfully upserted ${inserted} results`);
+      console.log(`[backfill-fixture-results] ✓ Upserted ${inserted} results`);
     }
 
     const duration = Date.now() - startTime;
@@ -283,27 +356,27 @@ Deno.serve(async (req: Request) => {
       run_type: "backfill-fixture-results",
       window_start: lookbackDate.toISOString(),
       window_end: new Date().toISOString(),
-      scanned: fixtures.length,
+      scanned: allApiFixtures.length,
       upserted: inserted,
       skipped,
       failed: errors,
       duration_ms: duration,
       started_at: new Date(startTime).toISOString(),
       finished_at: new Date().toISOString(),
-      notes: `batch_size=${batchSize}, months_back=${monthsBack}`,
+      notes: `batch_size=${batchSize}, months_back=${monthsBack}, api_calls=${apiCallCount}`,
     });
 
     return jsonResponse({
       success: true,
-      scanned: fixtures.length,
-      needed_results: fixturesNeedingResults.length,
+      scanned: allApiFixtures.length,
+      needed_results: fixtures.length,
       inserted,
       skipped,
       errors,
       duration_ms: duration,
+      api_calls: apiCallCount,
       batch_size: batchSize,
       months_back: monthsBack,
-      remaining_estimate: existingIds.size > 0 ? `~${Math.ceil((fixtures.length - existingIds.size) / batchSize)} more batches` : "Unknown"
     }, origin, 200, req);
 
   } catch (error) {
