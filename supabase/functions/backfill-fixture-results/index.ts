@@ -16,6 +16,10 @@ interface FixtureResultRow {
   corners_away?: number;
   cards_home?: number;
   cards_away?: number;
+  fouls_home?: number;
+  fouls_away?: number;
+  offsides_home?: number;
+  offsides_away?: number;
   status: string;
   source: string;
   fetched_at: string;
@@ -263,6 +267,10 @@ Deno.serve(async (req: Request) => {
         let cornersAway: number | null = null;
         let cardsHome: number | null = null;
         let cardsAway: number | null = null;
+        let foulsHome: number | null = null;
+        let foulsAway: number | null = null;
+        let offsidesHome: number | null = null;
+        let offsidesAway: number | null = null;
 
         const statsData = await fetchFixtureStatistics(fixtureId);
         
@@ -279,6 +287,9 @@ Deno.serve(async (req: Request) => {
             const yellowCards = homeStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
             const redCards = homeStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
             cardsHome = yellowCards + redCards;
+            
+            foulsHome = homeStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
+            offsidesHome = homeStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
           }
           
           if (awayStats?.statistics) {
@@ -290,6 +301,9 @@ Deno.serve(async (req: Request) => {
             const yellowCards = awayStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
             const redCards = awayStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
             cardsAway = yellowCards + redCards;
+            
+            foulsAway = awayStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
+            offsidesAway = awayStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
           }
         }
 
@@ -304,13 +318,17 @@ Deno.serve(async (req: Request) => {
           corners_away: cornersAway ?? undefined,
           cards_home: cardsHome ?? undefined,
           cards_away: cardsAway ?? undefined,
+          fouls_home: foulsHome ?? undefined,
+          fouls_away: foulsAway ?? undefined,
+          offsides_home: offsidesHome ?? undefined,
+          offsides_away: offsidesAway ?? undefined,
           status: apiFixture.fixture.status.short,
           source: "api-football",
           fetched_at: new Date().toISOString(),
         };
 
         results.push(result);
-        console.log(`[backfill-fixture-results] ✓ Fixture ${fixtureId}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}`);
+        console.log(`[backfill-fixture-results] ✓ Fixture ${fixtureId}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}, fouls=${foulsHome ?? 'null'}-${foulsAway ?? 'null'}, offsides=${offsidesHome ?? 'null'}-${offsidesAway ?? 'null'}`);
 
         // Rate limiting: 1200ms between fixture stats requests
         await new Promise(resolve => setTimeout(resolve, 1200));
