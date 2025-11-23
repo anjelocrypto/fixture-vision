@@ -104,10 +104,14 @@ export type Database = {
           fetched_at: string
           finished_at: string
           fixture_id: number
+          fouls_away: number | null
+          fouls_home: number | null
           goals_away: number
           goals_home: number
           kickoff_at: string
           league_id: number
+          offsides_away: number | null
+          offsides_home: number | null
           source: string
           status: string
         }
@@ -119,10 +123,14 @@ export type Database = {
           fetched_at?: string
           finished_at?: string
           fixture_id: number
+          fouls_away?: number | null
+          fouls_home?: number | null
           goals_away: number
           goals_home: number
           kickoff_at: string
           league_id: number
+          offsides_away?: number | null
+          offsides_home?: number | null
           source?: string
           status?: string
         }
@@ -134,10 +142,14 @@ export type Database = {
           fetched_at?: string
           finished_at?: string
           fixture_id?: number
+          fouls_away?: number | null
+          fouls_home?: number | null
           goals_away?: number
           goals_home?: number
           kickoff_at?: string
           league_id?: number
+          offsides_away?: number | null
+          offsides_home?: number | null
           source?: string
           status?: string
         }
