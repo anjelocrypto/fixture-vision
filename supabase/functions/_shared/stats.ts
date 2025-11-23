@@ -1,17 +1,17 @@
 // Shared stats computation utilities
-// Deployment trigger: 2025-11-23 01:00:00 UTC - Verified all metrics correct (goals, corners, fouls, offsides, cards)
+// Deployment trigger: 2025-11-23 14:00:00 UTC - Added cup coverage filtering
 //
 // API-FOOTBALL ENDPOINT REFERENCE (v3):
 // =====================================
 // 1. Last 5 finished fixtures:
-//    GET /fixtures?team={TEAM_ID}&season=2025&status=FT&last=5
+//    GET /fixtures?team={TEAM_ID}&season=2025&status=FT&last=20
 //    - season=2025 for 2025-2026 season (use year of season start)
 //    - status=FT ensures only finished matches (not NS/upcoming)
-//    - last=5 returns most recent 5 matches (API sorts internally)
+//    - last=20 returns most recent 20 matches (we'll filter to best 5)
 //
-// 2. Fixture details (for goals):
+// 2. Fixture details (for goals + league_id):
 //    GET /fixtures?id={FIXTURE_ID}
-//    - Returns: fixture.goals.home, fixture.goals.away (or fixture.score.fulltime)
+//    - Returns: fixture.goals.home, fixture.goals.away, fixture.league.id
 //
 // 3. Per-fixture statistics:
 //    GET /fixtures/statistics?fixture={FIXTURE_ID}
@@ -23,10 +23,11 @@
 //      * Offsides: "Offsides"
 //      * Yellow Cards: "Yellow Cards"
 //      * Red Cards: "Red Cards"
-//    - NOTE: API sometimes returns NO statistics for certain fixtures/teams
-//      We handle this by excluding fixtures where all non-goal metrics are 0
+//    - NOTE: Some competitions (e.g., youth cups, EFL Trophy) have NO statistics
+//      We use league_stats_coverage table to skip broken competitions per metric
 
 import { API_BASE, apiHeaders } from "./api.ts";
+import { loadLeagueCoverage, shouldSkipFixtureForMetric } from "./league_coverage.ts";
 
 export type Last5Result = {
   team_id: number;
@@ -42,18 +43,17 @@ export type Last5Result = {
   source?: string;
 };
 
-export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]> {
-  console.log(`[stats] 🔍 Fetching last 5 fixture IDs for team ${teamId}`);
+// Fetch last 20 FT fixtures for a team (we'll filter to best 5 later based on coverage)
+export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{id: number, league_id: number}>> {
+  console.log(`[stats] 🔍 Fetching last 20 fixture IDs for team ${teamId}`);
   
   // Use current year as season (Nov 2025 = season 2025-2026)
   const season = new Date().getFullYear();
   
-  // CRITICAL: Use API-Football's "last" parameter for efficiency
-  // API docs: fixtures?team={id}&season={season}&last=5&status=FT
-  // This returns the last 5 finished fixtures directly, no need to fetch all and sort
-  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&last=5&status=FT`;
+  // Fetch last 20 to have a pool to select from (excluding broken cups)
+  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&last=20&status=FT`;
   console.log(`[stats] 📡 API-Football Request: ${url}`);
-  console.log(`[stats] 📅 Season: ${season}, Last: 5, Status Filter: FT`);
+  console.log(`[stats] 📅 Season: ${season}, Last: 20, Status Filter: FT`);
   
   const res = await fetch(url, { headers: apiHeaders() });
   
@@ -67,36 +67,25 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   
   console.log(`[stats] 📥 API-Football returned ${fixtures.length} fixtures for team ${teamId}`);
   
-  // CRITICAL: Double-verify all fixtures are actually FT status (API should already filter)
-  const validFixtures = fixtures.filter((f: any) => {
-    const status = f?.fixture?.status?.short || f?.fixture?.status;
-    const isFT = status === 'FT';
-    if (!isFT) {
-      console.warn(`[stats] ⚠️ Fixture ${f?.fixture?.id} has status ${status}, not FT - excluding`);
-    }
-    return isFT && f?.fixture?.id && f?.fixture?.timestamp;
-  });
+  // Extract fixture IDs and league IDs
+  const validFixtures = fixtures
+    .filter((f: any) => {
+      const status = f?.fixture?.status?.short || f?.fixture?.status;
+      const isFT = status === 'FT';
+      if (!isFT) {
+        console.warn(`[stats] ⚠️ Fixture ${f?.fixture?.id} has status ${status}, not FT - excluding`);
+      }
+      return isFT && f?.fixture?.id && f?.fixture?.timestamp && f?.league?.id;
+    })
+    .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp)
+    .map((f: any) => ({
+      id: Number(f.fixture.id),
+      league_id: Number(f.league.id),
+    }));
   
-  console.log(`[stats] ✅ After filtering, ${validFixtures.length} fixtures have FT status`);
+  console.log(`[stats] ✅ Found ${validFixtures.length} valid FT fixtures for team ${teamId}`);
   
-  // Sort by date descending (most recent first) - should already be sorted by API
-  const sorted = validFixtures
-    .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp);
-  
-  const ids = sorted.map((f: any) => Number(f.fixture.id)).filter(Number.isFinite);
-  
-  console.log(`[stats] ✅ Final last-5 FT fixture IDs for team ${teamId}: [${ids.join(', ')}]`);
-  
-  // Log match details for debugging
-  sorted.forEach((f: any, idx: number) => {
-    const date = new Date(f.fixture.timestamp * 1000).toISOString().split('T')[0];
-    const home = f.teams?.home?.name || '?';
-    const away = f.teams?.away?.name || '?';
-    const status = f.fixture?.status?.short || '?';
-    console.log(`[stats]   ${idx+1}. Fixture ${f.fixture.id} - ${date} [${status}]: ${home} vs ${away}`);
-  });
-  
-  return ids;
+  return validFixtures;
 }
 
 // Extract one team's statistics from a finished fixture
@@ -201,16 +190,23 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   return { goals, corners, offsides, fouls, cards };
 }
 
-export async function computeLastFiveAverages(teamId: number): Promise<Last5Result> {
+export async function computeLastFiveAverages(teamId: number, supabase?: any): Promise<Last5Result> {
   console.log(`[stats] 🔍 Computing last 5 averages for team ${teamId}`);
   
-  const fixtures = await fetchTeamLast5FixtureIds(teamId);
+  // Load league coverage data (cached)
+  const coverageMap = supabase ? await loadLeagueCoverage(supabase) : new Map();
+  console.log(`[stats] 📊 Loaded coverage data for ${coverageMap.size} leagues`);
   
-  // NEW LOGIC: Per-metric averaging
-  // Each metric is averaged only over fixtures where that metric is present (not null)
-  // This allows us to use partial data from leagues where some metrics are missing
+  // Fetch last 20 fixtures (with league IDs)
+  const allFixtures = await fetchTeamLast20FixtureIds(teamId);
+  
+  // NEW LOGIC: Per-metric averaging with cup coverage filtering
+  // Each metric is averaged only over fixtures where:
+  // 1. That metric is present (not null)
+  // 2. The fixture's league is not marked as skip_<metric> in coverage table
   type FixtureStats = { 
-    fxId: number; 
+    fxId: number;
+    leagueId: number;
     goals: number; 
     corners: number | null; 
     cards: number | null; 
@@ -221,17 +217,41 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   const fixturesStats: FixtureStats[] = [];
   
   // Fetch stats for each fixture
-  for (const fxId of fixtures) {
+  for (const fx of allFixtures) {
     try {
-      const s = await fetchFixtureTeamStats(fxId, teamId);
+      const s = await fetchFixtureTeamStats(fx.id, teamId);
       
-      // DEBUG: Log each match's raw stats
-      console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
+      // Check if this league should be skipped for any metrics
+      const skipGoals = shouldSkipFixtureForMetric(fx.league_id, 'goals', coverageMap);
+      const skipCorners = shouldSkipFixtureForMetric(fx.league_id, 'corners', coverageMap);
+      const skipCards = shouldSkipFixtureForMetric(fx.league_id, 'cards', coverageMap);
+      const skipFouls = shouldSkipFixtureForMetric(fx.league_id, 'fouls', coverageMap);
+      const skipOffsides = shouldSkipFixtureForMetric(fx.league_id, 'offsides', coverageMap);
       
-      // Include ALL fixtures in the array, even if some metrics are null
-      fixturesStats.push({ fxId, ...s });
+      if (skipGoals || skipCorners || skipCards || skipFouls || skipOffsides) {
+        console.log(`[stats] 🚫 League ${fx.league_id} skip flags: goals=${skipGoals}, corners=${skipCorners}, cards=${skipCards}, fouls=${skipFouls}, offsides=${skipOffsides}`);
+      }
+      
+      // Apply coverage filtering: set metric to null if league should be skipped
+      const filteredStats = {
+        fxId: fx.id,
+        leagueId: fx.league_id,
+        goals: skipGoals ? 0 : s.goals, // Goals rarely skipped, but handle it
+        corners: skipCorners ? null : s.corners,
+        cards: skipCards ? null : s.cards,
+        fouls: skipFouls ? null : s.fouls,
+        offsides: skipOffsides ? null : s.offsides,
+      };
+      
+      console.log(`[stats] 📊 Fixture ${fx.id} (league ${fx.league_id}): goals=${filteredStats.goals}, corners=${filteredStats.corners}, cards=${filteredStats.cards}, fouls=${filteredStats.fouls}, offsides=${filteredStats.offsides}`);
+      
+      fixturesStats.push(filteredStats);
+      
+      // Stop once we have 5 fixtures with at least goals data
+      if (fixturesStats.length >= 5) break;
+      
     } catch (error) {
-      console.error(`[stats] ❌ Error fetching stats for fixture ${fxId}:`, error);
+      console.error(`[stats] ❌ Error fetching stats for fixture ${fx.id}:`, error);
     }
   }
   
@@ -267,8 +287,8 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
     fouls: avgFouls,
     offsides: avgOffsides,
     sample_size: fixturesStats.length, // total fixtures used (for goals)
-    last_five_fixture_ids: fixtures,   // all fixture IDs from API
-    last_final_fixture: fixtures[0] ?? null,
+    last_five_fixture_ids: fixturesStats.map(f => f.fxId),   // all fixture IDs used
+    last_final_fixture: fixturesStats[0]?.fxId ?? null,
     computed_at: new Date().toISOString(),
     source: "api-football",
   };
@@ -280,12 +300,12 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   console.log(`[stats]    Cards: ${result.cards.toFixed(2)} (${cardsValues.length} fixtures with data)`);
   console.log(`[stats]    Fouls: ${result.fouls.toFixed(2)} (${foulsValues.length} fixtures with data)`);
   console.log(`[stats]    Offsides: ${result.offsides.toFixed(2)} (${offsidesValues.length} fixtures with data)`);
-  console.log(`[stats]    Fixture IDs: [${fixtures.join(', ')}]`);
+  console.log(`[stats]    Fixture IDs: [${fixturesStats.map(f => f.fxId).join(', ')}]`);
   
   // Log detailed match-by-match breakdown
   console.log(`[stats] 📋 Match-by-match breakdown for team ${teamId}:`);
   fixturesStats.forEach((d) => {
-    console.log(`[stats]    Fixture ${d.fxId}: G=${d.goals}, C=${d.corners ?? 'null'}, Cards=${d.cards ?? 'null'}, F=${d.fouls ?? 'null'}, O=${d.offsides ?? 'null'}`);
+    console.log(`[stats]    Fixture ${d.fxId} (league ${d.leagueId}): G=${d.goals}, C=${d.corners ?? 'null'}, Cards=${d.cards ?? 'null'}, F=${d.fouls ?? 'null'}, O=${d.offsides ?? 'null'}`);
   });
   
   // Validation warnings

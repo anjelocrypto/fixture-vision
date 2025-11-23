@@ -228,6 +228,81 @@ export type Database = {
         }
         Relationships: []
       }
+      league_stats_coverage: {
+        Row: {
+          cards_coverage_pct: number | null
+          corners_coverage_pct: number | null
+          country: string | null
+          created_at: string | null
+          fixtures_with_cards: number
+          fixtures_with_corners: number
+          fixtures_with_fouls: number
+          fixtures_with_goals: number
+          fixtures_with_offsides: number
+          fouls_coverage_pct: number | null
+          goals_coverage_pct: number | null
+          is_cup: boolean
+          last_checked_at: string | null
+          league_id: number
+          league_name: string
+          offsides_coverage_pct: number | null
+          skip_cards: boolean | null
+          skip_corners: boolean | null
+          skip_fouls: boolean | null
+          skip_goals: boolean | null
+          skip_offsides: boolean | null
+          total_fixtures: number
+        }
+        Insert: {
+          cards_coverage_pct?: number | null
+          corners_coverage_pct?: number | null
+          country?: string | null
+          created_at?: string | null
+          fixtures_with_cards?: number
+          fixtures_with_corners?: number
+          fixtures_with_fouls?: number
+          fixtures_with_goals?: number
+          fixtures_with_offsides?: number
+          fouls_coverage_pct?: number | null
+          goals_coverage_pct?: number | null
+          is_cup?: boolean
+          last_checked_at?: string | null
+          league_id: number
+          league_name: string
+          offsides_coverage_pct?: number | null
+          skip_cards?: boolean | null
+          skip_corners?: boolean | null
+          skip_fouls?: boolean | null
+          skip_goals?: boolean | null
+          skip_offsides?: boolean | null
+          total_fixtures?: number
+        }
+        Update: {
+          cards_coverage_pct?: number | null
+          corners_coverage_pct?: number | null
+          country?: string | null
+          created_at?: string | null
+          fixtures_with_cards?: number
+          fixtures_with_corners?: number
+          fixtures_with_fouls?: number
+          fixtures_with_goals?: number
+          fixtures_with_offsides?: number
+          fouls_coverage_pct?: number | null
+          goals_coverage_pct?: number | null
+          is_cup?: boolean
+          last_checked_at?: string | null
+          league_id?: number
+          league_name?: string
+          offsides_coverage_pct?: number | null
+          skip_cards?: boolean | null
+          skip_corners?: boolean | null
+          skip_fouls?: boolean | null
+          skip_goals?: boolean | null
+          skip_offsides?: boolean | null
+          total_fixtures?: number
+        }
+        Relationships: []
+      }
       leagues: {
         Row: {
           country_id: number | null
@@ -901,6 +976,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_problematic_cups: {
+        Row: {
+          cards_coverage_pct: number | null
+          corners_coverage_pct: number | null
+          country: string | null
+          fouls_coverage_pct: number | null
+          goals_coverage_pct: number | null
+          last_checked_at: string | null
+          league_id: number | null
+          league_name: string | null
+          offsides_coverage_pct: number | null
+          skip_cards: boolean | null
+          skip_corners: boolean | null
+          skip_fouls: boolean | null
+          skip_goals: boolean | null
+          skip_offsides: boolean | null
+          total_fixtures: number | null
+        }
+        Insert: {
+          cards_coverage_pct?: number | null
+          corners_coverage_pct?: number | null
+          country?: string | null
+          fouls_coverage_pct?: number | null
+          goals_coverage_pct?: number | null
+          last_checked_at?: string | null
+          league_id?: number | null
+          league_name?: string | null
+          offsides_coverage_pct?: number | null
+          skip_cards?: boolean | null
+          skip_corners?: boolean | null
+          skip_fouls?: boolean | null
+          skip_goals?: boolean | null
+          skip_offsides?: boolean | null
+          total_fixtures?: number | null
+        }
+        Update: {
+          cards_coverage_pct?: number | null
+          corners_coverage_pct?: number | null
+          country?: string | null
+          fouls_coverage_pct?: number | null
+          goals_coverage_pct?: number | null
+          last_checked_at?: string | null
+          league_id?: number | null
+          league_name?: string | null
+          offsides_coverage_pct?: number | null
+          skip_cards?: boolean | null
+          skip_corners?: boolean | null
+          skip_fouls?: boolean | null
+          skip_goals?: boolean | null
+          skip_offsides?: boolean | null
+          total_fixtures?: number | null
+        }
+        Relationships: []
       }
       v_selections_prematch: {
         Row: {
