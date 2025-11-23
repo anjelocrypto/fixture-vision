@@ -248,10 +248,76 @@ serve(async (req) => {
     // Note: Direct pg_cron access may not be available, return empty array
     const cronJobs: { jobname: string; schedule: string; active: boolean }[] = [];
 
+    // 8. Fixtures with Complete Last-5 Stats (next 48h)
+    const { data: fixturesForStats } = await supabaseService
+      .from("fixtures")
+      .select("id, teams_home, teams_away")
+      .gte("timestamp", nowEpoch)
+      .lte("timestamp", in48h)
+      .in("status", ["NS", "TBD"]);
+    
+    let fixturesWithCompleteStats = 0;
+    const totalFixturesForStats = fixturesForStats?.length || 0;
+    
+    if (fixturesForStats && fixturesForStats.length > 0) {
+      // Get all team IDs from these fixtures
+      const allTeamIds = new Set<number>();
+      fixturesForStats.forEach(f => {
+        const homeId = f.teams_home?.id;
+        const awayId = f.teams_away?.id;
+        if (homeId) allTeamIds.add(Number(homeId));
+        if (awayId) allTeamIds.add(Number(awayId));
+      });
+      
+      // Get stats for all teams
+      const { data: allTeamStats } = await supabaseService
+        .from("stats_cache")
+        .select("team_id, sample_size, last_five_fixture_ids")
+        .in("team_id", Array.from(allTeamIds));
+      
+      // Create a map for quick lookup
+      const statsMap = new Map(
+        (allTeamStats || []).map(s => [s.team_id, s])
+      );
+      
+      // Count fixtures where both teams have complete stats
+      fixturesWithCompleteStats = fixturesForStats.filter(f => {
+        const homeId = Number(f.teams_home?.id);
+        const awayId = Number(f.teams_away?.id);
+        
+        const homeStats = statsMap.get(homeId);
+        const awayStats = statsMap.get(awayId);
+        
+        const homeComplete = homeStats && 
+          homeStats.sample_size >= 5 && 
+          homeStats.last_five_fixture_ids && 
+          homeStats.last_five_fixture_ids.length >= 5;
+          
+        const awayComplete = awayStats && 
+          awayStats.sample_size >= 5 && 
+          awayStats.last_five_fixture_ids && 
+          awayStats.last_five_fixture_ids.length >= 5;
+        
+        return homeComplete && awayComplete;
+      }).length;
+    }
+    
+    const completeStatsPct = totalFixturesForStats > 0 
+      ? (fixturesWithCompleteStats / totalFixturesForStats) * 100 
+      : 0;
+    
+    const fixturesWithLast5Stats = {
+      total_fixtures: totalFixturesForStats,
+      fixtures_with_complete_stats: fixturesWithCompleteStats,
+      fixtures_missing_stats: totalFixturesForStats - fixturesWithCompleteStats,
+      complete_stats_pct: Math.round(completeStatsPct * 100) / 100,
+    };
+
     const response = {
       fixturesCoverage,
       statsUpcomingTeams,
       selectionsCoverage,
+      fixturesWithLast5Stats,
       lastStatsRefresh,
       fixturesDetail: {
         total_finished: fixturesCoverage.total_finished,

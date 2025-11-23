@@ -30,6 +30,12 @@ type AdminHealthResponse = {
     fixtures_without_selections_48h: number;
     selection_coverage_pct_48h: number;
   };
+  fixturesWithLast5Stats: {
+    total_fixtures: number;
+    fixtures_with_complete_stats: number;
+    fixtures_missing_stats: number;
+    complete_stats_pct: number;
+  };
   lastStatsRefresh: {
     started_at: string | null;
     duration_ms: number | null;
@@ -200,6 +206,18 @@ const AdminHealth = () => {
     return "bg-red-500/10 border-red-500/20";
   };
 
+  const getLast5StatsCoverageColor = (pct: number) => {
+    if (pct >= 80) return "text-green-500";
+    if (pct >= 60) return "text-yellow-500";
+    return "text-red-500";
+  };
+
+  const getLast5StatsCoverageBg = (pct: number) => {
+    if (pct >= 80) return "bg-green-500/10 border-green-500/20";
+    if (pct >= 60) return "bg-yellow-500/10 border-yellow-500/20";
+    return "bg-red-500/10 border-red-500/20";
+  };
+
   const getStatsRefreshStatus = () => {
     if (!data.lastStatsRefresh.started_at) return { variant: "secondary" as const, text: "No data" };
     if ((data.lastStatsRefresh.failed || 0) > 0) return { variant: "destructive" as const, text: "Failed" };
@@ -223,7 +241,7 @@ const AdminHealth = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <Card className={getFixtureCoverageBg(data.fixturesCoverage.coverage_pct)}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Fixture Results Coverage</CardTitle>
@@ -238,6 +256,24 @@ const AdminHealth = () => {
             </p>
             <p className="text-xs text-destructive mt-1">
               {data.fixturesCoverage.missing.toLocaleString()} missing
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className={getLast5StatsCoverageBg(data.fixturesWithLast5Stats.complete_stats_pct)}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Complete Last-5 Stats (48h)</CardTitle>
+            <Activity className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${getLast5StatsCoverageColor(data.fixturesWithLast5Stats.complete_stats_pct)}`}>
+              {data.fixturesWithLast5Stats.complete_stats_pct.toFixed(1)}%
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {data.fixturesWithLast5Stats.fixtures_with_complete_stats} / {data.fixturesWithLast5Stats.total_fixtures} fixtures
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Both teams have 5+ games
             </p>
           </CardContent>
         </Card>
