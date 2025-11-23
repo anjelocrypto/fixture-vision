@@ -74,3 +74,12 @@ verify_jwt = false
 
 [functions.debug-team-stats]
 verify_jwt = false
+
+[functions.analyze-cup-coverage]
+verify_jwt = false
+
+[functions.debug-league-coverage]
+verify_jwt = false
+
+[functions.cup-coverage-report]
+verify_jwt = false
