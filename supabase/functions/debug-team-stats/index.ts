@@ -43,10 +43,13 @@ serve(async (req) => {
     // ========================================================================
     // STEP 1: Determine current season
     // ========================================================================
+    // Football seasons start in August (month 7):
+    // - Aug-Dec of year Y: season Y
+    // - Jan-Jul of year Y: season Y-1
     const now = new Date();
     const month = now.getMonth(); // 0-11
     const year = now.getFullYear();
-    const season = (month >= 6) ? year : year - 1;
+    const season = (month >= 7) ? year : year - 1;
     
     console.log(`[debug-team-stats] Current season: ${season} (month: ${month}, year: ${year})`);
 
@@ -261,8 +264,8 @@ serve(async (req) => {
         // Import computeLastFiveAverages
         const { computeLastFiveAverages } = await import("../_shared/stats.ts");
         
-        // Compute fresh stats
-        const freshStats = await computeLastFiveAverages(teamId);
+        // Compute fresh stats - CRITICAL: pass supabase client for league coverage
+        const freshStats = await computeLastFiveAverages(teamId, supabaseClient);
         
         // Upsert to stats_cache
         await supabaseClient.from("stats_cache").upsert({
