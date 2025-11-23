@@ -49,9 +49,9 @@ export function CenterRail({
   onAnalyze,
 }: CenterRailProps) {
   const { t, i18n } = useTranslation(['fixtures']);
-  // Show only upcoming 8 days: today + next 7 days
+  // Show only upcoming 8 days: today + next 7 days (UTC-normalized to prevent timezone bugs)
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0); // P0 FIX: Use UTC midnight to prevent off-by-one-day bugs
   const dates = Array.from({ length: 8 }, (_, i) => addDays(today, i));
 
   return (
