@@ -1,5 +1,30 @@
 // Shared stats computation utilities
-// Deployment trigger: 2025-11-23 00:15:00 UTC - Optimize API-Football usage with last parameter
+// Deployment trigger: 2025-11-23 01:00:00 UTC - Verified all metrics correct (goals, corners, fouls, offsides, cards)
+//
+// API-FOOTBALL ENDPOINT REFERENCE (v3):
+// =====================================
+// 1. Last 5 finished fixtures:
+//    GET /fixtures?team={TEAM_ID}&season=2025&status=FT&last=5
+//    - season=2025 for 2025-2026 season (use year of season start)
+//    - status=FT ensures only finished matches (not NS/upcoming)
+//    - last=5 returns most recent 5 matches (API sorts internally)
+//
+// 2. Fixture details (for goals):
+//    GET /fixtures?id={FIXTURE_ID}
+//    - Returns: fixture.goals.home, fixture.goals.away (or fixture.score.fulltime)
+//
+// 3. Per-fixture statistics:
+//    GET /fixtures/statistics?fixture={FIXTURE_ID}
+//    - Returns array with one entry per team
+//    - Each entry has statistics array with type/value pairs
+//    - Stat type strings (case-insensitive matching):
+//      * Corners: "Corner Kicks" OR "Corners"
+//      * Fouls: "Fouls"
+//      * Offsides: "Offsides"
+//      * Yellow Cards: "Yellow Cards"
+//      * Red Cards: "Red Cards"
+//    - NOTE: API sometimes returns NO statistics for certain fixtures/teams
+//      We handle this by excluding fixtures where all non-goal metrics are 0
 
 import { API_BASE, apiHeaders } from "./api.ts";
 
@@ -135,6 +160,7 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const statsArr = teamStats?.statistics ?? [];
   
   // Helper: find numeric value by type (supports multiple type names)
+  // Handles number, string ("10", "10%"), and missing values
   const val = (...types: string[]) => {
     for (const type of types) {
       const row = statsArr.find((s: any) => 
@@ -154,13 +180,14 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
     return 0;
   };
   
-  // Try multiple variations of stat names (API-FOOTBALL may use different names)
-  const corners = val("Corner Kicks", "Corners");
-  const offsides = val("Offsides");
-  const fouls = val("Fouls");
-  const yellow = val("Yellow Cards");
-  const red = val("Red Cards");
-  const cards = yellow + red;
+  // Extract all metrics using official API-Football stat type names
+  // Note: API-Football uses different type strings in different leagues/competitions
+  const corners = val("Corner Kicks", "Corners");        // Both variants seen in API
+  const offsides = val("Offsides");                      // Standard
+  const fouls = val("Fouls");                            // Standard
+  const yellow = val("Yellow Cards");                    // Standard
+  const red = val("Red Cards");                          // Standard
+  const cards = yellow + red;                            // Total cards
   
   console.log(`[stats] Team ${teamId} fixture ${fixtureId}: goals=${goals}, corners=${corners}, cards=${cards}, fouls=${fouls}, offsides=${offsides}`);
   
@@ -184,17 +211,22 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
       console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
       debugDetails.push({ fxId, ...s });
       
-      // CRITICAL FIX: Only include matches with MEANINGFUL statistics
-      // A fixture must have at least ONE non-zero metric to be considered valid
-      // This handles two cases:
-      // 1. All-zero fixtures (API returned data but everything is 0)
-      // 2. Missing statistics (API returned NO data for this team in this fixture)
+      // CRITICAL VALIDATION: Only include matches with MEANINGFUL statistics
+      // API-Football sometimes returns NO statistics for certain fixtures/teams
+      // A fixture is valid if ANY metric is non-zero (goals, corners, cards, fouls, offsides)
+      // 
+      // This validation prevents two types of bad data:
+      // 1. All-zero fixtures where API returned structure but no actual stats
+      // 2. Missing statistics where API returned NO data for this team in this fixture
+      //
+      // Real 0-0 draws will still have non-zero values for corners/fouls/cards/offsides
+      // If ALL metrics are 0, it means the API has no statistics, not that nothing happened
       const hasRealStats = (
-        (typeof s.goals === 'number' && s.goals > 0) ||
-        (typeof s.corners === 'number' && s.corners > 0) ||
-        (typeof s.cards === 'number' && s.cards > 0) ||
-        (typeof s.fouls === 'number' && s.fouls > 0) ||
-        (typeof s.offsides === 'number' && s.offsides > 0)
+        s.goals > 0 ||
+        s.corners > 0 ||
+        s.cards > 0 ||
+        s.fouls > 0 ||
+        s.offsides > 0
       );
       
       if (hasRealStats) {
