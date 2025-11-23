@@ -211,18 +211,18 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
       console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
       debugDetails.push({ fxId, ...s });
       
-      // CRITICAL VALIDATION: Only include matches with MEANINGFUL statistics
-      // API-Football sometimes returns NO statistics for certain fixtures/teams
-      // A fixture is valid if ANY metric is non-zero (goals, corners, cards, fouls, offsides)
+      // CRITICAL VALIDATION: Only include matches with MEANINGFUL NON-GOAL statistics
+      // API-Football sometimes returns NO statistics from /fixtures/statistics endpoint
+      // Goals come from /fixtures endpoint and are always present, but corners/cards/fouls/offsides
+      // come from /fixtures/statistics and may be missing for certain leagues/fixtures
       // 
-      // This validation prevents two types of bad data:
-      // 1. All-zero fixtures where API returned structure but no actual stats
-      // 2. Missing statistics where API returned NO data for this team in this fixture
+      // A fixture is valid ONLY if it has at least ONE non-goal statistic
+      // This ensures we only average fixtures where the statistics endpoint returned real data
       //
-      // Real 0-0 draws will still have non-zero values for corners/fouls/cards/offsides
-      // If ALL metrics are 0, it means the API has no statistics, not that nothing happened
+      // Example: Lech Poznan fixture 1380510 has goals=1 but corners=0, cards=0, fouls=0, offsides=0
+      // This means API has NO statistics data for this match, only the goals from fixture endpoint
+      // We must EXCLUDE such fixtures from corners/cards/fouls/offsides averaging
       const hasRealStats = (
-        s.goals > 0 ||
         s.corners > 0 ||
         s.cards > 0 ||
         s.fouls > 0 ||
