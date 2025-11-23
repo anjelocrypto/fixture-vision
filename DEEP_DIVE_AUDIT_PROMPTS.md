@@ -288,6 +288,80 @@ Show if there is any explicit mapping or documentation in code (comments or READ
 
 ---
 
+---
+
+## 11. Database Backups, Migration Safety & Disaster Recovery
+
+### Prompt 11.1 - Backup Strategy
+```
+Show how backups are handled for the TicketAI database. Do we rely purely on Supabase automated backups, or is there any additional backup/export configured? What is the retention period and how would we restore to a previous point in time?
+```
+
+### Prompt 11.2 - Migration Safety
+```
+List the last 10 migrations related to TicketAI and show which of them are destructive (DROP/ALTER dropping columns or tables). For each destructive migration, describe how we would roll back if something went wrong in production.
+```
+
+### Prompt 11.3 - Disaster Playbook
+```
+If the TicketAI database or Supabase project became corrupted or accidentally dropped, what is the exact recovery process using Supabase/Lovable tools? Please outline a step-by-step plan (including restoring backups, re-deploying edge functions, and reconnecting the frontend).
+```
+
+### Prompt 11.4 - Single Points of Failure
+```
+Identify any single points of failure in the current TicketAI architecture (for example: dependence on a single Supabase region, Stripe/webhook availability, API-Football outages). For each, suggest how we could mitigate or at least detect failures quickly.
+```
+
+---
+
+## 12. Analytics, Usage & Product Understanding
+
+### Prompt 12.1 - Usage Analytics
+```
+Search the repo for any analytics integrations (e.g., Google Analytics, PostHog, custom events). If there are any, list what we track (page views, feature usage, conversions). If there are none, confirm that we currently have no behavioral analytics for TicketAI.
+```
+
+### Prompt 12.2 - Feature Usage Distribution
+```
+Using the database, estimate how many distinct users have used each premium feature (bet_optimizer, filterizer, winner, team_totals, ticket_creator, gemini_analysis) in the last 30 days. Output a small table with counts per feature.
+```
+
+### Prompt 12.3 - Trial Funnel
+```
+Using user_trial_credits and user_entitlements, compute:
+- How many users have used at least 1 trial credit
+- How many of those later purchased any plan
+- Average number of trial uses before purchase
+
+Return these numbers so we understand our trial → paid conversion.
+```
+
+---
+
+## 13. External Plans, Quotas & Cost Risk
+
+### Prompt 13.1 - API-Football Plan & Quotas
+```
+Document the current API-Football plan we are on (from env/notes if available): request limits per day/minute. Then estimate how many calls per day our current cron + backfill setup generates in worst case, and whether we are close to any limits.
+```
+
+### Prompt 13.2 - Stripe Live vs Test Safety
+```
+Show all places where Stripe keys and price IDs are used and confirm which ones are LIVE vs TEST. Verify that production uses only live keys and IDs, and that there is no way for a test key to be accidentally used in production.
+```
+
+### Prompt 13.3 - AI Cost Surface
+```
+List all AI/Lovable calls that incur variable cost (per-token or per-request). For each, estimate worst-case daily usage based on current code (e.g., if 100 active users all hit analyze-fixture 10 times). Highlight any endpoints that could accidentally generate large bills if abused.
+```
+
+### Prompt 13.4 - Abuse Scenarios
+```
+Based on our current access control and lack/presence of rate limiting, list concrete abuse scenarios (e.g., a single user spamming analyze-fixture) and suggest guardrails we should add (rate limiting, max requests per day, etc.).
+```
+
+---
+
 ## Next Steps After Audit
 
 Based on findings, create:
@@ -296,3 +370,6 @@ Based on findings, create:
 3. **UX_POLISH.md** - Error states, loading states, empty states
 4. **CODE_CLEANUP.md** - Dead code removal, TODO resolution
 5. **MONITORING_SETUP.md** - Alerting and observability improvements
+6. **DISASTER_RECOVERY.md** - Backup verification, migration rollback procedures
+7. **ANALYTICS_SETUP.md** - Usage tracking, conversion funnels, feature adoption
+8. **COST_CONTROLS.md** - Rate limiting, quota monitoring, abuse prevention
