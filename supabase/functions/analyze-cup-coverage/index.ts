@@ -58,10 +58,18 @@ Deno.serve(async (req) => {
       // Step 3: Check coverage per metric by sampling fixture_results
       const fixtureIds = fixtures.map(f => f.id);
       
+      console.log(`[analyze-cup-coverage] Querying fixture_results for ${fixtureIds.length} fixture IDs...`);
+      
       const { data: results_data, error: resultsError } = await supabase
         .from("fixture_results")
         .select("fixture_id, goals_home, goals_away, corners_home, corners_away, cards_home, cards_away, fouls, offsides")
         .in("fixture_id", fixtureIds);
+
+      if (resultsError) {
+        console.error(`[analyze-cup-coverage] Error fetching fixture_results for league ${league.id}:`, resultsError);
+      }
+
+      console.log(`[analyze-cup-coverage] Got ${results_data?.length || 0} results from fixture_results`);
 
       // Count coverage per metric
       let fixturesWithGoals = 0;
@@ -70,7 +78,7 @@ Deno.serve(async (req) => {
       let fixturesWithFouls = 0;
       let fixturesWithOffsides = 0;
 
-      if (results_data) {
+      if (results_data && results_data.length > 0) {
         for (const result of results_data) {
           // Goals: if both home and away are present (not null)
           if (result.goals_home !== null && result.goals_away !== null) {
@@ -97,6 +105,10 @@ Deno.serve(async (req) => {
             fixturesWithOffsides++;
           }
         }
+        
+        console.log(`[analyze-cup-coverage] League ${league.id} coverage: goals=${fixturesWithGoals}, corners=${fixturesWithCorners}, cards=${fixturesWithCards}, fouls=${fixturesWithFouls}, offsides=${fixturesWithOffsides}`);
+      } else {
+        console.log(`[analyze-cup-coverage] ⚠️ No fixture_results data found for league ${league.id}`);
       }
 
       // Determine if this is a cup (heuristic: name contains "cup", "trophy", "fa ", "efl", etc.)
