@@ -1,5 +1,5 @@
 // Shared stats computation utilities
-// Deployment trigger: 2025-11-22 22:50:00 UTC - Fix last-5 stats to use FT fixtures only
+// Deployment trigger: 2025-11-23 00:15:00 UTC - Optimize API-Football usage with last parameter
 
 import { API_BASE, apiHeaders } from "./api.ts";
 
@@ -23,10 +23,12 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   // Use current year as season (Nov 2025 = season 2025-2026)
   const season = new Date().getFullYear();
   
-  // CRITICAL: Fetch ONLY finished fixtures (status=FT) for current season
-  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&status=FT`;
+  // CRITICAL: Use API-Football's "last" parameter for efficiency
+  // API docs: fixtures?team={id}&season={season}&last=5&status=FT
+  // This returns the last 5 finished fixtures directly, no need to fetch all and sort
+  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&last=5&status=FT`;
   console.log(`[stats] 📡 API-Football Request: ${url}`);
-  console.log(`[stats] 📅 Season: ${season}, Status Filter: FT (Finished matches only)`);
+  console.log(`[stats] 📅 Season: ${season}, Last: 5, Status Filter: FT`);
   
   const res = await fetch(url, { headers: apiHeaders() });
   
@@ -38,9 +40,9 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   const json = await res.json();
   const fixtures = json?.response ?? [];
   
-  console.log(`[stats] 📥 API-Football returned ${fixtures.length} FT fixtures for team ${teamId}`);
+  console.log(`[stats] 📥 API-Football returned ${fixtures.length} fixtures for team ${teamId}`);
   
-  // CRITICAL: Verify all fixtures are actually FT status
+  // CRITICAL: Double-verify all fixtures are actually FT status (API should already filter)
   const validFixtures = fixtures.filter((f: any) => {
     const status = f?.fixture?.status?.short || f?.fixture?.status;
     const isFT = status === 'FT';
@@ -52,10 +54,9 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
   
   console.log(`[stats] ✅ After filtering, ${validFixtures.length} fixtures have FT status`);
   
-  // Sort by date descending (most recent first) and take first 5
+  // Sort by date descending (most recent first) - should already be sorted by API
   const sorted = validFixtures
-    .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp)
-    .slice(0, 5);
+    .sort((a: any, b: any) => b.fixture.timestamp - a.fixture.timestamp);
   
   const ids = sorted.map((f: any) => Number(f.fixture.id)).filter(Number.isFinite);
   
@@ -66,7 +67,8 @@ export async function fetchTeamLast5FixtureIds(teamId: number): Promise<number[]
     const date = new Date(f.fixture.timestamp * 1000).toISOString().split('T')[0];
     const home = f.teams?.home?.name || '?';
     const away = f.teams?.away?.name || '?';
-    console.log(`[stats]   ${idx+1}. Fixture ${f.fixture.id} - ${date}: ${home} vs ${away}`);
+    const status = f.fixture?.status?.short || '?';
+    console.log(`[stats]   ${idx+1}. Fixture ${f.fixture.id} - ${date} [${status}]: ${home} vs ${away}`);
   });
   
   return ids;
@@ -182,9 +184,12 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
       console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
       debugDetails.push({ fxId, ...s });
       
-      // Only include matches where we got actual meaningful stats
-      // CRITICAL: At least ONE metric must be > 0 (not just defined as a number)
-      const hasAnyData = (
+      // CRITICAL FIX: Only include matches with MEANINGFUL statistics
+      // A fixture must have at least ONE non-zero metric to be considered valid
+      // This handles two cases:
+      // 1. All-zero fixtures (API returned data but everything is 0)
+      // 2. Missing statistics (API returned NO data for this team in this fixture)
+      const hasRealStats = (
         (typeof s.goals === 'number' && s.goals > 0) ||
         (typeof s.corners === 'number' && s.corners > 0) ||
         (typeof s.cards === 'number' && s.cards > 0) ||
@@ -192,11 +197,13 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
         (typeof s.offsides === 'number' && s.offsides > 0)
       );
       
-      if (hasAnyData) {
+      if (hasRealStats) {
         stats.push(s);
         validFixtures.push(fxId);
       } else {
-        console.warn(`[stats] ⚠️ Fixture ${fxId} has all-zero stats, excluding from average`);
+        // This is expected for some fixtures where API-Football doesn't have statistics
+        console.warn(`[stats] ⚠️ Fixture ${fxId} has no meaningful stats (API-Football data unavailable), excluding from average`);
+        console.warn(`[stats] ⚠️   Raw stats: G=${s.goals} C=${s.corners} Cards=${s.cards} F=${s.fouls} O=${s.offsides}`);
       }
     } catch (error) {
       console.error(`[stats] ❌ Error fetching stats for fixture ${fxId}:`, error);
