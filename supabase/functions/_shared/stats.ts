@@ -160,24 +160,27 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const statsArr = teamStats?.statistics ?? [];
   
   // Helper: find numeric value by type (supports multiple type names)
-  // Handles number, string ("10", "10%"), and missing values
-  const val = (...types: string[]) => {
+  // CRITICAL: Returns null for missing stats to distinguish from real zeros
+  // This allows per-metric averaging (only over fixtures with that metric present)
+  const val = (...types: string[]): number | null => {
     for (const type of types) {
       const row = statsArr.find((s: any) => 
         (s?.type || "").toLowerCase() === type.toLowerCase()
       );
-      if (row) {
-        const v = row.value;
-        if (typeof v === "number") return v;
-        if (typeof v === "string") {
-          // Handle cases like "10%" or "10"
-          const num = parseFloat(String(v).replace(/[^0-9.]/g, ""));
-          if (!isNaN(num)) return num;
-        }
-        if (v === null || v === undefined) continue;
+      if (!row) continue; // stat type not found in API response
+      
+      const v = row.value;
+      if (v === null || v === undefined) return null; // API returned explicit null
+      
+      if (typeof v === "number") return v; // includes 0
+      if (typeof v === "string") {
+        // Handle cases like "10%" or "10"
+        const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+        if (!isNaN(num)) return num; // includes 0
       }
+      return null; // can't parse value
     }
-    return 0;
+    return null; // stat type not found in any row
   };
   
   // Extract all metrics using official API-Football stat type names
@@ -187,7 +190,11 @@ async function fetchFixtureTeamStats(fixtureId: number, teamId: number) {
   const fouls = val("Fouls");                            // Standard
   const yellow = val("Yellow Cards");                    // Standard
   const red = val("Red Cards");                          // Standard
-  const cards = yellow + red;                            // Total cards
+  
+  // Cards: sum yellow+red, but only if at least one is present
+  const cards = (yellow !== null || red !== null) 
+    ? (yellow ?? 0) + (red ?? 0) 
+    : null;
   
   console.log(`[stats] Team ${teamId} fixture ${fixtureId}: goals=${goals}, corners=${corners}, cards=${cards}, fouls=${fouls}, offsides=${offsides}`);
   
@@ -198,9 +205,20 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
   console.log(`[stats] 🔍 Computing last 5 averages for team ${teamId}`);
   
   const fixtures = await fetchTeamLast5FixtureIds(teamId);
-  const stats: Array<{ goals: number; corners: number; offsides: number; fouls: number; cards: number }> = [];
-  const validFixtures: number[] = [];
-  const debugDetails: Array<{fxId: number, goals: number, corners: number, cards: number, fouls: number, offsides: number}> = [];
+  
+  // NEW LOGIC: Per-metric averaging
+  // Each metric is averaged only over fixtures where that metric is present (not null)
+  // This allows us to use partial data from leagues where some metrics are missing
+  type FixtureStats = { 
+    fxId: number; 
+    goals: number; 
+    corners: number | null; 
+    cards: number | null; 
+    fouls: number | null; 
+    offsides: number | null;
+  };
+  
+  const fixturesStats: FixtureStats[] = [];
   
   // Fetch stats for each fixture
   for (const fxId of fixtures) {
@@ -209,84 +227,78 @@ export async function computeLastFiveAverages(teamId: number): Promise<Last5Resu
       
       // DEBUG: Log each match's raw stats
       console.log(`[stats] 📊 Fixture ${fxId}: goals=${s.goals}, corners=${s.corners}, cards=${s.cards}, fouls=${s.fouls}, offsides=${s.offsides}`);
-      debugDetails.push({ fxId, ...s });
       
-      // CRITICAL VALIDATION: Only include matches with MEANINGFUL NON-GOAL statistics
-      // API-Football sometimes returns NO statistics from /fixtures/statistics endpoint
-      // Goals come from /fixtures endpoint and are always present, but corners/cards/fouls/offsides
-      // come from /fixtures/statistics and may be missing for certain leagues/fixtures
-      // 
-      // A fixture is valid ONLY if it has at least ONE non-goal statistic
-      // This ensures we only average fixtures where the statistics endpoint returned real data
-      //
-      // Example: Lech Poznan fixture 1380510 has goals=1 but corners=0, cards=0, fouls=0, offsides=0
-      // This means API has NO statistics data for this match, only the goals from fixture endpoint
-      // We must EXCLUDE such fixtures from corners/cards/fouls/offsides averaging
-      const hasRealStats = (
-        s.corners > 0 ||
-        s.cards > 0 ||
-        s.fouls > 0 ||
-        s.offsides > 0
-      );
-      
-      if (hasRealStats) {
-        stats.push(s);
-        validFixtures.push(fxId);
-      } else {
-        // This is expected for some fixtures where API-Football doesn't have statistics
-        console.warn(`[stats] ⚠️ Fixture ${fxId} has no meaningful stats (API-Football data unavailable), excluding from average`);
-        console.warn(`[stats] ⚠️   Raw stats: G=${s.goals} C=${s.corners} Cards=${s.cards} F=${s.fouls} O=${s.offsides}`);
-      }
+      // Include ALL fixtures in the array, even if some metrics are null
+      fixturesStats.push({ fxId, ...s });
     } catch (error) {
       console.error(`[stats] ❌ Error fetching stats for fixture ${fxId}:`, error);
     }
   }
   
-  const n = stats.length || 0;
-  const sum = (k: 'goals' | 'corners' | 'cards' | 'fouls' | 'offsides') => 
-    stats.reduce((a: number, s) => a + (Number(s[k]) || 0), 0);
-  const avg = (x: number) => (n ? x / n : 0);
+  // Per-metric filtering: only include non-null values in each average
+  const goalsValues = fixturesStats.map(s => s.goals); // always present
+  const cornersValues = fixturesStats.map(s => s.corners).filter((v): v is number => v !== null);
+  const cardsValues = fixturesStats.map(s => s.cards).filter((v): v is number => v !== null);
+  const foulsValues = fixturesStats.map(s => s.fouls).filter((v): v is number => v !== null);
+  const offsidesValues = fixturesStats.map(s => s.offsides).filter((v): v is number => v !== null);
+  
+  // Compute averages (0 if no data points)
+  const avgGoals = goalsValues.length 
+    ? goalsValues.reduce((a, b) => a + b, 0) / goalsValues.length 
+    : 0;
+  const avgCorners = cornersValues.length 
+    ? cornersValues.reduce((a, b) => a + b, 0) / cornersValues.length 
+    : 0;
+  const avgCards = cardsValues.length 
+    ? cardsValues.reduce((a, b) => a + b, 0) / cardsValues.length 
+    : 0;
+  const avgFouls = foulsValues.length 
+    ? foulsValues.reduce((a, b) => a + b, 0) / foulsValues.length 
+    : 0;
+  const avgOffsides = offsidesValues.length 
+    ? offsidesValues.reduce((a, b) => a + b, 0) / offsidesValues.length 
+    : 0;
   
   const result = {
     team_id: teamId,
-    goals: avg(sum("goals")),
-    corners: avg(sum("corners")),
-    cards: avg(sum("cards")),
-    fouls: avg(sum("fouls")),
-    offsides: avg(sum("offsides")),
-    sample_size: n,
-    last_five_fixture_ids: validFixtures,
-    last_final_fixture: validFixtures[0] ?? null,
+    goals: avgGoals,
+    corners: avgCorners,
+    cards: avgCards,
+    fouls: avgFouls,
+    offsides: avgOffsides,
+    sample_size: fixturesStats.length, // total fixtures used (for goals)
+    last_five_fixture_ids: fixtures,   // all fixture IDs from API
+    last_final_fixture: fixtures[0] ?? null,
     computed_at: new Date().toISOString(),
     source: "api-football",
   };
   
   // DETAILED DEBUG LOG
-  console.log(`[stats] ✅ Team ${teamId} FINAL AVERAGES (${n} valid matches):`);
-  console.log(`[stats]    Goals: ${result.goals.toFixed(2)} (total: ${sum("goals")})`);
-  console.log(`[stats]    Corners: ${result.corners.toFixed(2)} (total: ${sum("corners")})`);
-  console.log(`[stats]    Cards: ${result.cards.toFixed(2)} (total: ${sum("cards")})`);
-  console.log(`[stats]    Fouls: ${result.fouls.toFixed(2)} (total: ${sum("fouls")})`);
-  console.log(`[stats]    Offsides: ${result.offsides.toFixed(2)} (total: ${sum("offsides")})`);
-  console.log(`[stats]    Fixture IDs: [${validFixtures.join(', ')}]`);
+  console.log(`[stats] ✅ Team ${teamId} FINAL AVERAGES (${fixturesStats.length} fixtures):`);
+  console.log(`[stats]    Goals: ${result.goals.toFixed(2)} (${goalsValues.length} fixtures with data)`);
+  console.log(`[stats]    Corners: ${result.corners.toFixed(2)} (${cornersValues.length} fixtures with data)`);
+  console.log(`[stats]    Cards: ${result.cards.toFixed(2)} (${cardsValues.length} fixtures with data)`);
+  console.log(`[stats]    Fouls: ${result.fouls.toFixed(2)} (${foulsValues.length} fixtures with data)`);
+  console.log(`[stats]    Offsides: ${result.offsides.toFixed(2)} (${offsidesValues.length} fixtures with data)`);
+  console.log(`[stats]    Fixture IDs: [${fixtures.join(', ')}]`);
   
   // Log detailed match-by-match breakdown
   console.log(`[stats] 📋 Match-by-match breakdown for team ${teamId}:`);
-  debugDetails.forEach((d) => {
-    console.log(`[stats]    Fixture ${d.fxId}: G=${d.goals}, C=${d.corners}, Cards=${d.cards}, F=${d.fouls}, O=${d.offsides}`);
+  fixturesStats.forEach((d) => {
+    console.log(`[stats]    Fixture ${d.fxId}: G=${d.goals}, C=${d.corners ?? 'null'}, Cards=${d.cards ?? 'null'}, F=${d.fouls ?? 'null'}, O=${d.offsides ?? 'null'}`);
   });
   
   // Validation warnings
-  if (n < 5) {
-    console.warn(`[stats] ⚠️ Team ${teamId} has only ${n} matches with valid stats (expected 5)`);
+  if (fixturesStats.length < 5) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has only ${fixturesStats.length} matches (expected 5)`);
   }
   
-  if (result.corners < 3 && n >= 3) {
-    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low corners average (${result.corners.toFixed(2)} from ${n} matches)`);
+  if (cornersValues.length < 3 && fixturesStats.length >= 3) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has limited corners data: ${cornersValues.length}/${fixturesStats.length} fixtures`);
   }
   
-  if (result.goals < 0.5 && n >= 3) {
-    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low goals average (${result.goals.toFixed(2)} from ${n} matches)`);
+  if (result.goals < 0.5 && goalsValues.length >= 3) {
+    console.warn(`[stats] ⚠️ Team ${teamId} has unusually low goals average (${result.goals.toFixed(2)} from ${goalsValues.length} matches)`);
   }
   
   return result;
