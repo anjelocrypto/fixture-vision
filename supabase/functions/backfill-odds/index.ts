@@ -51,7 +51,7 @@ serve(async (req) => {
 
     // Daily budget guard: count today's API calls
     const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setUTCHours(0, 0, 0, 0); // P0 FIX: Use UTC midnight for consistent daily budget tracking
     const { count: todayCallCount } = await supabaseClient
       .from("optimizer_run_logs")
       .select("*", { count: "exact", head: true })

@@ -51,8 +51,8 @@ export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{
   // Nov 2024 (month 10) = 2024-2025 season (API calls this "2024")
   // July 2024 (month 6) = 2023-2024 season (API calls this "2023")
   const now = new Date();
-  const month = now.getMonth(); // 0-11
-  const year = now.getFullYear();
+  const month = now.getUTCMonth(); // P1 FIX: Use UTC month for stable season calculation
+  const year = now.getUTCFullYear(); // P1 FIX: Use UTC year to prevent timezone-dependent season drift
   const season = (month >= 7) ? year : year - 1;
   
   // Fetch last 20 to have a pool to select from (excluding broken cups)
