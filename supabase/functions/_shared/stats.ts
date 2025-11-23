@@ -47,8 +47,13 @@ export type Last5Result = {
 export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{id: number, league_id: number}>> {
   console.log(`[stats] 🔍 Fetching last 20 fixture IDs for team ${teamId}`);
   
-  // Use current year as season (Nov 2025 = season 2025-2026)
-  const season = new Date().getFullYear();
+  // Football seasons start in August (month 7)
+  // Nov 2024 (month 10) = 2024-2025 season (API calls this "2024")
+  // July 2024 (month 6) = 2023-2024 season (API calls this "2023")
+  const now = new Date();
+  const month = now.getMonth(); // 0-11
+  const year = now.getFullYear();
+  const season = (month >= 7) ? year : year - 1;
   
   // Fetch last 20 to have a pool to select from (excluding broken cups)
   const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&last=20&status=FT`;
