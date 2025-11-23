@@ -243,44 +243,84 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
     try {
       const s = await fetchFixtureTeamStats(fx.id, teamId);
       
+      const corners = s.corners;
+      const cards = s.cards;
+      const fouls = s.fouls;
+      const offsides = s.offsides;
+
+      // Detect "fake-zero" pattern: all non-goal stats are 0 or null
+      const allNonGoalZeroOrNull =
+        (corners === null || corners === 0) &&
+        (cards === null || cards === 0) &&
+        (fouls === null || fouls === 0) &&
+        (offsides === null || offsides === 0);
+
+      const cornersFakeZero = corners === 0 && allNonGoalZeroOrNull;
+      const cardsFakeZero = cards === 0 && allNonGoalZeroOrNull;
+      const foulsFakeZero = fouls === 0 && allNonGoalZeroOrNull;
+      const offsidesFakeZero = offsides === 0 && allNonGoalZeroOrNull;
+
       // Check league coverage skip flags
-      const skipGoals = shouldSkipFixtureForMetric(fx.league_id, 'goals', coverageMap);
       const skipCorners = shouldSkipFixtureForMetric(fx.league_id, 'corners', coverageMap);
       const skipCards = shouldSkipFixtureForMetric(fx.league_id, 'cards', coverageMap);
       const skipFouls = shouldSkipFixtureForMetric(fx.league_id, 'fouls', coverageMap);
       const skipOffsides = shouldSkipFixtureForMetric(fx.league_id, 'offsides', coverageMap);
       
-      // Goals: always take the first 5 FT fixtures (no coverage skip for goals)
-      if (!skipGoals && usedGoals.length < 5) {
+      // Goals: always take the first 5 FT fixtures (no coverage skip, no fake-zero check)
+      if (usedGoals.length < 5) {
         usedGoals.push({ fxId: fx.id, leagueId: fx.league_id, value: s.goals });
       }
       
-      // Corners: skip if coverage says so OR if value is null
-      if (!skipCorners && s.corners !== null && usedCorners.length < 5) {
-        usedCorners.push({ fxId: fx.id, leagueId: fx.league_id, value: s.corners });
-      } else if ((skipCorners || s.corners === null) && usedCorners.length < 5) {
-        console.log(`[stats] 🚫 Skipping fixture ${fx.id} for corners (league ${fx.league_id}) – ${skipCorners ? 'coverage skip' : 'null value'}`);
+      // Corners: skip if coverage says so, value is null, OR fake-zero pattern
+      if (!skipCorners && corners !== null && !cornersFakeZero && usedCorners.length < 5) {
+        usedCorners.push({ fxId: fx.id, leagueId: fx.league_id, value: corners });
+      } else if (usedCorners.length < 5) {
+        if (skipCorners) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for corners (league ${fx.league_id}) – coverage skip`);
+        } else if (corners === null) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for corners (league ${fx.league_id}) – null value`);
+        } else if (cornersFakeZero) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for corners (league ${fx.league_id}) – fake-zero pattern`);
+        }
       }
       
-      // Cards: skip if coverage says so OR if value is null
-      if (!skipCards && s.cards !== null && usedCards.length < 5) {
-        usedCards.push({ fxId: fx.id, leagueId: fx.league_id, value: s.cards });
-      } else if ((skipCards || s.cards === null) && usedCards.length < 5) {
-        console.log(`[stats] 🚫 Skipping fixture ${fx.id} for cards (league ${fx.league_id}) – ${skipCards ? 'coverage skip' : 'null value'}`);
+      // Cards: skip if coverage says so, value is null, OR fake-zero pattern
+      if (!skipCards && cards !== null && !cardsFakeZero && usedCards.length < 5) {
+        usedCards.push({ fxId: fx.id, leagueId: fx.league_id, value: cards });
+      } else if (usedCards.length < 5) {
+        if (skipCards) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for cards (league ${fx.league_id}) – coverage skip`);
+        } else if (cards === null) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for cards (league ${fx.league_id}) – null value`);
+        } else if (cardsFakeZero) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for cards (league ${fx.league_id}) – fake-zero pattern`);
+        }
       }
       
-      // Fouls: skip if coverage says so OR if value is null
-      if (!skipFouls && s.fouls !== null && usedFouls.length < 5) {
-        usedFouls.push({ fxId: fx.id, leagueId: fx.league_id, value: s.fouls });
-      } else if ((skipFouls || s.fouls === null) && usedFouls.length < 5) {
-        console.log(`[stats] 🚫 Skipping fixture ${fx.id} for fouls (league ${fx.league_id}) – ${skipFouls ? 'coverage skip' : 'null value'}`);
+      // Fouls: skip if coverage says so, value is null, OR fake-zero pattern
+      if (!skipFouls && fouls !== null && !foulsFakeZero && usedFouls.length < 5) {
+        usedFouls.push({ fxId: fx.id, leagueId: fx.league_id, value: fouls });
+      } else if (usedFouls.length < 5) {
+        if (skipFouls) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for fouls (league ${fx.league_id}) – coverage skip`);
+        } else if (fouls === null) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for fouls (league ${fx.league_id}) – null value`);
+        } else if (foulsFakeZero) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for fouls (league ${fx.league_id}) – fake-zero pattern`);
+        }
       }
       
-      // Offsides: skip if coverage says so OR if value is null
-      if (!skipOffsides && s.offsides !== null && usedOffsides.length < 5) {
-        usedOffsides.push({ fxId: fx.id, leagueId: fx.league_id, value: s.offsides });
-      } else if ((skipOffsides || s.offsides === null) && usedOffsides.length < 5) {
-        console.log(`[stats] 🚫 Skipping fixture ${fx.id} for offsides (league ${fx.league_id}) – ${skipOffsides ? 'coverage skip' : 'null value'}`);
+      // Offsides: skip if coverage says so, value is null, OR fake-zero pattern
+      if (!skipOffsides && offsides !== null && !offsidesFakeZero && usedOffsides.length < 5) {
+        usedOffsides.push({ fxId: fx.id, leagueId: fx.league_id, value: offsides });
+      } else if (usedOffsides.length < 5) {
+        if (skipOffsides) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for offsides (league ${fx.league_id}) – coverage skip`);
+        } else if (offsides === null) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for offsides (league ${fx.league_id}) – null value`);
+        } else if (offsidesFakeZero) {
+          console.log(`[stats] 🚫 Skipping fixture ${fx.id} for offsides (league ${fx.league_id}) – fake-zero pattern`);
+        }
       }
       
     } catch (error) {
