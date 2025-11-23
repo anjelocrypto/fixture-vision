@@ -179,6 +179,10 @@ serve(async (req) => {
     }
     
     // Stage counters (computed via lightweight count queries)
+    // NOTE: is_live is reserved for future live markets feature.
+    // For now, we only serve pre-match rows (is_live = false) in the UI.
+    // Backend: optimized_selections table contains is_live column.
+    // Frontend: All user-facing queries use pre-match views (v_selections_prematch, etc.)
     const scopeType = allLeagues 
       ? "all_leagues"
       : (scopeLeagueIds && scopeLeagueIds.length > 0)
@@ -186,6 +190,7 @@ serve(async (req) => {
         : (countryCode ? "country" : "global");
 
     // Global in-window count (no scoping)
+    // P2 FIX: Defensive filter - ensure count queries respect is_live flag
     const baseGlobal = supabaseClient
       .from("optimized_selections")
       .select("id", { count: "exact", head: true })
