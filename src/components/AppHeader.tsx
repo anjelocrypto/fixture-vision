@@ -1,4 +1,4 @@
-import { Send, User, LogOut, Ticket, CreditCard, Sparkles } from "lucide-react";
+import { Send, User, LogOut, Ticket, CreditCard, Sparkles, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ export function AppHeader() {
   const [session, setSession] = useState<Session | null>(null);
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const { legs, loadFromStorage, loadFromServer } = useTicket();
-  const { hasAccess, entitlement } = useAccess();
+  const { hasAccess, entitlement, isAdmin } = useAccess();
 
   useEffect(() => {
     // Load ticket from localStorage on mount
@@ -163,6 +163,12 @@ export function AppHeader() {
                   <CreditCard className="mr-2 h-4 w-4" />
                   {t('common:account_billing')}
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => navigate("/admin/health")}>
+                    <Activity className="mr-2 h-4 w-4" />
+                    System Health
+                  </DropdownMenuItem>
+                )}
                 {!hasAccess && (
                   <DropdownMenuItem onClick={() => navigate("/pricing")}>
                     <Sparkles className="mr-2 h-4 w-4" />
