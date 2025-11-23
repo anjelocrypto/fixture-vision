@@ -28,11 +28,11 @@ const BATCH_SIZE = 25;
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 // Compute with retry wrapper
-async function computeWithRetry(teamId: number, retries = 3) {
+async function computeWithRetry(teamId: number, supabase: any, retries = 3) {
   let attempt = 0;
   while (true) {
     try {
-      return await computeLastFiveAverages(teamId);
+      return await computeLastFiveAverages(teamId, supabase);
     } catch (e) {
       if (attempt < retries) {
         const delay = 800 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
             await sleep(1300);
           }
 
-          const stats = await computeWithRetry(teamId);
+          const stats = await computeWithRetry(teamId, supabase);
 
           await supabase.from("stats_cache").upsert({
             team_id: teamId,
