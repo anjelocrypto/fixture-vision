@@ -41,6 +41,20 @@ async function fetchWithRetry(url: string, headers: Record<string, string>, maxR
   throw new Error(`Failed after ${maxRetries} retries`);
 }
 
+// Fetch detailed statistics for a fixture
+async function fetchFixtureStatistics(fixtureId: number): Promise<any> {
+  const url = `${API_BASE}/fixtures/statistics?fixture=${fixtureId}`;
+  const res = await fetchWithRetry(url, apiHeaders());
+  
+  if (!res.ok) {
+    console.warn(`[results-refresh] API error for statistics ${fixtureId}: ${res.status}`);
+    return null;
+  }
+  
+  const json = await res.json();
+  return json.response || null;
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
   
@@ -277,31 +291,42 @@ Deno.serve(async (req: Request) => {
         const goalsHome = apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0;
         const goalsAway = apiFixture.goals?.away ?? apiFixture.score?.fulltime?.away ?? 0;
         
-        // Get corners and cards if available (from statistics endpoint or fixture data)
+        // Fetch detailed statistics separately (CRITICAL: /fixtures endpoint doesn't include stats)
         let cornersHome: number | null = null;
         let cornersAway: number | null = null;
         let cardsHome: number | null = null;
         let cardsAway: number | null = null;
 
-        // Try to get statistics (this might be a separate API call in production)
-        if (apiFixture.statistics) {
-          const homeStats = apiFixture.statistics.find((s: any) => s.team.id === apiFixture.teams.home.id);
-          const awayStats = apiFixture.statistics.find((s: any) => s.team.id === apiFixture.teams.away.id);
+        const statsData = await fetchFixtureStatistics(fixture.id);
+        
+        if (statsData && Array.isArray(statsData) && statsData.length === 2) {
+          const homeStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.home?.id);
+          const awayStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.away?.id);
           
-          if (homeStats) {
-            cornersHome = homeStats.statistics?.find((st: any) => st.type === "Corner Kicks")?.value ?? null;
-            const yellowCards = homeStats.statistics?.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
-            const redCards = homeStats.statistics?.find((st: any) => st.type === "Red Cards")?.value ?? 0;
-            cardsHome = yellowCards + redCards;
+          if (homeStats?.statistics) {
+            const cornersStat = homeStats.statistics.find((st: any) => 
+              st.type === "Corner Kicks" || st.type === "Corners"
+            );
+            cornersHome = cornersStat?.value ?? null;
+            
+            const yellowCards = homeStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
+            const redCards = homeStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
+            cardsHome = (yellowCards || 0) + (redCards || 0);
           }
           
-          if (awayStats) {
-            cornersAway = awayStats.statistics?.find((st: any) => st.type === "Corner Kicks")?.value ?? null;
-            const yellowCards = awayStats.statistics?.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
-            const redCards = awayStats.statistics?.find((st: any) => st.type === "Red Cards")?.value ?? 0;
-            cardsAway = yellowCards + redCards;
+          if (awayStats?.statistics) {
+            const cornersStat = awayStats.statistics.find((st: any) => 
+              st.type === "Corner Kicks" || st.type === "Corners"
+            );
+            cornersAway = cornersStat?.value ?? null;
+            
+            const yellowCards = awayStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
+            const redCards = awayStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
+            cardsAway = (yellowCards || 0) + (redCards || 0);
           }
         }
+        
+        console.log(`[results-refresh] Fixture ${fixture.id}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}`);
 
         const result: FixtureResultRow = {
           fixture_id: fixture.id,
