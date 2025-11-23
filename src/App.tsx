@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import Pricing from "./pages/Pricing";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Account from "./pages/Account";
+import AdminHealth from "./pages/AdminHealth";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -54,6 +55,14 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Account />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/health"
+                element={
+                  <ProtectedRoute>
+                    <AdminHealth />
                   </ProtectedRoute>
                 }
               />
