@@ -56,7 +56,8 @@ export const RULES: Ruleset = {
 };
 
 // Current rules version identifier for data versioning
-export const RULES_VERSION = "v2_updated_ranges_20251031";
+// Updated to matrix-v3 to reflect new last-5 stats logic (partial data per metric, season=2025, status=FT)
+export const RULES_VERSION = "matrix-v3";
 
 export function pickFromCombined(stat: StatMarket, combinedValue: number) {
   const rules = RULES[stat];
