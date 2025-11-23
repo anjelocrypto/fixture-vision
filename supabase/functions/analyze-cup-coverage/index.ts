@@ -77,15 +77,13 @@ Deno.serve(async (req) => {
             fixturesWithGoals++;
           }
           
-          // Corners: if both home and away are present and not both zero
-          if (result.corners_home !== null && result.corners_away !== null && 
-              (result.corners_home > 0 || result.corners_away > 0)) {
+          // Corners: if both home and away are present (including 0 corners)
+          if (result.corners_home !== null && result.corners_away !== null) {
             fixturesWithCorners++;
           }
           
-          // Cards: if both home and away are present and not both zero
-          if (result.cards_home !== null && result.cards_away !== null && 
-              (result.cards_home > 0 || result.cards_away > 0)) {
+          // Cards: if both home and away are present (including 0 cards)
+          if (result.cards_home !== null && result.cards_away !== null) {
             fixturesWithCards++;
           }
           
