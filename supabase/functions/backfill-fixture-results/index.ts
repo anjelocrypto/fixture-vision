@@ -114,6 +114,7 @@ Deno.serve(async (req: Request) => {
     lookbackDate.setMonth(lookbackDate.getMonth() - monthsBack);
 
     console.log(`[backfill-fixture-results] Starting backfill for last ${monthsBack} months (batch size: ${batchSize})`);
+    console.log(`[backfill-fixture-results] Lookback date: ${lookbackDate.toISOString()}`);
 
     // Find finished fixtures without results
     const { data: fixtures, error: fixturesError } = await supabase
@@ -128,6 +129,8 @@ Deno.serve(async (req: Request) => {
       console.error("[backfill-fixture-results] Error fetching fixtures:", fixturesError);
       return errorResponse(`Failed to fetch fixtures: ${fixturesError.message}`, origin, 500, req);
     }
+
+    console.log(`[backfill-fixture-results] Query returned ${fixtures?.length || 0} FT fixtures from DB`);
 
     if (!fixtures || fixtures.length === 0) {
       console.log("[backfill-fixture-results] No fixtures to backfill");
@@ -151,7 +154,7 @@ Deno.serve(async (req: Request) => {
     const existingIds = new Set(existingResults?.map((r: any) => r.fixture_id) || []);
     const fixturesNeedingResults = fixtures.filter((f: any) => !existingIds.has(f.id));
 
-    console.log(`[backfill-fixture-results] ${fixturesNeedingResults.length} fixtures need results`);
+    console.log(`[backfill-fixture-results] Existing results: ${existingIds.size}, Need processing: ${fixturesNeedingResults.length}`);
 
     if (fixturesNeedingResults.length === 0) {
       return jsonResponse({
@@ -168,8 +171,12 @@ Deno.serve(async (req: Request) => {
     let skipped = 0;
     let errors = 0;
 
+    console.log(`[backfill-fixture-results] Processing ${fixturesNeedingResults.length} fixtures...`);
+
     for (const fixture of fixturesNeedingResults) {
       try {
+        console.log(`[backfill-fixture-results] Fetching fixture ${fixture.id}...`);
+        
         // Fetch fixture details and statistics
         const fixtureUrl = `${API_BASE}/fixtures?id=${fixture.id}`;
         const fixtureRes = await fetchWithRetry(fixtureUrl, apiHeaders());
@@ -244,6 +251,7 @@ Deno.serve(async (req: Request) => {
         };
 
         results.push(result);
+        console.log(`[backfill-fixture-results] ✓ Fixture ${fixture.id}: goals=${goalsHome}-${goalsAway}, corners=${cornersHome ?? 'null'}-${cornersAway ?? 'null'}, cards=${cardsHome ?? 'null'}-${cardsAway ?? 'null'}`);
 
         // Rate limiting: 1200ms between requests = ~50 RPM
         await new Promise(resolve => setTimeout(resolve, 1200));
