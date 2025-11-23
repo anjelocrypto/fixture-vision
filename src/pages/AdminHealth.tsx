@@ -30,15 +30,28 @@ type AdminHealthResponse = {
     fixtures_without_selections_48h: number;
     selection_coverage_pct_48h: number;
   };
-  recentRuns: {
-    run_type: string;
-    started_at: string;
-    finished_at: string | null;
+  lastStatsRefresh: {
+    started_at: string | null;
     duration_ms: number | null;
     scanned: number | null;
     upserted: number | null;
     failed: number | null;
+  };
+  fixturesDetail: {
+    total_finished: number;
+    with_results: number;
+    missing: number;
+  };
+  recentRuns: {
+    started_at: string;
+    run_type: string;
+    duration_ms: number | null;
+    scanned: number | null;
+    upserted: number | null;
+    skipped: number | null;
+    failed: number | null;
     notes: string | null;
+    status: 'success' | 'warning' | 'error';
   }[];
   cronJobs: {
     jobname: string;
@@ -151,16 +164,47 @@ const AdminHealth = () => {
 
   if (!data) return null;
 
-  const getCoverageColor = (pct: number) => {
-    if (pct >= 90) return "text-green-500";
-    if (pct >= 70) return "text-yellow-500";
+  const getFixtureCoverageColor = (pct: number) => {
+    if (pct >= 97) return "text-green-500";
+    if (pct >= 90) return "text-yellow-500";
     return "text-red-500";
   };
 
-  const getCoverageBg = (pct: number) => {
-    if (pct >= 90) return "bg-green-500/10 border-green-500/20";
-    if (pct >= 70) return "bg-yellow-500/10 border-yellow-500/20";
+  const getFixtureCoverageBg = (pct: number) => {
+    if (pct >= 97) return "bg-green-500/10 border-green-500/20";
+    if (pct >= 90) return "bg-yellow-500/10 border-yellow-500/20";
     return "bg-red-500/10 border-red-500/20";
+  };
+
+  const getTeamsCoverageColor = (pct: number) => {
+    if (pct >= 80) return "text-green-500";
+    if (pct >= 60) return "text-yellow-500";
+    return "text-red-500";
+  };
+
+  const getTeamsCoverageBg = (pct: number) => {
+    if (pct >= 80) return "bg-green-500/10 border-green-500/20";
+    if (pct >= 60) return "bg-yellow-500/10 border-yellow-500/20";
+    return "bg-red-500/10 border-red-500/20";
+  };
+
+  const getSelectionCoverageColor = (pct: number) => {
+    if (pct >= 70) return "text-green-500";
+    if (pct >= 40) return "text-yellow-500";
+    return "text-red-500";
+  };
+
+  const getSelectionCoverageBg = (pct: number) => {
+    if (pct >= 70) return "bg-green-500/10 border-green-500/20";
+    if (pct >= 40) return "bg-yellow-500/10 border-yellow-500/20";
+    return "bg-red-500/10 border-red-500/20";
+  };
+
+  const getStatsRefreshStatus = () => {
+    if (!data.lastStatsRefresh.started_at) return { variant: "secondary" as const, text: "No data" };
+    if ((data.lastStatsRefresh.failed || 0) > 0) return { variant: "destructive" as const, text: "Failed" };
+    if ((data.lastStatsRefresh.upserted || 0) === 0) return { variant: "secondary" as const, text: "No changes" };
+    return { variant: "default" as const, text: "OK" };
   };
 
   return (
@@ -180,13 +224,13 @@ const AdminHealth = () => {
 
       {/* Summary Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className={getCoverageBg(data.fixturesCoverage.coverage_pct)}>
+        <Card className={getFixtureCoverageBg(data.fixturesCoverage.coverage_pct)}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Fixture Results Coverage</CardTitle>
             <Database className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-3xl font-bold ${getCoverageColor(data.fixturesCoverage.coverage_pct)}`}>
+            <div className={`text-3xl font-bold ${getFixtureCoverageColor(data.fixturesCoverage.coverage_pct)}`}>
               {data.fixturesCoverage.coverage_pct.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -198,13 +242,13 @@ const AdminHealth = () => {
           </CardContent>
         </Card>
 
-        <Card className={getCoverageBg(data.statsUpcomingTeams.usable_pct)}>
+        <Card className={getTeamsCoverageBg(data.statsUpcomingTeams.usable_pct)}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Usable Teams (Next 120h)</CardTitle>
             <TrendingUp className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-3xl font-bold ${getCoverageColor(data.statsUpcomingTeams.usable_pct)}`}>
+            <div className={`text-3xl font-bold ${getTeamsCoverageColor(data.statsUpcomingTeams.usable_pct)}`}>
               {data.statsUpcomingTeams.usable_pct.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -216,13 +260,13 @@ const AdminHealth = () => {
           </CardContent>
         </Card>
 
-        <Card className={getCoverageBg(data.selectionsCoverage.selection_coverage_pct_48h)}>
+        <Card className={getSelectionCoverageBg(data.selectionsCoverage.selection_coverage_pct_48h)}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Selection Coverage (Next 48h)</CardTitle>
             <Zap className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-3xl font-bold ${getCoverageColor(data.selectionsCoverage.selection_coverage_pct_48h)}`}>
+            <div className={`text-3xl font-bold ${getSelectionCoverageColor(data.selectionsCoverage.selection_coverage_pct_48h)}`}>
               {data.selectionsCoverage.selection_coverage_pct_48h.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -240,17 +284,19 @@ const AdminHealth = () => {
             <Clock className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {data.recentRuns.find(r => r.run_type.includes("stats-refresh")) ? (
+            {data.lastStatsRefresh.started_at ? (
               <>
                 <div className="text-2xl font-bold">
-                  {((data.recentRuns.find(r => r.run_type.includes("stats-refresh"))?.duration_ms || 0) / 1000).toFixed(1)}s
+                  {((data.lastStatsRefresh.duration_ms || 0) / 1000).toFixed(1)}s
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {data.recentRuns.find(r => r.run_type.includes("stats-refresh"))?.upserted || 0} upserted
+                  {data.lastStatsRefresh.upserted || 0} upserted
                 </p>
-                <p className={`text-xs mt-1 ${(data.recentRuns.find(r => r.run_type.includes("stats-refresh"))?.failed || 0) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                  {data.recentRuns.find(r => r.run_type.includes("stats-refresh"))?.failed || 0} failed
-                </p>
+                <div className="mt-2">
+                  <Badge variant={getStatsRefreshStatus().variant}>
+                    {getStatsRefreshStatus().text}
+                  </Badge>
+                </div>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">No recent stats refresh</p>
@@ -269,22 +315,22 @@ const AdminHealth = () => {
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
                 <span className="text-sm font-medium">Total Finished Fixtures</span>
-                <span className="text-lg font-bold">{data.fixturesCoverage.total_finished.toLocaleString()}</span>
+                <span className="text-lg font-bold">{data.fixturesDetail.total_finished.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
                 <span className="text-sm font-medium">With Results</span>
-                <span className="text-lg font-bold text-green-500">{data.fixturesCoverage.with_results.toLocaleString()}</span>
+                <span className="text-lg font-bold text-green-500">{data.fixturesDetail.with_results.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
                 <span className="text-sm font-medium">Missing Results</span>
-                <span className="text-lg font-bold text-red-500">{data.fixturesCoverage.missing.toLocaleString()}</span>
+                <span className="text-lg font-bold text-red-500">{data.fixturesDetail.missing.toLocaleString()}</span>
               </div>
               <div className="mt-4">
                 <div className="w-full bg-secondary rounded-full h-3">
                   <div
                     className={`h-3 rounded-full transition-all ${
-                      data.fixturesCoverage.coverage_pct >= 90 ? "bg-green-500" :
-                      data.fixturesCoverage.coverage_pct >= 70 ? "bg-yellow-500" : "bg-red-500"
+                      data.fixturesCoverage.coverage_pct >= 97 ? "bg-green-500" :
+                      data.fixturesCoverage.coverage_pct >= 90 ? "bg-yellow-500" : "bg-red-500"
                     }`}
                     style={{ width: `${Math.min(data.fixturesCoverage.coverage_pct, 100)}%` }}
                   />
@@ -382,15 +428,19 @@ const AdminHealth = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {data.recentRuns.slice(0, 10).map((run, idx) => (
+              {data.recentRuns.map((run, idx) => (
                 <div key={idx} className="p-3 bg-secondary/50 rounded-lg space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{run.run_type}</span>
-                    {run.failed && run.failed > 0 ? (
-                      <Badge variant="destructive">{run.failed} failed</Badge>
-                    ) : (
-                      <Badge variant="outline">Success</Badge>
-                    )}
+                    <Badge variant={
+                      run.status === 'error' ? 'destructive' : 
+                      run.status === 'warning' ? 'secondary' : 
+                      'default'
+                    }>
+                      {run.status === 'error' && `${run.failed} failed`}
+                      {run.status === 'warning' && `${run.skipped} skipped`}
+                      {run.status === 'success' && 'Success'}
+                    </Badge>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                     <div>

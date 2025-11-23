@@ -172,14 +172,37 @@ serve(async (req) => {
       selection_coverage_pct_48h: Math.round(selectionCoveragePct48h * 100) / 100,
     };
 
-    // 4. Sample Teams (3 random with good stats)
+    // 4. Last Stats Refresh
+    const { data: lastStatsData } = await supabaseService
+      .from("optimizer_run_logs")
+      .select("started_at, duration_ms, scanned, upserted, failed")
+      .eq("run_type", "stats-refresh-batch")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .single();
+    
+    const lastStatsRefresh = lastStatsData ? {
+      started_at: lastStatsData.started_at,
+      duration_ms: lastStatsData.duration_ms,
+      scanned: lastStatsData.scanned,
+      upserted: lastStatsData.upserted,
+      failed: lastStatsData.failed,
+    } : {
+      started_at: null,
+      duration_ms: null,
+      scanned: null,
+      upserted: null,
+      failed: null,
+    };
+
+    // 5. Sample Teams (5 random with good stats)
     const { data: sampleTeamsData } = await supabaseService
       .from("stats_cache")
       .select("team_id, goals, corners, cards, fouls, offsides, sample_size, last_five_fixture_ids, computed_at")
       .in("team_id", Array.from(teamIds))
       .gte("sample_size", 3)
       .not("last_five_fixture_ids", "is", null)
-      .limit(3);
+      .limit(5);
     
     const sampleTeams = sampleTeamsData?.map(s => ({
       team_id: s.team_id,
@@ -193,16 +216,35 @@ serve(async (req) => {
       computed_at: s.computed_at,
     })) || [];
 
-    // 5. Recent Runs
+    // 6. Recent Runs (last 10 with status)
     const { data: recentRunsData } = await supabaseService
       .from("optimizer_run_logs")
-      .select("run_type, started_at, finished_at, duration_ms, scanned, upserted, failed, notes")
+      .select("run_type, started_at, finished_at, duration_ms, scanned, upserted, skipped, failed, notes")
       .order("started_at", { ascending: false })
-      .limit(20);
+      .limit(10);
     
-    const recentRuns = recentRunsData || [];
+    const recentRuns = (recentRunsData || []).map(run => {
+      let status: 'success' | 'warning' | 'error' = 'success';
+      if ((run.failed || 0) > 0) {
+        status = 'error';
+      } else if ((run.skipped || 0) > 0) {
+        status = 'warning';
+      }
+      
+      return {
+        started_at: run.started_at,
+        run_type: run.run_type,
+        duration_ms: run.duration_ms,
+        scanned: run.scanned,
+        upserted: run.upserted,
+        skipped: run.skipped,
+        failed: run.failed,
+        notes: run.notes,
+        status,
+      };
+    });
 
-    // 6. Cron Jobs (pg_cron)
+    // 7. Cron Jobs (pg_cron)
     // Note: Direct pg_cron access may not be available, return empty array
     const cronJobs: { jobname: string; schedule: string; active: boolean }[] = [];
 
@@ -210,6 +252,12 @@ serve(async (req) => {
       fixturesCoverage,
       statsUpcomingTeams,
       selectionsCoverage,
+      lastStatsRefresh,
+      fixturesDetail: {
+        total_finished: fixturesCoverage.total_finished,
+        with_results: fixturesCoverage.with_results,
+        missing: fixturesCoverage.missing,
+      },
       recentRuns,
       cronJobs,
       sampleTeams,
