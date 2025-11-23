@@ -222,6 +222,23 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
   const allFixtures = await fetchTeamLast20FixtureIds(teamId);
   console.log(`[stats] 📥 Got ${allFixtures.length} FT fixtures from API to analyze`);
   
+  // Build a map of league_id -> league name for cup detection
+  const leagueNames = new Map<number, string>();
+  if (supabase && allFixtures.length > 0) {
+    const uniqueLeagueIds = [...new Set(allFixtures.map(f => f.league_id))];
+    const { data: leagues } = await supabase
+      .from('leagues')
+      .select('id, name')
+      .in('id', uniqueLeagueIds);
+    
+    if (leagues) {
+      for (const league of leagues) {
+        leagueNames.set(league.id, league.name);
+      }
+      console.log(`[stats] 📋 Loaded ${leagueNames.size} league names for cup detection`);
+    }
+  }
+  
   // Per-metric arrays - each metric independently selects up to 5 valid fixtures
   type MetricFixture = { fxId: number; leagueId: number; value: number };
   const usedGoals: MetricFixture[] = [];
@@ -243,28 +260,67 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
     try {
       const s = await fetchFixtureTeamStats(fx.id, teamId);
       
-      const corners = s.corners;
-      const cards = s.cards;
-      const fouls = s.fouls;
-      const offsides = s.offsides;
+      // Get raw values
+      let corners = s.corners;
+      let cards = s.cards;
+      let fouls = s.fouls;
+      let offsides = s.offsides;
 
-      // Detect "fake-zero" pattern: all non-goal stats are 0 or null
+      // =====================================================================
+      // FAKE-ZERO DETECTION LOGIC
+      // =====================================================================
+      // Definition: A fixture has "fake zeros" if ALL non-goal metrics are 0 or null
+      // AND it's from a cup/low-coverage competition
+      // =====================================================================
+      
       const allNonGoalZeroOrNull =
         (corners === null || corners === 0) &&
         (cards === null || cards === 0) &&
         (fouls === null || fouls === 0) &&
         (offsides === null || offsides === 0);
 
-      const cornersFakeZero = corners === 0 && allNonGoalZeroOrNull;
-      const cardsFakeZero = cards === 0 && allNonGoalZeroOrNull;
-      const foulsFakeZero = fouls === 0 && allNonGoalZeroOrNull;
-      const offsidesFakeZero = offsides === 0 && allNonGoalZeroOrNull;
-
-      // Check league coverage skip flags
+      // Check league coverage skip flags (if available)
       const skipCorners = shouldSkipFixtureForMetric(fx.league_id, 'corners', coverageMap);
       const skipCards = shouldSkipFixtureForMetric(fx.league_id, 'cards', coverageMap);
       const skipFouls = shouldSkipFixtureForMetric(fx.league_id, 'fouls', coverageMap);
       const skipOffsides = shouldSkipFixtureForMetric(fx.league_id, 'offsides', coverageMap);
+      
+      // Determine if this is likely a cup/problematic league
+      // Check 1: League coverage says to skip (from database)
+      const hasSkipFlags = skipCorners || skipCards || skipFouls || skipOffsides;
+      
+      // Check 2: League name contains cup keywords (heuristic fallback)
+      const leagueName = leagueNames.get(fx.league_id) || '';
+      const cupKeywords = ['cup', 'trophy', 'copa', 'coupe', 'pokal', 'taca', 'shield', 'super'];
+      const isCupByName = cupKeywords.some(kw => leagueName.toLowerCase().includes(kw));
+      
+      const isSuspectedCup = hasSkipFlags || isCupByName;
+      
+      if (isCupByName && !hasSkipFlags) {
+        console.log(`[stats] 🏆 Detected cup by name: fixture ${fx.id} in league ${fx.league_id} (${leagueName})`);
+      }
+      
+      // Apply fake-zero logic: if all non-goal stats are 0/null AND it's a suspected cup
+      let fakeZeroDetected = false;
+      if (allNonGoalZeroOrNull && isSuspectedCup) {
+        console.log(
+          `[stats] ⚠️ Fake-zero pattern detected for fixture ${fx.id} (league ${fx.league_id}) – ` +
+          `keeping goals=${s.goals}, nulling corners/cards/fouls/offsides`
+        );
+        
+        // Null out the fake metrics
+        corners = null;
+        cards = null;
+        fouls = null;
+        offsides = null;
+        fakeZeroDetected = true;
+      }
+      
+      // Also check based on actual zero values (secondary check)
+      const cornersFakeZero = !fakeZeroDetected && corners === 0 && allNonGoalZeroOrNull && isSuspectedCup;
+      const cardsFakeZero = !fakeZeroDetected && cards === 0 && allNonGoalZeroOrNull && isSuspectedCup;
+      const foulsFakeZero = !fakeZeroDetected && fouls === 0 && allNonGoalZeroOrNull && isSuspectedCup;
+      const offsidesFakeZero = !fakeZeroDetected && offsides === 0 && allNonGoalZeroOrNull && isSuspectedCup;
       
       // Goals: always take the first 5 FT fixtures (no coverage skip, no fake-zero check)
       if (usedGoals.length < 5) {
