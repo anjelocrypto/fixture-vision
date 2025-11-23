@@ -6,6 +6,8 @@ import { API_BASE, apiHeaders } from "../_shared/api.ts";
 interface RequestBody {
   window_hours?: number;
   retention_months?: number;
+  backfill_mode?: boolean;
+  batch_size?: number;
 }
 
 interface FixtureResultRow {
@@ -179,22 +181,58 @@ Deno.serve(async (req: Request) => {
     // Fetch mode: get finished fixtures
     const startTime = Date.now();
     const windowStart = new Date(Date.now() - windowHours * 3600 * 1000);
-    const lookbackLimit = new Date(Date.now() - 14 * 24 * 3600 * 1000); // 14 days max
+    // Allow longer lookback for backfill mode (up to 365 days)
+    const maxLookbackDays = body.backfill_mode ? 365 : 14;
+    const lookbackLimit = new Date(Date.now() - maxLookbackDays * 24 * 3600 * 1000);
 
-    console.log(`[results-refresh] Fetching finished fixtures from last ${windowHours}h`);
+    console.log(`[results-refresh] Fetching finished fixtures from last ${windowHours}h (lookback: ${maxLookbackDays} days, backfill: ${body.backfill_mode || false})`);
 
     // Find fixtures that are finished but not yet in fixture_results
-    const { data: fixtures, error: fixturesError } = await supabase
+    const batchSize = body.batch_size || (body.backfill_mode ? 100 : 1000);
+    
+    // First, get all FT fixtures
+    let fixturesQuery = supabase
       .from("fixtures")
-      .select("id, league_id, timestamp, status, fixture_results(fixture_id)")
+      .select("id, league_id, timestamp, status")
       .in("status", ["FT", "AET", "PEN"])
-      .gte("timestamp", Math.floor(lookbackLimit.getTime() / 1000))
-      .is("fixture_results.fixture_id", null);
+      .order("timestamp", { ascending: false })
+      .limit(batchSize * 2); // Get more to account for filtering
+    
+    // In normal mode, filter by lookback limit
+    if (!body.backfill_mode) {
+      fixturesQuery = fixturesQuery.gte("timestamp", Math.floor(lookbackLimit.getTime() / 1000));
+    }
+    
+    const { data: allFixtures, error: fixturesError } = await fixturesQuery;
 
     if (fixturesError) {
       console.error("[results-refresh] Error fetching fixtures:", fixturesError);
       return errorResponse(`Failed to fetch fixtures: ${fixturesError.message}`, origin, 500, req);
     }
+
+    if (!allFixtures || allFixtures.length === 0) {
+      console.log("[results-refresh] No finished fixtures found in database");
+      return jsonResponse({
+        success: true, 
+        window_hours: windowHours,
+        scanned: 0, 
+        inserted: 0, 
+        skipped: 0,
+        errors: 0
+      }, origin, 200, req);
+    }
+
+    // Now check which ones already have results
+    const fixtureIds = allFixtures.map((f: any) => f.id);
+    const { data: existingResults } = await supabase
+      .from("fixture_results")
+      .select("fixture_id")
+      .in("fixture_id", fixtureIds);
+    
+    const existingIds = new Set((existingResults || []).map((r: any) => r.fixture_id));
+    const fixtures = allFixtures.filter((f: any) => !existingIds.has(f.id)).slice(0, batchSize);
+    
+    console.log(`[results-refresh] Total FT fixtures: ${allFixtures.length}, Already have results: ${existingIds.size}, Need results: ${fixtures.length}`);
 
     if (!fixtures || fixtures.length === 0) {
       console.log("[results-refresh] No new finished fixtures to process");
@@ -287,8 +325,9 @@ Deno.serve(async (req: Request) => {
         errors++;
       }
 
-      // Rate limiting: small delay between requests
-      await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting: longer delay in backfill mode to respect API limits
+        const delayMs = body.backfill_mode ? 1200 : 100; // ~50 RPM for backfill
+        await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
     // Batch upsert results
@@ -310,7 +349,7 @@ Deno.serve(async (req: Request) => {
 
     // Log to optimizer_run_logs
     await supabase.from("optimizer_run_logs").insert({
-      run_type: "results-refresh",
+      run_type: body.backfill_mode ? "backfill-fixture-results" : "results-refresh",
       window_start: windowStart.toISOString(),
       window_end: new Date().toISOString(),
       scanned: fixtures.length,
@@ -320,7 +359,7 @@ Deno.serve(async (req: Request) => {
       duration_ms: duration,
       started_at: new Date(startTime).toISOString(),
       finished_at: new Date().toISOString(),
-      notes: `window_hours=${windowHours}`,
+      notes: body.backfill_mode ? `backfill_mode=true, batch_size=${batchSize}` : `window_hours=${windowHours}`,
     });
 
     return jsonResponse({
