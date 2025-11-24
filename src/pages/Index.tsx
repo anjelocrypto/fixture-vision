@@ -527,13 +527,28 @@ const Index = () => {
       }
 
       if (error) {
+        // Extract error details from Supabase function error structure
+        const status = (error as any)?.status || (error as any)?.context?.status;
+        const errorBody = (error as any)?.context?.body || {};
+        const errorMessage = errorBody?.error || (error as any)?.message || "Failed to generate ticket";
+        const errorDetails = errorBody?.details || "";
+        const fieldErrors = errorBody?.fields;
+
+        console.error("[Ticket Creator] Edge function error:", {
+          error,
+          status,
+          errorMessage,
+          errorDetails,
+          fieldErrors,
+          fullContext: (error as any)?.context
+        });
+        
         // Check for paywall error (402)
-        if ((error as any).status === 402) {
-          const errorData = (error as any).context?.body;
-          if (errorData?.code === 'PAYWALL') {
+        if (status === 402) {
+          if (errorBody?.code === 'PAYWALL') {
             toast({
               title: "Trial Expired",
-              description: errorData.reason === 'no_trial_credits' 
+              description: errorBody.reason === 'no_trial_credits' 
                 ? "You've used all 5 free generations. Subscribe to continue."
                 : "This feature requires a subscription.",
               action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
@@ -543,22 +558,36 @@ const Index = () => {
             return;
           }
         }
-        // If the function returned a non-2xx status, try to surface a friendly message if available
-        const friendly = (error as any)?.message || "Failed to generate ticket";
-        const errorDetails = (error as any)?.context?.body?.details || "";
-        const fullMessage = errorDetails ? `${friendly}: ${errorDetails}` : friendly;
-        
-        console.error("[Ticket Creator] Edge function error:", {
-          error,
-          message: friendly,
-          details: errorDetails,
-          status: (error as any)?.status,
-          context: (error as any)?.context
-        });
+
+        // Build user-friendly error message based on status code and error details
+        let title = "Could not generate ticket";
+        let description = errorMessage;
+
+        if (status === 401) {
+          title = "Authentication Error";
+          description = "Please log in again to continue.";
+        } else if (status === 422) {
+          title = "Invalid Parameters";
+          if (fieldErrors && Object.keys(fieldErrors).length > 0) {
+            const fieldList = Object.entries(fieldErrors)
+              .map(([field, errors]: [string, any]) => `${field}: ${Array.isArray(errors) ? errors.join(", ") : errors}`)
+              .join("; ");
+            description = `${errorMessage}. ${fieldList}`;
+          } else if (errorDetails) {
+            description = `${errorMessage}: ${errorDetails}`;
+          }
+        } else if (status === 500) {
+          title = "Server Error";
+          description = errorDetails 
+            ? `${errorMessage}. ${errorDetails}` 
+            : "An unexpected error occurred. Please try again or contact support if the issue persists.";
+        } else if (errorDetails) {
+          description = `${errorMessage}: ${errorDetails}`;
+        }
         
         toast({ 
-          title: "Could not generate ticket", 
-          description: fullMessage, 
+          title, 
+          description, 
           variant: "destructive",
           duration: 8000,
         });
