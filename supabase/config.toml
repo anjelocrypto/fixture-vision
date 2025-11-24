@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.backfill-fixture-results]
 verify_jwt = false
+
+[functions.test-h2h]
+verify_jwt = false
