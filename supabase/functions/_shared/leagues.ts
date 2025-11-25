@@ -19,6 +19,11 @@ export const ALLOWED_LEAGUE_IDS = [
   36,   // Africa Cup of Nations Qualification
   964,  // CAF Africa Cup of Nations
   
+  // UEFA Club Competitions
+  2,    // UEFA Champions League
+  3,    // UEFA Europa League
+  848,  // UEFA Europa Conference League
+  
   // England (9 leagues)
   39,   // Premier League
   40,   // Championship
@@ -361,7 +366,7 @@ export const LEAGUE_TO_COUNTRY_CODE: Record<number, string> = {
 /**
  * International competitions that should have country_id = NULL
  */
-export const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964];
+export const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 2, 3, 848];
 
 export const LEAGUE_NAMES: Record<number, string> = {
   // International
@@ -378,6 +383,11 @@ export const LEAGUE_NAMES: Record<number, string> = {
   9: "Copa América",
   36: "AFCON Qualification",
   964: "Africa Cup of Nations",
+  
+  // UEFA Club Competitions
+  2: "UEFA Champions League",
+  3: "UEFA Europa League",
+  848: "UEFA Europa Conference League",
   
   // England
   39: "Premier League",

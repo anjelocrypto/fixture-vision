@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight } from "../_shared/cors.ts";
 
-const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 17];
+const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 17, 2, 3, 848];
 const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
   5: "UEFA Nations League",
   1: "World Cup",
@@ -18,6 +18,11 @@ const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
   36: "AFCON Qualification",
   964: "Africa Cup of Nations",
   17: "AFC Champions League",
+  
+  // UEFA Club Competitions
+  2: "UEFA Champions League",
+  3: "UEFA Europa League",
+  848: "UEFA Europa Conference League",
 };
 
 serve(async (req) => {
@@ -99,13 +104,34 @@ serve(async (req) => {
       }
     });
 
-    grouped["International"] = {
-      id: 9999, // Special ID for International
-      code: "INTL",
-      name: "International",
-      flag: null,
-      leagues: Array.from(internationalLeagueMap.values()),
-    };
+    // Separate UEFA club competitions from other international competitions
+    const uefaClubLeagues = Array.from(internationalLeagueMap.values())
+      .filter(l => [2, 3, 848].includes(l.id));
+    
+    const otherInternationalLeagues = Array.from(internationalLeagueMap.values())
+      .filter(l => ![2, 3, 848].includes(l.id));
+
+    // Add UEFA group first
+    if (uefaClubLeagues.length > 0) {
+      grouped["UEFA"] = {
+        id: 9998, // Special ID for UEFA
+        code: "UEFA",
+        name: "UEFA",
+        flag: null,
+        leagues: uefaClubLeagues,
+      };
+    }
+
+    // Add International group for other competitions
+    if (otherInternationalLeagues.length > 0) {
+      grouped["International"] = {
+        id: 9999, // Special ID for International
+        code: "INTL",
+        name: "International",
+        flag: null,
+        leagues: otherInternationalLeagues,
+      };
+    }
 
     // Group remaining leagues by country (exclude international leagues and leagues without country)
     (allLeagues || [])
