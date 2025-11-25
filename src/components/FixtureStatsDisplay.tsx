@@ -1,0 +1,150 @@
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { TrendingUp, Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+interface TeamStats {
+  goals: number;
+  corners: number;
+  cards: number;
+  fouls: number;
+  offsides: number;
+  sample_size: number;
+}
+
+interface H2HStats {
+  goals: number;
+  corners: number;
+  cards: number;
+  fouls: number;
+  offsides: number;
+  sample_size: number;
+}
+
+interface FixtureStatsDisplayProps {
+  homeTeam: string;
+  awayTeam: string;
+  homeStats: TeamStats | null;
+  awayStats: TeamStats | null;
+  h2hStats: H2HStats | null;
+  combinedSnapshot: Record<string, number>;
+}
+
+export function FixtureStatsDisplay({
+  homeTeam,
+  awayTeam,
+  homeStats,
+  awayStats,
+  h2hStats,
+  combinedSnapshot,
+}: FixtureStatsDisplayProps) {
+  const { t } = useTranslation('common');
+
+  const StatRow = ({ label, value, className = "" }: { label: string; value: number | string; className?: string }) => (
+    <div className="flex justify-between items-center py-1.5 border-b last:border-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-sm font-semibold ${className}`}>{typeof value === 'number' ? value.toFixed(2) : value}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3 mt-4">
+      {/* Home Team Stats */}
+      {homeStats && (
+        <Card className="p-4 bg-muted/30">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-semibold">{homeTeam} - Last 5 Matches</h4>
+            <Badge variant="outline" className="text-xs ml-auto">
+              {homeStats.sample_size} games
+            </Badge>
+          </div>
+          <div className="space-y-0">
+            <StatRow label="Goals" value={homeStats.goals} className="text-primary" />
+            <StatRow label="Corners" value={homeStats.corners} />
+            <StatRow label="Cards" value={homeStats.cards} />
+            <StatRow label="Fouls" value={homeStats.fouls} />
+            <StatRow label="Offsides" value={homeStats.offsides} />
+          </div>
+        </Card>
+      )}
+
+      {/* Away Team Stats */}
+      {awayStats && (
+        <Card className="p-4 bg-muted/30">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-semibold">{awayTeam} - Last 5 Matches</h4>
+            <Badge variant="outline" className="text-xs ml-auto">
+              {awayStats.sample_size} games
+            </Badge>
+          </div>
+          <div className="space-y-0">
+            <StatRow label="Goals" value={awayStats.goals} className="text-primary" />
+            <StatRow label="Corners" value={awayStats.corners} />
+            <StatRow label="Cards" value={awayStats.cards} />
+            <StatRow label="Fouls" value={awayStats.fouls} />
+            <StatRow label="Offsides" value={awayStats.offsides} />
+          </div>
+        </Card>
+      )}
+
+      {/* H2H Stats */}
+      {h2hStats && h2hStats.sample_size >= 3 ? (
+        <Card className="p-4 bg-primary/5 border-primary/20">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-semibold">Head-to-Head Averages (Last 5 Matches)</h4>
+            <Badge variant="default" className="text-xs ml-auto">
+              {h2hStats.sample_size} H2H games
+            </Badge>
+          </div>
+          <div className="space-y-0">
+            <StatRow label="Goals" value={h2hStats.goals} className="text-primary" />
+            <StatRow label="Corners" value={h2hStats.corners} />
+            <StatRow label="Cards" value={h2hStats.cards} />
+            <StatRow label="Fouls" value={h2hStats.fouls} />
+            <StatRow label="Offsides" value={h2hStats.offsides} />
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-4 bg-muted/20 border-dashed">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <h4 className="text-sm font-semibold text-muted-foreground">Head-to-Head Averages</h4>
+          </div>
+          <p className="text-xs text-muted-foreground italic">
+            No recent head-to-head data available.
+          </p>
+        </Card>
+      )}
+
+      {/* Combined Stats */}
+      {combinedSnapshot && Object.keys(combinedSnapshot).length > 0 && (
+        <Card className="p-4 bg-secondary/10 border-secondary/30">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-secondary-foreground" />
+            <h4 className="text-sm font-semibold">Combined Averages (Model Formula)</h4>
+          </div>
+          <div className="space-y-0">
+            {combinedSnapshot.goals !== undefined && (
+              <StatRow label="Goals" value={combinedSnapshot.goals} className="text-secondary-foreground" />
+            )}
+            {combinedSnapshot.corners !== undefined && (
+              <StatRow label="Corners" value={combinedSnapshot.corners} />
+            )}
+            {combinedSnapshot.cards !== undefined && (
+              <StatRow label="Cards" value={combinedSnapshot.cards} />
+            )}
+            {combinedSnapshot.fouls !== undefined && (
+              <StatRow label="Fouls" value={combinedSnapshot.fouls} />
+            )}
+            {combinedSnapshot.offsides !== undefined && (
+              <StatRow label="Offsides" value={combinedSnapshot.offsides} />
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

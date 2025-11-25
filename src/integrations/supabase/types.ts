@@ -240,6 +240,45 @@ export type Database = {
         }
         Relationships: []
       }
+      h2h_cache: {
+        Row: {
+          cards: number
+          computed_at: string
+          corners: number
+          fouls: number
+          goals: number
+          last_fixture_ids: number[]
+          offsides: number
+          sample_size: number
+          team1_id: number
+          team2_id: number
+        }
+        Insert: {
+          cards?: number
+          computed_at?: string
+          corners?: number
+          fouls?: number
+          goals?: number
+          last_fixture_ids?: number[]
+          offsides?: number
+          sample_size?: number
+          team1_id: number
+          team2_id: number
+        }
+        Update: {
+          cards?: number
+          computed_at?: string
+          corners?: number
+          fouls?: number
+          goals?: number
+          last_fixture_ids?: number[]
+          offsides?: number
+          sample_size?: number
+          team1_id?: number
+          team2_id?: number
+        }
+        Relationships: []
+      }
       league_stats_coverage: {
         Row: {
           cards_coverage_pct: number | null
