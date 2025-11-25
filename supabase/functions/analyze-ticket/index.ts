@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+import { fetchHeadToHeadStats } from "../_shared/h2h.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -151,8 +152,8 @@ serve(async (req) => {
     console.log(`[analyze-ticket] Enriched ${selectionsMap.size} selections from optimized_selections table`);
 
 
-    // Build enriched structured data for each match
-    const matchesData = ticket.legs.map((leg: any, index: number) => {
+    // Build enriched structured data for each match, including H2H stats
+    const matchesData = await Promise.all(ticket.legs.map(async (leg: any, index: number) => {
       const league = leagueMap.get(leg.league_id);
       const country = league ? countryMap.get(league.country_id) : null;
       
@@ -170,10 +171,60 @@ serve(async (req) => {
       const combinedSnapshot = enrichedSelection?.combined_snapshot || {};
       const marketValue = combinedSnapshot[leg.market] || null;
       
+      // Extract team IDs from leg (assuming they're in teams_home/teams_away JSON)
+      let homeTeamId: number | null = null;
+      let awayTeamId: number | null = null;
+      let homeStats: any = null;
+      let awayStats: any = null;
+      let h2hStats: any = null;
+      
+      try {
+        // Fetch fixture to get team IDs
+        const { data: fixtureData } = await supabase
+          .from('fixtures')
+          .select('teams_home, teams_away')
+          .eq('id', leg.fixture_id)
+          .single();
+        
+        if (fixtureData) {
+          homeTeamId = fixtureData.teams_home?.id;
+          awayTeamId = fixtureData.teams_away?.id;
+          
+          // Fetch home and away team stats from stats_cache
+          if (homeTeamId) {
+            const { data: homeStatsData } = await supabase
+              .from('stats_cache')
+              .select('*')
+              .eq('team_id', homeTeamId)
+              .single();
+            homeStats = homeStatsData;
+          }
+          
+          if (awayTeamId) {
+            const { data: awayStatsData } = await supabase
+              .from('stats_cache')
+              .select('*')
+              .eq('team_id', awayTeamId)
+              .single();
+            awayStats = awayStatsData;
+          }
+          
+          // Fetch H2H stats if we have both team IDs
+          if (homeTeamId && awayTeamId) {
+            h2hStats = await fetchHeadToHeadStats(homeTeamId, awayTeamId, supabase, 7);
+          }
+        }
+      } catch (statsError) {
+        console.error(`[analyze-ticket] Error fetching stats for fixture ${leg.fixture_id}:`, statsError);
+        // Continue without stats - non-fatal
+      }
+      
       return {
         match_number: index + 1,
         fixture_id: leg.fixture_id,
         teams: `${leg.home_team} vs ${leg.away_team}`,
+        home_team: leg.home_team,
+        away_team: leg.away_team,
         league_id: leg.league_id,
         league_name: league?.name || null,
         country_code: country?.code || null,
@@ -188,11 +239,28 @@ serve(async (req) => {
         book_prob: leg.book_prob || null,
         edge: leg.edge || enrichedSelection?.edge_pct || null,
         combined_snapshot: combinedSnapshot,
+        home_stats: homeStats ? {
+          goals: Number(homeStats.goals),
+          corners: Number(homeStats.corners),
+          cards: Number(homeStats.cards),
+          fouls: Number(homeStats.fouls),
+          offsides: Number(homeStats.offsides),
+          sample_size: homeStats.sample_size
+        } : null,
+        away_stats: awayStats ? {
+          goals: Number(awayStats.goals),
+          corners: Number(awayStats.corners),
+          cards: Number(awayStats.cards),
+          fouls: Number(awayStats.fouls),
+          offsides: Number(awayStats.offsides),
+          sample_size: awayStats.sample_size
+        } : null,
+        h2h_stats: h2hStats,
         qualification_rule: buildQualificationRule(leg.market, marketValue, side, line),
         rules_version: enrichedSelection?.rules_version || 'v2_combined_matrix_v1',
         odds_band_enforced: '[1.25, 5.00]'
       };
-    });
+    }));
 
     const ticketSummary = {
       rules_version: 'v2_combined_matrix_v1',
@@ -351,6 +419,17 @@ Generate the JSON response only — no extra commentary. Ensure it's valid JSON.
           }
           if (!validConfidenceLevels.includes(match.confidence_level)) {
             throw new Error(`Match ${i + 1} has invalid confidence_level: ${match.confidence_level}`);
+          }
+          
+          // Enrich with stats from matchesData
+          const matchData = matchesData[i];
+          if (matchData) {
+            match.home_team = matchData.home_team;
+            match.away_team = matchData.away_team;
+            match.home_stats = matchData.home_stats;
+            match.away_stats = matchData.away_stats;
+            match.h2h_stats = matchData.h2h_stats;
+            match.combined_snapshot = matchData.combined_snapshot;
           }
         }
         

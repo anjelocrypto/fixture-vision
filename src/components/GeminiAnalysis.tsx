@@ -3,12 +3,19 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { InfoTooltip } from "@/components/shared/InfoTooltip";
+import { FixtureStatsDisplay } from "./FixtureStatsDisplay";
 
 interface MatchAnalysis {
   match_title: string;
   recommended_bet: string;
   analysis: string;
   confidence_level: string;
+  home_team?: string;
+  away_team?: string;
+  home_stats?: any;
+  away_stats?: any;
+  h2h_stats?: any;
+  combined_snapshot?: Record<string, number>;
 }
 
 interface GeminiAnalysisProps {
@@ -62,8 +69,24 @@ export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps)
               </div>
             </AccordionTrigger>
             <AccordionContent>
-              <div className="pt-2 pb-2 text-sm text-muted-foreground">
-                {match.analysis}
+              {/* Team Statistics Display */}
+              {(match.home_stats || match.away_stats || match.h2h_stats || match.combined_snapshot) && (
+                <FixtureStatsDisplay
+                  homeTeam={match.home_team || "Home"}
+                  awayTeam={match.away_team || "Away"}
+                  homeStats={match.home_stats}
+                  awayStats={match.away_stats}
+                  h2hStats={match.h2h_stats}
+                  combinedSnapshot={match.combined_snapshot || {}}
+                />
+              )}
+              
+              {/* AI Analysis */}
+              <div className="pt-4 mt-4 border-t">
+                <div className="text-xs font-medium text-muted-foreground mb-2">AI Analysis</div>
+                <div className="text-sm text-muted-foreground">
+                  {match.analysis}
+                </div>
               </div>
             </AccordionContent>
           </AccordionItem>
