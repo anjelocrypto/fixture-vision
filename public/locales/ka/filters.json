@@ -6,6 +6,7 @@
   "countries": {
     "World": "მსოფლიო",
     "International": "საერთაშორისო",
+    "UEFA": "უეფა",
     "England": "ინგლისი",
     "Spain": "ესპანეთი",
     "Italy": "იტალია",
@@ -128,6 +129,9 @@
     "Copa América": "კოპა ამერიკა",
     "AFCON Qualification": "აფრიკის თასის შესარჩევი",
     "Africa Cup of Nations": "აფრიკის ერთა თასი",
+    "UEFA Champions League": "ჩემპიონთა ლიგა",
+    "UEFA Europa League": "ევროპა ლიგა",
+    "UEFA Europa Conference League": "კონფერენციის ლიგა",
     "League Cup": "ლიგის თასი",
     "League One": "ლიგა ერთი",
     "League Two": "ლიგა ორი",

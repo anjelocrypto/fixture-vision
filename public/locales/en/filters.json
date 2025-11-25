@@ -6,6 +6,7 @@
   "countries": {
     "World": "World",
     "International": "International",
+    "UEFA": "UEFA",
     "England": "England",
     "Spain": "Spain",
     "Italy": "Italy",
@@ -128,6 +129,9 @@
     "Copa América": "Copa América",
     "AFCON Qualification": "AFCON Qualification",
     "Africa Cup of Nations": "Africa Cup of Nations",
+    "UEFA Champions League": "UEFA Champions League",
+    "UEFA Europa League": "UEFA Europa League",
+    "UEFA Europa Conference League": "UEFA Conference League",
     "League Cup": "League Cup",
     "League One": "League One",
     "League Two": "League Two",
