@@ -31,8 +31,8 @@ serve(async (req) => {
     for (const comp of competitions) {
       console.log(`[test-uefa] Checking ${comp.name} (ID: ${comp.id})`);
 
-      // Test 1: Check if fixtures exist for current season (2024-2025)
-      const fixturesUrl = `${API_BASE}/fixtures?league=${comp.id}&season=2024`;
+      // Test 1: Check if fixtures exist for current season (2025-2026)
+      const fixturesUrl = `${API_BASE}/fixtures?league=${comp.id}&season=2025`;
       const fixturesResp = await fetch(fixturesUrl, { headers: apiHeaders() });
       
       if (!fixturesResp.ok) {
@@ -48,7 +48,7 @@ serve(async (req) => {
       const fixturesData = await fixturesResp.json();
       const fixtures = fixturesData.response || [];
       
-      console.log(`[test-uefa] ${comp.name}: Found ${fixtures.length} fixtures for 2024 season`);
+      console.log(`[test-uefa] ${comp.name}: Found ${fixtures.length} fixtures for 2025 season`);
 
       // Test 2: Check H2H stats for a sample fixture (if available)
       let h2hTest: {
