@@ -13,6 +13,7 @@ interface Country {
 // Build a reliable flag image URL from ISO code (uses flagcdn)
 const getFlagSrc = (code?: string) => {
   if (!code || code === 'WORLD' || code === 'INTL') return null;
+  if (code === 'UEFA') return '/images/uefa-logo.png';
   const normalized = code.toLowerCase();
   return `https://flagcdn.com/24x18/${normalized}.png`;
 };
