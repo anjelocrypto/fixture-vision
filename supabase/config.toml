@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.test-h2h]
 verify_jwt = false
+
+[functions.test-uefa-competitions]
+verify_jwt = false
