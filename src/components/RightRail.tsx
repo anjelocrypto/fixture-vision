@@ -26,6 +26,10 @@ interface SuggestedMarket {
   computed_at?: string;
 }
 
+interface H2HStats extends TeamStats {
+  sample_size: number;
+}
+
 interface Analysis {
   home: TeamStats & { 
     team_id: number;
@@ -41,6 +45,7 @@ interface Analysis {
     name?: string;
     logo?: string;
   };
+  h2h?: H2HStats | null;
   combined: TeamStats & { sample_size: number };
   odds_available?: boolean;
 }
@@ -231,6 +236,30 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
               <StatRow label="Fouls" value={analysis.away.fouls} />
             </div>
           </Card>
+
+          {/* H2H Stats */}
+          {analysis.h2h && analysis.h2h.sample_size >= 3 ? (
+            <Card className="p-4 bg-primary/5 border-primary/20 min-w-0">
+              <h4 className="font-semibold mb-3 text-primary truncate">Head-to-Head (Last 5)</h4>
+              <div className="space-y-1">
+                <StatRow label="Goals" value={analysis.h2h.goals} />
+                <StatRow label="Cards" value={analysis.h2h.cards} />
+                <StatRow label="Offsides" value={analysis.h2h.offsides} />
+                <StatRow label="Corners" value={analysis.h2h.corners} />
+                <StatRow label="Fouls" value={analysis.h2h.fouls} />
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground text-center">
+                Based on {analysis.h2h.sample_size} H2H matches
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-4 bg-muted/20 border-dashed min-w-0">
+              <h4 className="font-semibold mb-2 text-muted-foreground truncate">Head-to-Head</h4>
+              <p className="text-xs text-muted-foreground italic">
+                No recent head-to-head data available.
+              </p>
+            </Card>
+          )}
 
           {/* Combined Stats */}
           <Card className="p-4 border-primary/30 min-w-0">

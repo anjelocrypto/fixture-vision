@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages, computeCombinedMetrics } from "../_shared/stats.ts";
+import { fetchHeadToHeadStats } from "../_shared/h2h.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -111,6 +112,10 @@ serve(async (req) => {
       getTeamStats(awayTeamId)
     ]);
 
+    // Fetch H2H stats
+    console.log(`[analyze-fixture] Fetching H2H stats for teams ${homeTeamId} vs ${awayTeamId}`);
+    const h2hStats = await fetchHeadToHeadStats(homeTeamId, awayTeamId, supabaseClient);
+
     // Compute combined stats using v2 formula: ((home + away) / 2) × multiplier
     const combined = computeCombinedMetrics(homeStats, awayStats);
 
@@ -138,6 +143,14 @@ serve(async (req) => {
           sample_size: awayStats.sample_size,
           computed_at: awayStats.computed_at
         },
+        h2h: h2hStats ? {
+          goals: h2hStats.goals,
+          corners: h2hStats.corners,
+          cards: h2hStats.cards,
+          fouls: h2hStats.fouls,
+          offsides: h2hStats.offsides,
+          sample_size: h2hStats.sample_size
+        } : null,
         combined
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
