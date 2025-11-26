@@ -139,8 +139,13 @@ serve(async (req) => {
 
     if (accessError) {
       console.error('[generate-ticket] Access check error:', accessError);
+      // Return 500 with detailed error for debugging, but user-friendly message
       return new Response(
-        JSON.stringify({ error: 'Failed to check access' }),
+        JSON.stringify({ 
+          error: 'Access check failed', 
+          details: accessError.message || 'Unable to verify your subscription status. Please try again or contact support.',
+          code: accessError.code
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
