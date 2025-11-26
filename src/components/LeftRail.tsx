@@ -70,12 +70,20 @@ export function LeftRail({
 
   // Filter countries and leagues based on search query
   const filteredCountries = useMemo(() => {
-    if (!searchQuery.trim()) return countries;
+    if (!searchQuery.trim()) {
+      // Debug logging when no search
+      console.log(`[LeftRail] All countries count: ${countries.length}`);
+      const uefaInList = countries.find((c) => c.id === 9998 || c.code === 'UEFA');
+      console.log(`[LeftRail] UEFA in full list:`, uefaInList ? `YES (id=${uefaInList.id})` : 'NO');
+      return countries;
+    }
     
     const query = searchQuery.toLowerCase();
-    return countries.filter((country) => 
+    const filtered = countries.filter((country) => 
       getCountryName(country.name).toLowerCase().includes(query)
     );
+    console.log(`[LeftRail] Filtered countries (query="${query}"): ${filtered.length}`);
+    return filtered;
   }, [countries, searchQuery]);
 
   // Check if selected country matches search query
@@ -126,29 +134,35 @@ export function LeftRail({
               No countries found
             </div>
           ) : (
-            filteredCountries.map((country) => (
-            <button
-              key={country.id}
-              onClick={() => onSelectCountry(country.id)}
-              onMouseEnter={() => onCountryHover?.(country.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                selectedCountry === country.id
-                  ? "bg-primary/10 text-primary border border-primary/20"
-                  : "hover:bg-secondary/50 text-foreground"
-              }`}
-            >
-              {(() => {
-                const src = getFlagSrc(country.code);
-                if (src) {
-                  return (
-                    <img src={src} alt={`${country.name} flag`} className="w-5 h-5 rounded-sm object-cover shadow-sm" loading="lazy" />
-                  );
-                }
-                return <Globe className="w-5 h-5 text-muted-foreground" aria-label="World" />;
-              })()}
-              <span className="text-sm font-medium">{getCountryName(country.name)}</span>
-            </button>
-            ))
+            filteredCountries.map((country) => {
+              // Debug logging for each rendered country (first 5 only to avoid spam)
+              if (filteredCountries.indexOf(country) < 5) {
+                console.log(`[LeftRail] Rendering country: ${country.name} (id=${country.id}, code=${country.code})`);
+              }
+              return (
+                <button
+                  key={country.id}
+                  onClick={() => onSelectCountry(country.id)}
+                  onMouseEnter={() => onCountryHover?.(country.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    selectedCountry === country.id
+                      ? "bg-primary/10 text-primary border border-primary/20"
+                      : "hover:bg-secondary/50 text-foreground"
+                  }`}
+                >
+                  {(() => {
+                    const src = getFlagSrc(country.code);
+                    if (src) {
+                      return (
+                        <img src={src} alt={`${country.name} flag`} className="w-5 h-5 rounded-sm object-cover shadow-sm" loading="lazy" />
+                      );
+                    }
+                    return <Globe className="w-5 h-5 text-muted-foreground" aria-label="World" />;
+                  })()}
+                  <span className="text-sm font-medium">{getCountryName(country.name)}</span>
+                </button>
+              );
+            })
           )}
         </div>
       </div>
