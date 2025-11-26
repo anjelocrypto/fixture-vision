@@ -199,13 +199,30 @@ const Index = () => {
     if (!allLeaguesData?.countries) return []; // Empty array while loading
     
     // Build country list from real backend data
-    return allLeaguesData.countries.map((c: any) => ({
+    const countries = allLeaguesData.countries.map((c: any) => ({
       id: c.id,
       name: c.name,
       code: c.code,
       flag: c.flag,
     }));
+    
+    // Debug logging - check if UEFA is present
+    console.log(`[Index] actualCountries count: ${countries.length}`);
+    const uefaGroup = countries.find((c: any) => c.id === 9998 || c.code === 'UEFA');
+    console.log(`[Index] UEFA group present:`, uefaGroup ? `YES (id=${uefaGroup.id}, name=${uefaGroup.name})` : 'NO - MISSING!');
+    
+    return countries;
   }, [allLeaguesData]);
+
+  // Debug: Log when mobile left sheet opens and verify UEFA is in the data
+  useEffect(() => {
+    if (leftSheetOpen && isMobile) {
+      console.log(`[Index] Mobile left sheet OPENED`);
+      console.log(`[Index] actualCountries passed to mobile LeftRail:`, actualCountries.length);
+      const uefaInMobile = actualCountries.find((c: any) => c.id === 9998 || c.code === 'UEFA');
+      console.log(`[Index] UEFA in mobile data:`, uefaInMobile ? `YES (${JSON.stringify(uefaInMobile)})` : 'NO - MISSING IN MOBILE!');
+    }
+  }, [leftSheetOpen, isMobile, actualCountries]);
 
   // Filter preloaded leagues by selected country (instant, no network)
   const leaguesData = (() => {
@@ -986,17 +1003,19 @@ const Index = () => {
 
         {/* Mobile Left Sheet */}
         <Sheet open={leftSheetOpen} onOpenChange={setLeftSheetOpen}>
-          <SheetContent side="left" className="w-[280px] p-0 lg:hidden">
+          <SheetContent side="left" className="w-[280px] p-0 lg:hidden overflow-y-auto">
             <LeftRail
               countries={actualCountries}
               selectedCountry={selectedCountry}
               onSelectCountry={(id) => {
+                console.log(`[Index] Mobile: Selected country ${id}`);
                 setSelectedCountry(id);
                 setLeftSheetOpen(false);
               }}
               leagues={leagues}
               selectedLeague={selectedLeague}
               onSelectLeague={(league) => {
+                console.log(`[Index] Mobile: Selected league ${league.id} (${league.name})`);
                 setSelectedLeague(league);
                 setLeftSheetOpen(false);
               }}
