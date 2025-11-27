@@ -58,9 +58,12 @@ interface RightRailProps {
 }
 
 function StatRow({ label, value }: { label: string; value: number }) {
-  const [displayValue, setDisplayValue] = useState(0);
+  const [displayValue, setDisplayValue] = useState(value);
 
   useEffect(() => {
+    // Reset to actual value immediately when value changes to prevent stale animation states
+    setDisplayValue(value);
+    
     const duration = 200;
     const steps = 10;
     const increment = value / steps;
