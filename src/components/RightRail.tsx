@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 
 interface TeamStats {
   goals: number;
-  cards: number;
-  offsides: number;
-  corners: number;
-  fouls: number;
+  cards: number | null;
+  offsides: number | null;
+  corners: number | null;
+  fouls: number | null;
 }
 
 interface SuggestedMarket {
@@ -57,10 +57,16 @@ interface RightRailProps {
   onAddToTicket?: (market: SuggestedMarket) => void;
 }
 
-function StatRow({ label, value }: { label: string; value: number }) {
-  const [displayValue, setDisplayValue] = useState(value);
+function StatRow({ label, value }: { label: string; value: number | null | undefined }) {
+  const [displayValue, setDisplayValue] = useState(value ?? 0);
 
   useEffect(() => {
+    // Handle null/undefined values - no animation
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      setDisplayValue(0);
+      return;
+    }
+
     // Reset to actual value immediately when value changes to prevent stale animation states
     setDisplayValue(value);
     
@@ -81,6 +87,16 @@ function StatRow({ label, value }: { label: string; value: number }) {
 
     return () => clearInterval(timer);
   }, [value]);
+
+  // Render null/undefined as placeholder
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return (
+      <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 min-w-0 gap-2">
+        <span className="text-sm text-muted-foreground truncate">{label}</span>
+        <span className="text-sm font-bold tabular-nums shrink-0 text-muted-foreground">—</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 min-w-0 gap-2">
