@@ -1291,16 +1291,18 @@ const Index = () => {
           <BarChart3 className="h-6 w-6" />
         </Button>
 
-        {/* Mobile AI Ticket Creator FAB */}
-        <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
-          <Button
-            className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
-            onClick={() => setTicketCreatorOpen(true)}
-          >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
-          </Button>
-        </PaywallGate>
+        {/* Mobile AI Ticket Creator FAB - Hidden when dialog is open */}
+        {!ticketCreatorOpen && (
+          <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
+            <Button
+              className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
+              onClick={() => setTicketCreatorOpen(true)}
+            >
+              <Sparkles className="h-5 w-5" />
+              <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
+            </Button>
+          </PaywallGate>
+        )}
       </div>
 
       <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
