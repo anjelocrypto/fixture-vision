@@ -239,31 +239,8 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
     };
   }
 
-  // P0 FIX: Check if we have actual fixture_results data in our database
-  // This prevents computing fake stats from API-only data when results aren't backfilled yet
-  if (supabase) {
-    const recentFixtureIds = allFixtures.slice(0, 5).map(f => f.id);
-    const { count: resultsCount } = await supabase
-      .from("fixture_results")
-      .select("fixture_id", { count: "exact", head: true })
-      .in("fixture_id", recentFixtureIds);
-
-    if ((resultsCount || 0) < 3) {
-      console.log(`[stats] ⚠️ Team ${teamId} has only ${resultsCount}/5 fixtures with results in DB (min 3 required) - skipping stats`);
-      return {
-        team_id: teamId,
-        goals: 0,
-        corners: 0,
-        cards: 0,
-        fouls: 0,
-        offsides: 0,
-        sample_size: 0,
-        last_five_fixture_ids: [],
-        last_final_fixture: null,
-      };
-    }
-    console.log(`[stats] ✅ Team ${teamId} has ${resultsCount}/5 fixtures with results in DB - proceeding with stats computation`);
-  }
+  // Removed overly strict DB results check - trust API-Football FT data
+  // The API provides reliable finished fixture statistics regardless of our backfill status
   
   // Build a map of league_id -> league name for cup detection
   const leagueNames = new Map<number, string>();
