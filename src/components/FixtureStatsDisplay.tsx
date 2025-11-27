@@ -69,42 +69,66 @@ export function FixtureStatsDisplay({
     <div className="space-y-3 mt-4">
       {/* Home Team Stats */}
       {homeStats && (
-        <Card className="p-4 bg-muted/30">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            <h4 className="text-sm font-semibold">{homeTeam} - Last 5 Matches</h4>
-            <Badge variant="outline" className="text-xs ml-auto">
-              {homeStats.sample_size} games
-            </Badge>
-          </div>
-          <div className="space-y-0">
-            <StatRow label="Goals" value={homeStats.goals} className="text-primary" />
-            <StatRow label="Corners" value={homeStats.corners} />
-            <StatRow label="Cards" value={homeStats.cards} />
-            <StatRow label="Fouls" value={homeStats.fouls} />
-            <StatRow label="Offsides" value={homeStats.offsides} />
-          </div>
-        </Card>
+        homeStats.sample_size < 3 ? (
+          <Card className="p-4 bg-muted/20 border-dashed">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <h4 className="text-sm font-semibold text-muted-foreground">{homeTeam} - Last 5 Matches</h4>
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Insufficient data available. Team has only {homeStats.sample_size} completed {homeStats.sample_size === 1 ? 'match' : 'matches'} in the current season (minimum 3 required for reliable stats).
+            </p>
+          </Card>
+        ) : (
+          <Card className="p-4 bg-muted/30">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <h4 className="text-sm font-semibold">{homeTeam} - Last 5 Matches</h4>
+              <Badge variant="outline" className="text-xs ml-auto">
+                {homeStats.sample_size} games
+              </Badge>
+            </div>
+            <div className="space-y-0">
+              <StatRow label="Goals" value={homeStats.goals} className="text-primary" />
+              <StatRow label="Corners" value={homeStats.corners} />
+              <StatRow label="Cards" value={homeStats.cards} />
+              <StatRow label="Fouls" value={homeStats.fouls} />
+              <StatRow label="Offsides" value={homeStats.offsides} />
+            </div>
+          </Card>
+        )
       )}
 
       {/* Away Team Stats */}
       {awayStats && (
-        <Card className="p-4 bg-muted/30">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            <h4 className="text-sm font-semibold">{awayTeam} - Last 5 Matches</h4>
-            <Badge variant="outline" className="text-xs ml-auto">
-              {awayStats.sample_size} games
-            </Badge>
-          </div>
-          <div className="space-y-0">
-            <StatRow label="Goals" value={awayStats.goals} className="text-primary" />
-            <StatRow label="Corners" value={awayStats.corners} />
-            <StatRow label="Cards" value={awayStats.cards} />
-            <StatRow label="Fouls" value={awayStats.fouls} />
-            <StatRow label="Offsides" value={awayStats.offsides} />
-          </div>
-        </Card>
+        awayStats.sample_size < 3 ? (
+          <Card className="p-4 bg-muted/20 border-dashed">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <h4 className="text-sm font-semibold text-muted-foreground">{awayTeam} - Last 5 Matches</h4>
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Insufficient data available. Team has only {awayStats.sample_size} completed {awayStats.sample_size === 1 ? 'match' : 'matches'} in the current season (minimum 3 required for reliable stats).
+            </p>
+          </Card>
+        ) : (
+          <Card className="p-4 bg-muted/30">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <h4 className="text-sm font-semibold">{awayTeam} - Last 5 Matches</h4>
+              <Badge variant="outline" className="text-xs ml-auto">
+                {awayStats.sample_size} games
+              </Badge>
+            </div>
+            <div className="space-y-0">
+              <StatRow label="Goals" value={awayStats.goals} className="text-primary" />
+              <StatRow label="Corners" value={awayStats.corners} />
+              <StatRow label="Cards" value={awayStats.cards} />
+              <StatRow label="Fouls" value={awayStats.fouls} />
+              <StatRow label="Offsides" value={awayStats.offsides} />
+            </div>
+          </Card>
+        )
       )}
 
       {/* H2H Stats */}

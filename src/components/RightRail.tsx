@@ -227,34 +227,58 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
           )}
 
           {/* Home Team */}
-          <Card className="p-4 min-w-0">
-            <div className="flex items-center gap-3 mb-4 min-w-0">
-              {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8 shrink-0" />}
-              <h4 className="font-semibold truncate">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
-            </div>
-            <div className="space-y-1">
-              <StatRow label="Goals" value={analysis.home.goals} />
-              <StatRow label="Cards" value={analysis.home.cards} />
-              <StatRow label="Offsides" value={analysis.home.offsides} />
-              <StatRow label="Corners" value={analysis.home.corners} />
-              <StatRow label="Fouls" value={analysis.home.fouls} />
-            </div>
-          </Card>
+          {analysis.home.sample_size < 3 ? (
+            <Card className="p-4 bg-muted/20 border-dashed min-w-0">
+              <div className="flex items-center gap-3 mb-2 min-w-0">
+                {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8 shrink-0" />}
+                <h4 className="font-semibold text-muted-foreground truncate">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                Insufficient data. Only {analysis.home.sample_size} completed {analysis.home.sample_size === 1 ? 'match' : 'matches'} in current season (min 3 required).
+              </p>
+            </Card>
+          ) : (
+            <Card className="p-4 min-w-0">
+              <div className="flex items-center gap-3 mb-4 min-w-0">
+                {analysis.home.logo && <img src={analysis.home.logo} alt={analysis.home.name || 'Home'} className="w-8 h-8 shrink-0" />}
+                <h4 className="font-semibold truncate">{analysis.home.name || `Team ${analysis.home.team_id}`}</h4>
+              </div>
+              <div className="space-y-1">
+                <StatRow label="Goals" value={analysis.home.goals} />
+                <StatRow label="Cards" value={analysis.home.cards} />
+                <StatRow label="Offsides" value={analysis.home.offsides} />
+                <StatRow label="Corners" value={analysis.home.corners} />
+                <StatRow label="Fouls" value={analysis.home.fouls} />
+              </div>
+            </Card>
+          )}
 
           {/* Away Team */}
-          <Card className="p-4 min-w-0">
-            <div className="flex items-center gap-3 mb-4 min-w-0">
-              {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8 shrink-0" />}
-              <h4 className="font-semibold truncate">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
-            </div>
-            <div className="space-y-1">
-              <StatRow label="Goals" value={analysis.away.goals} />
-              <StatRow label="Cards" value={analysis.away.cards} />
-              <StatRow label="Offsides" value={analysis.away.offsides} />
-              <StatRow label="Corners" value={analysis.away.corners} />
-              <StatRow label="Fouls" value={analysis.away.fouls} />
-            </div>
-          </Card>
+          {analysis.away.sample_size < 3 ? (
+            <Card className="p-4 bg-muted/20 border-dashed min-w-0">
+              <div className="flex items-center gap-3 mb-2 min-w-0">
+                {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8 shrink-0" />}
+                <h4 className="font-semibold text-muted-foreground truncate">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                Insufficient data. Only {analysis.away.sample_size} completed {analysis.away.sample_size === 1 ? 'match' : 'matches'} in current season (min 3 required).
+              </p>
+            </Card>
+          ) : (
+            <Card className="p-4 min-w-0">
+              <div className="flex items-center gap-3 mb-4 min-w-0">
+                {analysis.away.logo && <img src={analysis.away.logo} alt={analysis.away.name || 'Away'} className="w-8 h-8 shrink-0" />}
+                <h4 className="font-semibold truncate">{analysis.away.name || `Team ${analysis.away.team_id}`}</h4>
+              </div>
+              <div className="space-y-1">
+                <StatRow label="Goals" value={analysis.away.goals} />
+                <StatRow label="Cards" value={analysis.away.cards} />
+                <StatRow label="Offsides" value={analysis.away.offsides} />
+                <StatRow label="Corners" value={analysis.away.corners} />
+                <StatRow label="Fouls" value={analysis.away.fouls} />
+              </div>
+            </Card>
+          )}
 
           {/* H2H Stats */}
           {analysis.h2h && analysis.h2h.sample_size >= 3 ? (
