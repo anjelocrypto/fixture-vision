@@ -5,19 +5,19 @@ import { useTranslation } from "react-i18next";
 
 interface TeamStats {
   goals: number;
-  corners: number;
-  cards: number;
-  fouls: number;
-  offsides: number;
+  corners: number | null;
+  cards: number | null;
+  fouls: number | null;
+  offsides: number | null;
   sample_size: number;
 }
 
 interface H2HStats {
   goals: number;
-  corners: number;
-  cards: number;
-  fouls: number;
-  offsides: number;
+  corners: number | null;
+  cards: number | null;
+  fouls: number | null;
+  offsides: number | null;
   sample_size: number;
 }
 
@@ -40,12 +40,30 @@ export function FixtureStatsDisplay({
 }: FixtureStatsDisplayProps) {
   const { t } = useTranslation('common');
 
-  const StatRow = ({ label, value, className = "" }: { label: string; value: number | string; className?: string }) => (
-    <div className="flex justify-between items-center py-1.5 border-b last:border-0">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-sm font-semibold ${className}`}>{typeof value === 'number' ? value.toFixed(2) : value}</span>
-    </div>
-  );
+  const StatRow = ({ 
+    label, 
+    value, 
+    className = "" 
+  }: { 
+    label: string; 
+    value: number | null | undefined; 
+    className?: string 
+  }) => {
+    let display: string;
+    
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      display = '—';
+    } else {
+      display = value.toFixed(2);
+    }
+    
+    return (
+      <div className="flex justify-between items-center py-1.5 border-b last:border-0">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={`text-sm font-semibold ${className}`}>{display}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-3 mt-4">
