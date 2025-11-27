@@ -64,7 +64,7 @@ serve(async (req) => {
     }
 
     const { fixtureId, homeTeamId, awayTeamId } = validation.data;
-    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}`);
+    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}, user=${user.email}`);
 
     // Helper to get or compute team stats
     const getTeamStats = async (teamId: number) => {
@@ -85,10 +85,10 @@ serve(async (req) => {
         }
       }
 
-      console.log(`[analyze-fixture] Cache miss or stale for team ${teamId}, computing fresh stats`);
-      const freshStats = await computeLastFiveAverages(teamId);
+    console.log(`[analyze-fixture] Cache miss or stale for team ${teamId}, computing fresh stats`);
+    const freshStats = await computeLastFiveAverages(teamId, supabaseClient);
 
-      // Upsert to cache
+    // Upsert to cache
       await supabaseClient.from("stats_cache").upsert({
         team_id: freshStats.team_id,
         goals: freshStats.goals,
@@ -119,7 +119,11 @@ serve(async (req) => {
     // Compute combined stats using v2 formula: ((home + away) / 2) × multiplier
     const combined = computeCombinedMetrics(homeStats, awayStats);
 
-    console.log(`[analyze-fixture] Analysis complete for fixture ${fixtureId}`);
+    console.log(`[analyze-fixture] Returning stats for fixture ${fixtureId}:`, {
+      home: { team_id: homeStats.team_id, goals: homeStats.goals, sample_size: homeStats.sample_size },
+      away: { team_id: awayStats.team_id, goals: awayStats.goals, sample_size: awayStats.sample_size },
+      user: user.email
+    });
 
     return new Response(
       JSON.stringify({
