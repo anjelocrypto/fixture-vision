@@ -106,10 +106,25 @@ serve(async (req) => {
         totalFetched += injuries.length;
 
         if (injuries.length > 0) {
+          // Deduplicate injuries based on unique key (player_id, team_id, league_id, season)
+          // Keep only the latest injury record per player
+          const uniqueInjuries = injuries.reduce((acc: any[], injury: any) => {
+            const key = `${injury.player_id}-${injury.team_id}-${injury.league_id}-${injury.season}`;
+            const existing = acc.find(i => 
+              `${i.player_id}-${i.team_id}-${i.league_id}-${i.season}` === key
+            );
+            if (!existing) {
+              acc.push(injury);
+            }
+            return acc;
+          }, []);
+          
+          console.log(`[sync-injuries] Deduped from ${injuries.length} to ${uniqueInjuries.length} unique injuries for league ${leagueId}`);
+
           // Upsert injuries to database
           const { error: upsertError } = await supabaseClient
             .from("player_injuries")
-            .upsert(injuries, {
+            .upsert(uniqueInjuries, {
               onConflict: "player_id,team_id,league_id,season",
               ignoreDuplicates: false,
             });
@@ -117,8 +132,8 @@ serve(async (req) => {
           if (upsertError) {
             console.error(`[sync-injuries] Error upserting injuries for league ${leagueId}:`, upsertError);
           } else {
-            totalUpserted += injuries.length;
-            console.log(`[sync-injuries] ✅ Upserted ${injuries.length} injuries for league ${leagueId}`);
+            totalUpserted += uniqueInjuries.length;
+            console.log(`[sync-injuries] ✅ Upserted ${uniqueInjuries.length} injuries for league ${leagueId}`);
           }
         } else {
           console.log(`[sync-injuries] No injuries found for league ${leagueId}`);
