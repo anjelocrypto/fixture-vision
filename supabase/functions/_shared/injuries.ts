@@ -53,6 +53,7 @@ export async function fetchLeagueInjuries(
   }
   
   // Normalize to our schema
+  let processedCount = 0;
   const normalized: PlayerInjury[] = injuries
     .filter((injury: any) => {
       // Filter for relevant injury/suspension statuses
@@ -107,8 +108,8 @@ export async function fetchLeagueInjuries(
         expected_return: null, // API doesn't provide this reliably
       };
       
-      // Light logging for first few injuries stored
-      if (normalized.length < 5) {
+      // Light logging for first few injuries
+      if (processedCount < 3) {
         console.log('[injuries] Storing injury:', {
           player_id: injuryData.player_id,
           player_name: injuryData.player_name,
@@ -118,6 +119,7 @@ export async function fetchLeagueInjuries(
           status: injuryData.status,
           injury_type: injuryData.injury_type,
         });
+        processedCount++;
       }
       
       return injuryData;
