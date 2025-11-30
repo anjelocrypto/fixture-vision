@@ -92,3 +92,9 @@ verify_jwt = false
 
 [functions.test-uefa-competitions]
 verify_jwt = false
+
+[functions.sync-injuries]
+verify_jwt = false
+
+[functions.test-injury-coverage]
+verify_jwt = false
