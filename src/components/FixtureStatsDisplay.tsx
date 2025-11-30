@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { InjuriesDisplay } from "./InjuriesDisplay";
 
 interface TeamStats {
   goals: number;
@@ -21,6 +22,13 @@ interface H2HStats {
   sample_size: number;
 }
 
+interface InjuredPlayer {
+  player_name: string;
+  position: string | null;
+  status: string;
+  injury_type: string | null;
+}
+
 interface FixtureStatsDisplayProps {
   homeTeam: string;
   awayTeam: string;
@@ -28,6 +36,8 @@ interface FixtureStatsDisplayProps {
   awayStats: TeamStats | null;
   h2hStats: H2HStats | null;
   combinedSnapshot: Record<string, number>;
+  homeInjuries?: InjuredPlayer[];
+  awayInjuries?: InjuredPlayer[];
 }
 
 export function FixtureStatsDisplay({
@@ -37,6 +47,8 @@ export function FixtureStatsDisplay({
   awayStats,
   h2hStats,
   combinedSnapshot,
+  homeInjuries = [],
+  awayInjuries = [],
 }: FixtureStatsDisplayProps) {
   const { t } = useTranslation('common');
 
@@ -160,6 +172,14 @@ export function FixtureStatsDisplay({
           </p>
         </Card>
       )}
+
+      {/* Injuries & Availability - New card inserted before Combined */}
+      <InjuriesDisplay
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+        homeInjuries={homeInjuries}
+        awayInjuries={awayInjuries}
+      />
 
       {/* Combined Stats */}
       {combinedSnapshot && Object.keys(combinedSnapshot).length > 0 && (

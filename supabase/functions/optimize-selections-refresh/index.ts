@@ -6,6 +6,7 @@ import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
 import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS } from "../_shared/config.ts";
 import { detectAvailableMarkets } from "../_shared/market_detection.ts";
+import { hasKeyAttackingInjuries } from "../_shared/injuries.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -224,8 +225,19 @@ serve(async (req) => {
         continue;
       }
 
-      // Compute combined metrics using v2 formula
-      const combined = computeCombinedMetrics(homeStats, awayStats);
+      // Check for key attacking injuries
+      const fixtureDate = new Date(fixture.timestamp * 1000);
+      const month = fixtureDate.getUTCMonth();
+      const year = fixtureDate.getUTCFullYear();
+      const season = (month >= 7) ? year : year - 1;
+      
+      const [hasHomeInjury, hasAwayInjury] = await Promise.all([
+        hasKeyAttackingInjuries(homeTeamId, fixture.league_id, season, supabaseClient),
+        hasKeyAttackingInjuries(awayTeamId, fixture.league_id, season, supabaseClient)
+      ]);
+
+      // Compute combined metrics using v2 formula with injury impact
+      const combined = computeCombinedMetrics(homeStats, awayStats, { hasHomeInjury, hasAwayInjury });
       const sampleSize = combined.sample_size;
 
       // Get odds (now optional for model-only mode)
