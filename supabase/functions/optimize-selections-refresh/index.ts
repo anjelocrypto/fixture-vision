@@ -225,19 +225,23 @@ serve(async (req) => {
         continue;
       }
 
-      // Check for key attacking injuries
+      // Fetch key player injuries with importance scores
       const fixtureDate = new Date(fixture.timestamp * 1000);
       const month = fixtureDate.getUTCMonth();
       const year = fixtureDate.getUTCFullYear();
       const season = (month >= 7) ? year : year - 1;
       
-      const [hasHomeInjury, hasAwayInjury] = await Promise.all([
-        hasKeyAttackingInjuries(homeTeamId, fixture.league_id, season, supabaseClient),
-        hasKeyAttackingInjuries(awayTeamId, fixture.league_id, season, supabaseClient)
+      const { getKeyAttackingInjuries } = await import("../_shared/injuries.ts");
+      const [homeInjuries, awayInjuries] = await Promise.all([
+        getKeyAttackingInjuries(homeTeamId, fixture.league_id, season, supabaseClient),
+        getKeyAttackingInjuries(awayTeamId, fixture.league_id, season, supabaseClient)
       ]);
 
-      // Compute combined metrics using v2 formula with injury impact
-      const combined = computeCombinedMetrics(homeStats, awayStats, { hasHomeInjury, hasAwayInjury });
+      // Compute combined metrics using v2 formula with importance-weighted injury impact
+      const combined = computeCombinedMetrics(homeStats, awayStats, {
+        homeInjuries: homeInjuries.map(inj => ({ importance: inj.importance })),
+        awayInjuries: awayInjuries.map(inj => ({ importance: inj.importance }))
+      });
       const sampleSize = combined.sample_size;
 
       // Get odds (now optional for model-only mode)

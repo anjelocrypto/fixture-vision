@@ -488,20 +488,35 @@ export type CombinedMetrics = {
   sample_size: number;
 };
 
+export interface InjuryImpact {
+  hasInjury: boolean;
+  maxImportance: number;
+  count: number;
+}
+
 /**
- * Compute combined metrics using v2 formula:
+ * Compute combined metrics using v2 formula with importance-weighted injury impact:
  * combined(metric) = ((home_avg + away_avg) / 2) × multiplier
  * 
  * Requires minimum 3 matches per team for each metric.
  * Returns null for metrics with insufficient data.
  * 
- * Injury impact: If hasHomeInjury or hasAwayInjury is true, reduces that team's
- * goal contribution by 15% before computing combined average.
+ * INJURY IMPACT (goals only):
+ * - Only applies if injured players have importance >= 0.6 (key players)
+ * - Scales reduction based on injured player importance:
+ *   * max_importance < 0.5: no reduction (bench/rotation players)
+ *   * 0.5-0.69: -5% reduction
+ *   * 0.7-0.84: -10% reduction
+ *   * 0.85-1.0 with 1 player: -15% reduction
+ *   * 0.85-1.0 with 2+ players: -20% reduction (capped)
  */
 export function computeCombinedMetrics(
   homeStats: Last5Result,
   awayStats: Last5Result,
-  options?: { hasHomeInjury?: boolean; hasAwayInjury?: boolean }
+  options?: { 
+    homeInjuries?: Array<{ importance: number }>;
+    awayInjuries?: Array<{ importance: number }>;
+  }
 ): CombinedMetrics {
   const minSampleSize = Math.min(homeStats.sample_size, awayStats.sample_size);
   
@@ -520,6 +535,10 @@ export function computeCombinedMetrics(
     return combined;
   }
 
+  // Calculate injury impact for home and away
+  const homeInjuryImpact = calculateInjuryImpact(options?.homeInjuries || []);
+  const awayInjuryImpact = calculateInjuryImpact(options?.awayInjuries || []);
+
   const metrics: MetricKey[] = ['goals', 'corners', 'offsides', 'fouls', 'cards'];
   
   for (const metric of metrics) {
@@ -528,17 +547,25 @@ export function computeCombinedMetrics(
     const multiplier = METRIC_MULTIPLIERS[metric];
     const bounds = METRIC_BOUNDS[metric];
     
-    // Apply 15% injury reduction for goals only
+    // Apply importance-weighted injury reduction for goals only
     if (metric === 'goals') {
-      if (options?.hasHomeInjury) {
+      if (homeInjuryImpact.hasInjury) {
         const originalHome = homeAvg;
-        homeAvg = homeAvg * 0.85; // -15% reduction
-        console.log(`[stats] 🤕 Home team injury impact: goals ${originalHome.toFixed(2)} → ${homeAvg.toFixed(2)} (-15%)`);
+        const reductionPct = getInjuryReductionPercent(homeInjuryImpact);
+        homeAvg = homeAvg * (1 - reductionPct / 100);
+        console.log(
+          `[stats] 🤕 Home injury impact: max_importance=${homeInjuryImpact.maxImportance.toFixed(2)}, ` +
+          `count=${homeInjuryImpact.count} → -${reductionPct}% (${originalHome.toFixed(2)} → ${homeAvg.toFixed(2)})`
+        );
       }
-      if (options?.hasAwayInjury) {
+      if (awayInjuryImpact.hasInjury) {
         const originalAway = awayAvg;
-        awayAvg = awayAvg * 0.85; // -15% reduction
-        console.log(`[stats] 🤕 Away team injury impact: goals ${originalAway.toFixed(2)} → ${awayAvg.toFixed(2)} (-15%)`);
+        const reductionPct = getInjuryReductionPercent(awayInjuryImpact);
+        awayAvg = awayAvg * (1 - reductionPct / 100);
+        console.log(
+          `[stats] 🤕 Away injury impact: max_importance=${awayInjuryImpact.maxImportance.toFixed(2)}, ` +
+          `count=${awayInjuryImpact.count} → -${reductionPct}% (${originalAway.toFixed(2)} → ${awayAvg.toFixed(2)})`
+        );
       }
     }
     
@@ -552,12 +579,59 @@ export function computeCombinedMetrics(
     combined[metric] = Math.round(value * 10) / 10;
   }
 
-  const injuryNote = (options?.hasHomeInjury || options?.hasAwayInjury) 
-    ? ` [injury-adjusted: home=${options?.hasHomeInjury ? 'Y' : 'N'}, away=${options?.hasAwayInjury ? 'Y' : 'N'}]`
+  const injuryNote = (homeInjuryImpact.hasInjury || awayInjuryImpact.hasInjury)
+    ? ` [injury-adjusted: home=${homeInjuryImpact.hasInjury ? `${getInjuryReductionPercent(homeInjuryImpact)}%` : 'N'}, ` +
+      `away=${awayInjuryImpact.hasInjury ? `${getInjuryReductionPercent(awayInjuryImpact)}%` : 'N'}]`
     : '';
   console.log(
     `[stats] combined v2: goals=${combined.goals} corners=${combined.corners} offsides=${combined.offsides} fouls=${combined.fouls} cards=${combined.cards} (samples: H=${homeStats.sample_size}/A=${awayStats.sample_size})${injuryNote}`
   );
 
   return combined;
+}
+
+/**
+ * Calculate injury impact from list of injured players
+ * Returns max importance and count of key injuries
+ */
+function calculateInjuryImpact(injuries: Array<{ importance: number }>): InjuryImpact {
+  if (injuries.length === 0) {
+    return { hasInjury: false, maxImportance: 0, count: 0 };
+  }
+  
+  const maxImportance = Math.max(...injuries.map(inj => inj.importance));
+  const count = injuries.length;
+  
+  return {
+    hasInjury: true,
+    maxImportance,
+    count,
+  };
+}
+
+/**
+ * Get injury reduction percentage based on importance and count
+ * 
+ * Scaling rules:
+ * - max_importance < 0.5: 0% (bench/rotation players)
+ * - 0.5-0.69: 5%
+ * - 0.7-0.84: 10%
+ * - 0.85-1.0 with 1 player: 15%
+ * - 0.85-1.0 with 2+ players: 20% (capped)
+ */
+function getInjuryReductionPercent(impact: InjuryImpact): number {
+  if (!impact.hasInjury) return 0;
+  
+  const { maxImportance, count } = impact;
+  
+  if (maxImportance < 0.5) {
+    return 0; // Bench/rotation players
+  } else if (maxImportance < 0.7) {
+    return 5; // Moderate players
+  } else if (maxImportance < 0.85) {
+    return 10; // Important players
+  } else {
+    // Star players (importance >= 0.85)
+    return count >= 2 ? 20 : 15; // Multiple stars = 20%, single star = 15%
+  }
 }

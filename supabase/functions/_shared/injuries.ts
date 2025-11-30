@@ -142,26 +142,34 @@ function isAttackingPosition(position: string | null): boolean {
 }
 
 /**
- * Get key player injuries for a specific team
- * Returns list of injured/doubtful/suspended players
+ * Get important player injuries for a specific team
+ * Returns list of injured/doubtful/suspended players who are KEY PLAYERS (importance >= 0.6)
  * 
- * NOTE: API-Football /injuries endpoint does not provide player position data,
- * so we cannot filter by attacking positions. Instead, we filter by injury severity
- * and status to identify impactful injuries that warrant goal reduction.
+ * Filters injuries by:
+ * 1. Status: injured, doubtful, suspended
+ * 2. Severity: serious injury types (cruciate, fracture, rupture, etc.)
+ * 3. Player importance: only includes players with importance >= 0.6
  */
 export async function getKeyAttackingInjuries(
   teamId: number,
   leagueId: number,
   season: number,
   supabaseClient: any
-): Promise<Array<{ player_name: string; position: string | null; status: string; injury_type: string | null }>> {
+): Promise<Array<{ player_name: string; position: string | null; status: string; injury_type: string | null; importance: number }>> {
   console.log(`[injuries] Checking key player injuries for team ${teamId}, league ${leagueId}, season ${season}`);
   
   try {
-    // Query player_injuries table for this team
+    // Query player_injuries joined with player_importance
     const { data: injuries, error } = await supabaseClient
       .from('player_injuries')
-      .select('*')
+      .select(`
+        player_id,
+        player_name,
+        position,
+        status,
+        injury_type,
+        player_importance!inner(importance)
+      `)
       .eq('team_id', teamId)
       .eq('league_id', leagueId)
       .eq('season', season)
@@ -177,9 +185,12 @@ export async function getKeyAttackingInjuries(
       return [];
     }
     
-    // Since API doesn't provide positions, filter by injury severity/type
-    // Focus on serious injuries that would likely impact team performance
-    const significantInjuries = injuries.filter((inj: any) => {
+    console.log(`[injuries] Found ${injuries.length} total injuries for team ${teamId}, filtering by severity and importance`);
+    
+    // Filter by serious injury types AND importance >= 0.6
+    const IMPORTANCE_THRESHOLD = 0.6;
+    
+    const impactfulInjuries = injuries.filter((inj: any) => {
       const injuryType = (inj.injury_type ?? '').toLowerCase();
       const isSeriousInjury =
         injuryType.includes('cruciate') ||      // ACL/PCL tears
@@ -192,16 +203,25 @@ export async function getKeyAttackingInjuries(
         injuryType.includes('red card') ||      // Red card suspensions
         inj.status === 'suspended';             // Any suspension
       
-      return isSeriousInjury;
+      // Get importance from joined table
+      const importance = Number(inj.player_importance?.importance ?? 0);
+      const isKeyPlayer = importance >= IMPORTANCE_THRESHOLD;
+      
+      if (isSeriousInjury && !isKeyPlayer) {
+        console.log(`[injuries] Excluding ${inj.player_name}: serious injury but low importance (${importance.toFixed(2)})`);
+      }
+      
+      return isSeriousInjury && isKeyPlayer;
     });
     
-    console.log(`[injuries] Found ${significantInjuries.length} significant injuries for team ${teamId} (${injuries.length} total injuries)`);
+    console.log(`[injuries] Found ${impactfulInjuries.length} impactful injuries (serious + importance >= ${IMPORTANCE_THRESHOLD}) for team ${teamId}`);
     
-    return significantInjuries.map((inj: any) => ({
+    return impactfulInjuries.map((inj: any) => ({
       player_name: inj.player_name,
       position: inj.position,
       status: inj.status,
       injury_type: inj.injury_type,
+      importance: Number(inj.player_importance?.importance ?? 0),
     }));
   } catch (err) {
     console.error(`[injuries] Exception fetching injuries for team ${teamId}:`, err);
