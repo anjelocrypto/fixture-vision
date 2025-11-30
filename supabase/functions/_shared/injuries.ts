@@ -44,12 +44,37 @@ export async function fetchLeagueInjuries(
   
   console.log(`[injuries] API-Football returned ${injuries.length} injuries for league ${leagueId}`);
   
+  // Debug: Log first 2 items to see actual API structure (safely, masking sensitive data)
+  if (injuries.length > 0) {
+    console.log('[injuries] Sample API response (first 2 items):');
+    injuries.slice(0, 2).forEach((item: any, idx: number) => {
+      console.log(`[injuries]   Item ${idx}:`, JSON.stringify(item, null, 2));
+    });
+  }
+  
   // Normalize to our schema
   const normalized: PlayerInjury[] = injuries
     .filter((injury: any) => {
-      // Only include active injuries/suspensions
-      const type = injury?.player?.type?.toLowerCase() || '';
-      return type === 'injured' || type === 'doubtful' || type === 'suspended';
+      // Filter for relevant injury/suspension statuses
+      // API-Football returns player.type values like: "Missing Fixture", "Injury", "Doubtful", "Red Card", "Suspended"
+      const rawType = (injury?.player?.type ?? '').toString().toLowerCase();
+      const rawReason = (injury?.player?.reason ?? '').toString().toLowerCase();
+      
+      // Be generous: include any clear injury, doubt, or suspension cases
+      const isRelevant =
+        rawType.includes('injury') ||
+        rawType.includes('injured') ||
+        rawType.includes('missing') ||      // "Missing Fixture" due to injury
+        rawType.includes('doubt') ||
+        rawType.includes('susp') ||         // "Suspended"
+        rawType.includes('red card') ||     // Red card suspension
+        rawReason.includes('injury') ||
+        rawReason.includes('tear') ||
+        rawReason.includes('strain') ||
+        rawReason.includes('rupture') ||
+        rawReason.includes('fracture');
+      
+      return isRelevant;
     })
     .map((injury: any) => {
       const player = injury?.player || {};
@@ -57,7 +82,18 @@ export async function fetchLeagueInjuries(
       const fixture = injury?.fixture || {};
       const league = injury?.league || {};
       
-      return {
+      // Normalize status to our standard values
+      const rawStatus = (player.type ?? '').toString().toLowerCase();
+      let normalizedStatus = 'injured'; // default
+      if (rawStatus.includes('doubt')) {
+        normalizedStatus = 'doubtful';
+      } else if (rawStatus.includes('susp') || rawStatus.includes('red card')) {
+        normalizedStatus = 'suspended';
+      } else if (rawStatus.includes('injury') || rawStatus.includes('missing')) {
+        normalizedStatus = 'injured';
+      }
+      
+      const injuryData = {
         player_id: Number(player.id) || 0,
         player_name: String(player.name || 'Unknown'),
         team_id: Number(team.id) || 0,
@@ -66,10 +102,25 @@ export async function fetchLeagueInjuries(
         season: season,
         position: player.position || null,
         injury_type: player.reason || null,
-        status: player.type?.toLowerCase() || 'injured',
+        status: normalizedStatus,
         start_date: fixture.date || null,
         expected_return: null, // API doesn't provide this reliably
       };
+      
+      // Light logging for first few injuries stored
+      if (normalized.length < 5) {
+        console.log('[injuries] Storing injury:', {
+          player_id: injuryData.player_id,
+          player_name: injuryData.player_name,
+          team_id: injuryData.team_id,
+          team_name: injuryData.team_name,
+          position: injuryData.position,
+          status: injuryData.status,
+          injury_type: injuryData.injury_type,
+        });
+      }
+      
+      return injuryData;
     })
     .filter((inj: PlayerInjury) => inj.player_id > 0 && inj.team_id > 0);
   
