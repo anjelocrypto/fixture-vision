@@ -494,10 +494,14 @@ export type CombinedMetrics = {
  * 
  * Requires minimum 3 matches per team for each metric.
  * Returns null for metrics with insufficient data.
+ * 
+ * Injury impact: If hasHomeInjury or hasAwayInjury is true, reduces that team's
+ * goal contribution by 15% before computing combined average.
  */
 export function computeCombinedMetrics(
   homeStats: Last5Result,
-  awayStats: Last5Result
+  awayStats: Last5Result,
+  options?: { hasHomeInjury?: boolean; hasAwayInjury?: boolean }
 ): CombinedMetrics {
   const minSampleSize = Math.min(homeStats.sample_size, awayStats.sample_size);
   
@@ -519,10 +523,24 @@ export function computeCombinedMetrics(
   const metrics: MetricKey[] = ['goals', 'corners', 'offsides', 'fouls', 'cards'];
   
   for (const metric of metrics) {
-    const homeAvg = Number(homeStats[metric]) || 0;
-    const awayAvg = Number(awayStats[metric]) || 0;
+    let homeAvg = Number(homeStats[metric]) || 0;
+    let awayAvg = Number(awayStats[metric]) || 0;
     const multiplier = METRIC_MULTIPLIERS[metric];
     const bounds = METRIC_BOUNDS[metric];
+    
+    // Apply 15% injury reduction for goals only
+    if (metric === 'goals') {
+      if (options?.hasHomeInjury) {
+        const originalHome = homeAvg;
+        homeAvg = homeAvg * 0.85; // -15% reduction
+        console.log(`[stats] 🤕 Home team injury impact: goals ${originalHome.toFixed(2)} → ${homeAvg.toFixed(2)} (-15%)`);
+      }
+      if (options?.hasAwayInjury) {
+        const originalAway = awayAvg;
+        awayAvg = awayAvg * 0.85; // -15% reduction
+        console.log(`[stats] 🤕 Away team injury impact: goals ${originalAway.toFixed(2)} → ${awayAvg.toFixed(2)} (-15%)`);
+      }
+    }
     
     // Formula: ((home_avg + away_avg) / 2) × multiplier
     let value = ((homeAvg + awayAvg) / 2) * multiplier;
@@ -534,8 +552,11 @@ export function computeCombinedMetrics(
     combined[metric] = Math.round(value * 10) / 10;
   }
 
+  const injuryNote = (options?.hasHomeInjury || options?.hasAwayInjury) 
+    ? ` [injury-adjusted: home=${options?.hasHomeInjury ? 'Y' : 'N'}, away=${options?.hasAwayInjury ? 'Y' : 'N'}]`
+    : '';
   console.log(
-    `[stats] combined v2: goals=${combined.goals} corners=${combined.corners} offsides=${combined.offsides} fouls=${combined.fouls} cards=${combined.cards} (samples: H=${homeStats.sample_size}/A=${awayStats.sample_size})`
+    `[stats] combined v2: goals=${combined.goals} corners=${combined.corners} offsides=${combined.offsides} fouls=${combined.fouls} cards=${combined.cards} (samples: H=${homeStats.sample_size}/A=${awayStats.sample_size})${injuryNote}`
   );
 
   return combined;

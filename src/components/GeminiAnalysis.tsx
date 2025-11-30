@@ -16,6 +16,8 @@ interface MatchAnalysis {
   away_stats?: any;
   h2h_stats?: any;
   combined_snapshot?: Record<string, number>;
+  home_injuries?: Array<{ player_name: string; position: string | null; status: string; injury_type: string | null }>;
+  away_injuries?: Array<{ player_name: string; position: string | null; status: string; injury_type: string | null }>;
 }
 
 interface GeminiAnalysisProps {
@@ -78,6 +80,8 @@ export function GeminiAnalysis({ overallSummary, matches }: GeminiAnalysisProps)
                   awayStats={match.away_stats}
                   h2hStats={match.h2h_stats}
                   combinedSnapshot={match.combined_snapshot || {}}
+                  homeInjuries={match.home_injuries || []}
+                  awayInjuries={match.away_injuries || []}
                 />
               )}
               

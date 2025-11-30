@@ -393,6 +393,7 @@ const Index = () => {
           name: fixture.teams_away?.name,
           logo: fixture.teams_away?.logo,
         },
+        injuries: analysisData.injuries || { home: [], away: [] },
         odds_available: !!oddsData,
       });
 

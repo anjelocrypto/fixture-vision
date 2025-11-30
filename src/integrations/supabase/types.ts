@@ -623,6 +623,51 @@ export type Database = {
           },
         ]
       }
+      player_injuries: {
+        Row: {
+          expected_return: string | null
+          injury_type: string | null
+          last_update: string
+          league_id: number
+          player_id: number
+          player_name: string
+          position: string | null
+          season: number
+          start_date: string | null
+          status: string | null
+          team_id: number
+          team_name: string
+        }
+        Insert: {
+          expected_return?: string | null
+          injury_type?: string | null
+          last_update?: string
+          league_id: number
+          player_id: number
+          player_name: string
+          position?: string | null
+          season: number
+          start_date?: string | null
+          status?: string | null
+          team_id: number
+          team_name: string
+        }
+        Update: {
+          expected_return?: string | null
+          injury_type?: string | null
+          last_update?: string
+          league_id?: number
+          player_id?: number
+          player_name?: string
+          position?: string | null
+          season?: number
+          start_date?: string | null
+          status?: string | null
+          team_id?: number
+          team_name?: string
+        }
+        Relationships: []
+      }
       predictions_cache: {
         Row: {
           advice: string | null

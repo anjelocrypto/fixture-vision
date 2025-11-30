@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, TrendingUp, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { InjuriesDisplay } from "./InjuriesDisplay";
 
 interface TeamStats {
   goals: number;
@@ -30,6 +31,13 @@ interface H2HStats extends TeamStats {
   sample_size: number;
 }
 
+interface InjuredPlayer {
+  player_name: string;
+  position: string | null;
+  status: string;
+  injury_type: string | null;
+}
+
 interface Analysis {
   home: TeamStats & { 
     team_id: number;
@@ -46,6 +54,10 @@ interface Analysis {
     logo?: string;
   };
   h2h?: H2HStats | null;
+  injuries?: {
+    home: InjuredPlayer[];
+    away: InjuredPlayer[];
+  };
   combined: TeamStats & { sample_size: number };
   odds_available?: boolean;
 }
@@ -302,6 +314,16 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
                 No recent head-to-head data available.
               </p>
             </Card>
+          )}
+
+          {/* Injuries & Availability */}
+          {analysis.injuries && (
+            <InjuriesDisplay
+              homeTeam={analysis.home.name || `Team ${analysis.home.team_id}`}
+              awayTeam={analysis.away.name || `Team ${analysis.away.team_id}`}
+              homeInjuries={analysis.injuries.home || []}
+              awayInjuries={analysis.injuries.away || []}
+            />
           )}
 
           {/* Combined Stats */}
