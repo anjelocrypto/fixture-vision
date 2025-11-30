@@ -7,6 +7,7 @@ interface InjuredPlayer {
   position: string | null;
   status: string;
   injury_type: string | null;
+  importance?: number;
 }
 
 interface InjuriesDisplayProps {
@@ -39,7 +40,14 @@ export function InjuriesDisplay({
       <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium truncate">{player.player_name}</span>
+          <span className="text-sm font-medium truncate">
+            {player.player_name}
+            {player.importance !== undefined && player.importance >= 0.6 && (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                ({(player.importance * 100).toFixed(0)}%)
+              </span>
+            )}
+          </span>
           {player.position && (
             <Badge variant="outline" className="text-xs">
               {player.position}
@@ -57,6 +65,23 @@ export function InjuriesDisplay({
       </div>
     </div>
   );
+  
+  // Calculate injury impact message based on player importance
+  const getInjuryImpactMessage = (injuries: InjuredPlayer[]) => {
+    if (injuries.length === 0) return null;
+    
+    const maxImportance = Math.max(...injuries.map(inj => inj.importance || 0));
+    const count = injuries.length;
+    
+    if (maxImportance < 0.5) return null; // No impact for bench players
+    
+    let reduction = 0;
+    if (maxImportance < 0.7) reduction = 5;
+    else if (maxImportance < 0.85) reduction = 10;
+    else reduction = count >= 2 ? 20 : 15;
+    
+    return `−${reduction}% attacking goals`;
+  };
 
   if (!hasAnyInjuries) {
     return (
@@ -84,9 +109,11 @@ export function InjuriesDisplay({
         <div className="mb-4 last:mb-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-foreground">{homeTeam}</span>
-            <Badge variant="destructive" className="text-xs">
-              Attack -15% impact
-            </Badge>
+            {getInjuryImpactMessage(homeInjuries) && (
+              <Badge variant="destructive" className="text-xs">
+                {getInjuryImpactMessage(homeInjuries)}
+              </Badge>
+            )}
           </div>
           <div className="space-y-0 bg-background/50 rounded-md p-2">
             {homeInjuries.map((player, idx) => (
@@ -101,9 +128,11 @@ export function InjuriesDisplay({
         <div className={hasHomeInjuries ? "pt-4 border-t" : ""}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-foreground">{awayTeam}</span>
-            <Badge variant="destructive" className="text-xs">
-              Attack -15% impact
-            </Badge>
+            {getInjuryImpactMessage(awayInjuries) && (
+              <Badge variant="destructive" className="text-xs">
+                {getInjuryImpactMessage(awayInjuries)}
+              </Badge>
+            )}
           </div>
           <div className="space-y-0 bg-background/50 rounded-md p-2">
             {awayInjuries.map((player, idx) => (

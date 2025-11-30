@@ -623,6 +623,48 @@ export type Database = {
           },
         ]
       }
+      player_importance: {
+        Row: {
+          assists: number | null
+          goals: number | null
+          importance: number
+          last_update: string
+          league_id: number
+          matches_played: number | null
+          matches_started: number | null
+          minutes_played: number | null
+          player_id: number
+          season: number
+          team_id: number
+        }
+        Insert: {
+          assists?: number | null
+          goals?: number | null
+          importance: number
+          last_update?: string
+          league_id: number
+          matches_played?: number | null
+          matches_started?: number | null
+          minutes_played?: number | null
+          player_id: number
+          season: number
+          team_id: number
+        }
+        Update: {
+          assists?: number | null
+          goals?: number | null
+          importance?: number
+          last_update?: string
+          league_id?: number
+          matches_played?: number | null
+          matches_started?: number | null
+          minutes_played?: number | null
+          player_id?: number
+          season?: number
+          team_id?: number
+        }
+        Relationships: []
+      }
       player_injuries: {
         Row: {
           expected_return: string | null

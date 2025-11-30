@@ -137,13 +137,13 @@ serve(async (req) => {
       getKeyAttackingInjuries(awayTeamId, leagueId, season, supabaseClient)
     ]);
 
-    const hasHomeInjury = homeInjuries.length > 0;
-    const hasAwayInjury = awayInjuries.length > 0;
+    console.log(`[analyze-fixture] Injury status: home=${homeInjuries.length} key injuries, away=${awayInjuries.length} key injuries`);
 
-    console.log(`[analyze-fixture] Injury status: home=${hasHomeInjury} (${homeInjuries.length} injured), away=${hasAwayInjury} (${awayInjuries.length} injured)`);
-
-    // Compute combined stats using v2 formula with injury impact: ((home + away) / 2) × multiplier
-    const combined = computeCombinedMetrics(homeStats, awayStats, { hasHomeInjury, hasAwayInjury });
+    // Compute combined stats using v2 formula with importance-weighted injury impact
+    const combined = computeCombinedMetrics(homeStats, awayStats, { 
+      homeInjuries: homeInjuries.map(inj => ({ importance: inj.importance })),
+      awayInjuries: awayInjuries.map(inj => ({ importance: inj.importance }))
+    });
 
     console.log(`[analyze-fixture] Returning stats for fixture ${fixtureId}:`, {
       home: { team_id: homeStats.team_id, goals: homeStats.goals, sample_size: homeStats.sample_size },
