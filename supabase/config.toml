@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.test-injury-coverage]
 verify_jwt = false
+
+[functions.sync-player-importance]
+verify_jwt = false
