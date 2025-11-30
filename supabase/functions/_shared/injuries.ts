@@ -1,5 +1,14 @@
-// Injury data management and key attacker detection
+// Injury data management and key player detection
 // API-Football endpoint: GET /injuries?league={id}&season={year}
+//
+// SYSTEM OVERVIEW:
+// 1. API returns injuries with player.type values like "Missing Fixture", "Injury", "Doubtful", "Red Card", "Suspended"
+// 2. We filter for relevant injuries by checking both player.type and player.reason fields
+// 3. Since API doesn't provide player position data, we identify significant injuries by severity:
+//    - Cruciate ligament injuries, fractures, ruptures, Achilles injuries, suspensions
+// 4. When significant injuries exist for a team, we apply 15% goal reduction in computeCombinedMetrics
+// 5. Data synced automatically via cron job every 4 hours (sync-injuries-12h)
+// 6. Powers injury display in FixtureStatsDisplay, GeminiAnalysis, and RightRail components
 
 import { API_BASE, apiHeaders } from "./api.ts";
 
@@ -43,14 +52,6 @@ export async function fetchLeagueInjuries(
   const injuries = json?.response ?? [];
   
   console.log(`[injuries] API-Football returned ${injuries.length} injuries for league ${leagueId}`);
-  
-  // Debug: Log first 2 items to see actual API structure (safely, masking sensitive data)
-  if (injuries.length > 0) {
-    console.log('[injuries] Sample API response (first 2 items):');
-    injuries.slice(0, 2).forEach((item: any, idx: number) => {
-      console.log(`[injuries]   Item ${idx}:`, JSON.stringify(item, null, 2));
-    });
-  }
   
   // Normalize to our schema
   let processedCount = 0;
@@ -108,19 +109,6 @@ export async function fetchLeagueInjuries(
         expected_return: null, // API doesn't provide this reliably
       };
       
-      // Light logging for first few injuries
-      if (processedCount < 3) {
-        console.log('[injuries] Storing injury:', {
-          player_id: injuryData.player_id,
-          player_name: injuryData.player_name,
-          team_id: injuryData.team_id,
-          team_name: injuryData.team_name,
-          position: injuryData.position,
-          status: injuryData.status,
-          injury_type: injuryData.injury_type,
-        });
-        processedCount++;
-      }
       
       return injuryData;
     })
@@ -154,8 +142,12 @@ function isAttackingPosition(position: string | null): boolean {
 }
 
 /**
- * Get key attacking injuries for a specific team
- * Returns list of injured/doubtful/suspended attacking players
+ * Get key player injuries for a specific team
+ * Returns list of injured/doubtful/suspended players
+ * 
+ * NOTE: API-Football /injuries endpoint does not provide player position data,
+ * so we cannot filter by attacking positions. Instead, we filter by injury severity
+ * and status to identify impactful injuries that warrant goal reduction.
  */
 export async function getKeyAttackingInjuries(
   teamId: number,
@@ -163,7 +155,7 @@ export async function getKeyAttackingInjuries(
   season: number,
   supabaseClient: any
 ): Promise<Array<{ player_name: string; position: string | null; status: string; injury_type: string | null }>> {
-  console.log(`[injuries] Checking key attacking injuries for team ${teamId}, league ${leagueId}, season ${season}`);
+  console.log(`[injuries] Checking key player injuries for team ${teamId}, league ${leagueId}, season ${season}`);
   
   try {
     // Query player_injuries table for this team
@@ -185,14 +177,27 @@ export async function getKeyAttackingInjuries(
       return [];
     }
     
-    // Filter to key attacking positions
-    const attackingInjuries = injuries.filter((inj: any) => 
-      isAttackingPosition(inj.position)
-    );
+    // Since API doesn't provide positions, filter by injury severity/type
+    // Focus on serious injuries that would likely impact team performance
+    const significantInjuries = injuries.filter((inj: any) => {
+      const injuryType = (inj.injury_type ?? '').toLowerCase();
+      const isSeriousInjury =
+        injuryType.includes('cruciate') ||      // ACL/PCL tears
+        injuryType.includes('ligament') ||      // Ligament injuries
+        injuryType.includes('fracture') ||      // Broken bones
+        injuryType.includes('rupture') ||       // Muscle ruptures
+        injuryType.includes('tear') ||          // Muscle tears
+        injuryType.includes('achilles') ||      // Achilles injuries
+        injuryType.includes('suspended') ||     // Suspensions
+        injuryType.includes('red card') ||      // Red card suspensions
+        inj.status === 'suspended';             // Any suspension
+      
+      return isSeriousInjury;
+    });
     
-    console.log(`[injuries] Found ${attackingInjuries.length} key attacking injuries for team ${teamId}`);
+    console.log(`[injuries] Found ${significantInjuries.length} significant injuries for team ${teamId} (${injuries.length} total injuries)`);
     
-    return attackingInjuries.map((inj: any) => ({
+    return significantInjuries.map((inj: any) => ({
       player_name: inj.player_name,
       position: inj.position,
       status: inj.status,
@@ -205,7 +210,8 @@ export async function getKeyAttackingInjuries(
 }
 
 /**
- * Check if a team has key attacking injuries
+ * Check if a team has significant player injuries
+ * Since API-Football doesn't provide position data, we filter by injury severity instead
  */
 export async function hasKeyAttackingInjuries(
   teamId: number,
