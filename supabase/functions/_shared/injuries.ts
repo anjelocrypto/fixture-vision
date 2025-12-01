@@ -4,11 +4,11 @@
 // SYSTEM OVERVIEW:
 // 1. API returns injuries with player.type values like "Missing Fixture", "Injury", "Doubtful", "Red Card", "Suspended"
 // 2. We filter for relevant injuries by checking both player.type and player.reason fields
-// 3. Since API doesn't provide player position data, we identify significant injuries by severity:
-//    - Cruciate ligament injuries, fractures, ruptures, Achilles injuries, suspensions
-// 4. When significant injuries exist for a team, we apply 15% goal reduction in computeCombinedMetrics
-// 5. Data synced automatically via cron job every 4 hours (sync-injuries-12h)
-// 6. Powers injury display in FixtureStatsDisplay, GeminiAnalysis, and RightRail components
+// 3. Goal reduction is determined ONLY by player importance (>= 0.6) + availability status
+// 4. Injury type (reason) is purely informational for UI display - it does NOT affect calculations
+// 5. Scaled reduction: 0-5-10-15-20% based on max importance and count of key injured players
+// 6. Data synced automatically via cron job every 4 hours (sync-injuries-12h)
+// 7. Powers injury display in FixtureStatsDisplay, GeminiAnalysis, and RightRail components
 
 import { API_BASE, apiHeaders } from "./api.ts";
 
@@ -145,10 +145,12 @@ function isAttackingPosition(position: string | null): boolean {
  * Get important player injuries for a specific team
  * Returns list of injured/doubtful/suspended players who are KEY PLAYERS (importance >= 0.6)
  * 
- * Filters injuries by:
- * 1. Status: injured, doubtful, suspended
- * 2. Severity: serious injury types (cruciate, fracture, rupture, etc.)
- * 3. Player importance: only includes players with importance >= 0.6
+ * FILTERING LOGIC (importance-only):
+ * 1. Status: injured, doubtful, suspended (availability check)
+ * 2. Player importance: ONLY includes players with importance >= 0.6
+ * 
+ * CRITICAL: injury_type is NOT used for filtering - it's purely informational for UI display.
+ * Goal reduction is determined ONLY by importance + count, not by injury severity.
  */
 export async function getKeyAttackingInjuries(
   teamId: number,
@@ -185,42 +187,36 @@ export async function getKeyAttackingInjuries(
       return [];
     }
     
-    console.log(`[injuries] Found ${injuries.length} total injuries for team ${teamId}, filtering by severity and importance`);
+    console.log(`[injuries] Found ${injuries.length} injuries for team ${teamId}, filtering by importance only (>= 0.6)`);
     
-    // Filter by serious injury types AND importance >= 0.6
+    // Filter by importance ONLY - ignore injury_type completely
     const IMPORTANCE_THRESHOLD = 0.6;
     
     const impactfulInjuries = injuries.filter((inj: any) => {
-      const injuryType = (inj.injury_type ?? '').toLowerCase();
-      const isSeriousInjury =
-        injuryType.includes('cruciate') ||      // ACL/PCL tears
-        injuryType.includes('ligament') ||      // Ligament injuries
-        injuryType.includes('fracture') ||      // Broken bones
-        injuryType.includes('rupture') ||       // Muscle ruptures
-        injuryType.includes('tear') ||          // Muscle tears
-        injuryType.includes('achilles') ||      // Achilles injuries
-        injuryType.includes('suspended') ||     // Suspensions
-        injuryType.includes('red card') ||      // Red card suspensions
-        inj.status === 'suspended';             // Any suspension
-      
       // Get importance from joined table
       const importance = Number(inj.player_importance?.importance ?? 0);
       const isKeyPlayer = importance >= IMPORTANCE_THRESHOLD;
       
-      if (isSeriousInjury && !isKeyPlayer) {
-        console.log(`[injuries] Excluding ${inj.player_name}: serious injury but low importance (${importance.toFixed(2)})`);
+      if (!isKeyPlayer) {
+        console.log(
+          `[injuries] Excluding ${inj.player_name}: low importance (${importance.toFixed(2)} < ${IMPORTANCE_THRESHOLD}). ` +
+          `Injury type "${inj.injury_type}" is irrelevant for calculations.`
+        );
       }
       
-      return isSeriousInjury && isKeyPlayer;
+      return isKeyPlayer;
     });
     
-    console.log(`[injuries] Found ${impactfulInjuries.length} impactful injuries (serious + importance >= ${IMPORTANCE_THRESHOLD}) for team ${teamId}`);
+    console.log(
+      `[injuries] Found ${impactfulInjuries.length} impactful injuries (importance >= ${IMPORTANCE_THRESHOLD}) for team ${teamId}. ` +
+      `Injury types are for display only and do NOT affect goal reduction.`
+    );
     
     return impactfulInjuries.map((inj: any) => ({
       player_name: inj.player_name,
       position: inj.position,
       status: inj.status,
-      injury_type: inj.injury_type,
+      injury_type: inj.injury_type, // Display only - not used in calculations
       importance: Number(inj.player_importance?.importance ?? 0),
     }));
   } catch (err) {
