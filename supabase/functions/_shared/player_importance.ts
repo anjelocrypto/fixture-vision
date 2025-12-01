@@ -124,18 +124,23 @@ export async function syncLeaguePlayerImportance(
   season: number,
   supabaseClient: any
 ): Promise<{ teams_processed: number; players_synced: number }> {
-  console.log(`[player-importance] Syncing importance for league ${leagueId}, season ${season}`);
+  console.log(`[player-importance] 🏁 Starting sync for league ${leagueId}, season ${season}`);
   
   // Get all unique teams with upcoming fixtures in this league
-  const { data: fixtures } = await supabaseClient
+  const { data: fixtures, error: fixturesError } = await supabaseClient
     .from('fixtures')
     .select('teams_home, teams_away')
     .eq('league_id', leagueId)
     .gte('timestamp', Math.floor(Date.now() / 1000))
     .limit(100);
   
+  if (fixturesError) {
+    console.error(`[player-importance] ❌ Error fetching fixtures for league ${leagueId}:`, fixturesError);
+    throw new Error(`Failed to fetch fixtures: ${fixturesError.message}`);
+  }
+  
   if (!fixtures || fixtures.length === 0) {
-    console.log(`[player-importance] No upcoming fixtures for league ${leagueId}`);
+    console.log(`[player-importance] ⚠️ No upcoming fixtures for league ${leagueId}, skipping`);
     return { teams_processed: 0, players_synced: 0 };
   }
   
@@ -148,21 +153,25 @@ export async function syncLeaguePlayerImportance(
     if (awayId) teamIds.add(Number(awayId));
   }
   
-  console.log(`[player-importance] Found ${teamIds.size} unique teams in league ${leagueId}`);
+  console.log(`[player-importance] Found ${teamIds.size} unique teams in ${fixtures.length} upcoming fixtures for league ${leagueId}`);
   
   let teamsProcessed = 0;
   let playersSynced = 0;
   
   for (const teamId of teamIds) {
     try {
+      console.log(`[player-importance] Fetching players for team ${teamId}...`);
       const playerData = await fetchTeamPlayerStats(teamId, leagueId, season);
       
       if (playerData.length === 0) {
-        console.log(`[player-importance] No players found for team ${teamId}, skipping`);
+        console.log(`[player-importance] ⚠️ No players found for team ${teamId}, skipping upsert`);
         continue;
       }
       
+      console.log(`[player-importance] Upserting ${playerData.length} players for team ${teamId}...`);
+      
       // Upsert player importance data
+      let successCount = 0;
       for (const player of playerData) {
         const { error } = await supabaseClient
           .from('player_importance')
@@ -178,27 +187,32 @@ export async function syncLeaguePlayerImportance(
             goals: player.goals,
             assists: player.assists,
             last_update: new Date().toISOString(),
+          }, {
+            onConflict: 'player_id,team_id,league_id,season'
           });
         
         if (error) {
-          console.error(`[player-importance] Error upserting player ${player.player_id}:`, error);
+          console.error(`[player-importance] ❌ Error upserting player ${player.player_id} (${player.player_name}):`, error);
         } else {
-          playersSynced++;
+          successCount++;
         }
       }
       
       teamsProcessed++;
-      console.log(`[player-importance] ✅ Synced ${playerData.length} players for team ${teamId}`);
+      playersSynced += successCount;
+      console.log(`[player-importance] ✅ Team ${teamId} complete: ${successCount}/${playerData.length} players synced`);
       
-      // Rate limiting: wait 1.2 seconds between teams (~50 requests/minute)
+      // Rate limiting: wait 1.2 seconds between teams (~50 requests/minute API-Football limit)
       await new Promise(resolve => setTimeout(resolve, 1200));
       
     } catch (error) {
-      console.error(`[player-importance] Error processing team ${teamId}:`, error);
+      console.error(`[player-importance] ❌ Error processing team ${teamId}:`, error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[player-importance] Error details: ${errorMsg}`);
     }
   }
   
-  console.log(`[player-importance] ✅ Sync complete: ${teamsProcessed} teams, ${playersSynced} players`);
+  console.log(`[player-importance] 🎉 League ${leagueId} sync complete: ${teamsProcessed} teams, ${playersSynced} players`);
   
   return { teams_processed: teamsProcessed, players_synced: playersSynced };
 }
