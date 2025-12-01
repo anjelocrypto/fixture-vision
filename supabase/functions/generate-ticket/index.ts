@@ -446,7 +446,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   }
 
   console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}, dayRange: ${dayRangeLabel}`);
-  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], dateRange:[${now.toISOString()}, ${endDate.toISOString()}]}`);
+  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}]}`);
+  console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
   // GLOBAL MODE: Query optimized_selections for selected date range
   if (globalMode) {
@@ -649,6 +650,13 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   // POOL_EMPTY check
   if (candidatePool.length === 0) {
+    let dayRangeHint = "";
+    if (dayRange === "today") {
+      dayRangeHint = " No qualifying matches today—try 'Next 2 days' or 'Next 3 days'.";
+    } else if (dayRange === "next_2_days") {
+      dayRangeHint = " Not enough matches in the next 2 days—try 'Next 3 days'.";
+    }
+    
     const diagnostic = {
       reason: "POOL_EMPTY",
       target: { min: minOdds, max: maxOdds, logMin: Math.log(minOdds), logMax: Math.log(maxOdds) },
@@ -665,9 +673,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     return new Response(
       JSON.stringify({
         code: "NO_CANDIDATES",
-        message: `No valid selections found for your settings. This might be because: 1) Optimized selections are being recalculated (try again in 1 minute), 2) No matches qualify for selected markets/odds, or 3) Stats data is being refreshed.`,
+        message: `No valid selections found for your settings.${dayRangeHint} Also try: 1) Waiting 1-2 minutes (optimizer may be recalculating), 2) Selecting more markets, or 3) Widening your odds range.`,
         suggestions: [
-          "Wait 1-2 minutes and try again (optimizer may be recalculating)",
+          dayRange !== "next_3_days" ? "Try 'Next 3 days' for more matches" : "Wait 1-2 minutes and try again (optimizer may be recalculating)",
           "Click 'Refresh' in Admin panel to trigger optimizer refresh",
           "Try different markets or widen your odds range",
           "Enable more markets (Goals, Corners, Cards)"
@@ -680,6 +688,13 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   }
 
   if (candidatePool.length < legsMin) {
+    let dayRangeHint = "";
+    if (dayRange === "today") {
+      dayRangeHint = " Not enough matches today—try 'Next 2 days' or 'Next 3 days'.";
+    } else if (dayRange === "next_2_days") {
+      dayRangeHint = " Not enough matches in the next 2 days—try 'Next 3 days'.";
+    }
+    
     const diagnostic = {
       reason: "INSUFFICIENT_CANDIDATES",
       target: { min: minOdds, max: maxOdds, logMin: Math.log(minOdds), logMax: Math.log(maxOdds) },
@@ -696,10 +711,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     return new Response(
       JSON.stringify({
         code: "INSUFFICIENT_CANDIDATES",
-        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin}). Try: 1) Click 'Fetch Fixtures' to refresh data, 2) Lower min legs to ${candidatePool.length} or less, 3) Include more markets, or 4) Widen odds range.`,
+        message: `Not enough valid candidates (found ${candidatePool.length}, need at least ${legsMin}).${dayRangeHint} Also try: 1) Lowering min legs to ${candidatePool.length}, 2) Including more markets, or 3) Widening odds range.`,
         details: { found: candidatePool.length, required: legsMin },
         suggestions: [
-          "Click 'Fetch Fixtures' in the top bar to refresh match data",
+          dayRange !== "next_3_days" ? "Try 'Next 3 days' for more matches" : "Click 'Fetch Fixtures' in the top bar to refresh match data",
           `Lower minimum legs to ${candidatePool.length} or less in the dialog`,
           "Enable more markets (Goals, Corners, Cards)",
           "Widen your target odds range (e.g., 5-15x instead of 10-12x)"
