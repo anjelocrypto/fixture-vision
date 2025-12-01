@@ -187,13 +187,14 @@ Deno.serve(async (req) => {
         .gte("timestamp", Math.floor(now.getTime() / 1000))
         .lte("timestamp", Math.floor(windowEnd.getTime() / 1000));
 
-      // Extract unique team IDs
+      // Extract unique team IDs with explicit Number() coercion
       const teamIds = new Set<number>();
       for (const fixture of upcomingFixtures || []) {
         const homeId = (fixture as any).teams_home?.id;
         const awayId = (fixture as any).teams_away?.id;
-        if (homeId) teamIds.add(homeId);
-        if (awayId) teamIds.add(awayId);
+        // Critical: Coerce to Number to prevent string/number comparison bugs
+        if (homeId) teamIds.add(Number(homeId));
+        if (awayId) teamIds.add(Number(awayId));
       }
 
       console.log(`[stats-refresh] Found ${teamIds.size} teams in window`);
