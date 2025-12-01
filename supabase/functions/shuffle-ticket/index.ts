@@ -16,6 +16,7 @@ const ShuffleRequestSchema = z.object({
   minOdds: z.number().positive().min(1.01),
   maxOdds: z.number().positive().min(1.01),
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])),
+  dayRange: z.enum(["today", "next_2_days", "next_3_days"]).optional().default("next_3_days"),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
   previousTicketHash: z.string().optional(),
@@ -82,28 +83,42 @@ serve(async (req) => {
       minOdds,
       maxOdds,
       includeMarkets,
+      dayRange,
       countryCode,
       leagueIds,
       previousTicketHash,
       seed,
     } = validation.data;
 
-    console.log(`[shuffle-ticket] User: ${user.id}, Target: ${targetLegs} legs, Locked: ${lockedLegIds.length}, Markets: ${includeMarkets.join(",")}`);
+    console.log(`[shuffle-ticket] User: ${user.id}, Target: ${targetLegs} legs, Locked: ${lockedLegIds.length}, Markets: ${includeMarkets.join(",")}, DayRange: ${dayRange}`);
 
-    // Build candidate pool from optimized_selections
+    // Calculate date range based on dayRange parameter
     const now = new Date();
-    const end72h = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+    now.setHours(0, 0, 0, 0);
+    const endDate = new Date(now);
+    
+    switch (dayRange) {
+      case "today":
+        endDate.setDate(endDate.getDate() + 1);
+        break;
+      case "next_2_days":
+        endDate.setDate(endDate.getDate() + 2);
+        break;
+      case "next_3_days":
+        endDate.setDate(endDate.getDate() + 3);
+        break;
+    }
     
     let query = supabase
       .from("optimized_selections")
       .select(`
-        id, fixture_id, league_id, country_code, utc_kickoff, 
+        id, fixture_id, league_id, country_code, utc_kickoff,
         market, side, line, odds, bookmaker, is_live, 
         edge_pct, model_prob, combined_snapshot, sample_size
       `)
       .eq("rules_version", RULES_VERSION)
       .gte("utc_kickoff", now.toISOString())
-      .lte("utc_kickoff", end72h.toISOString())
+      .lt("utc_kickoff", endDate.toISOString())
       .in("market", includeMarkets)
       .gte("odds", ODDS_MIN)
       .lte("odds", ODDS_MAX)

@@ -513,6 +513,7 @@ const Index = () => {
           legsMin: params.minLegs,
           legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,
+          dayRange: params.dayRange,
         },
       });
 
@@ -706,6 +707,7 @@ const Index = () => {
         within_band: data.within_band !== false,
         used_live: data.used_live,
         fallback_to_prematch: data.fallback_to_prematch,
+        day_range: params.dayRange,
       };
 
       // Store params for shuffle
@@ -716,6 +718,7 @@ const Index = () => {
         minLegs: params.minLegs,
         maxLegs: params.maxLegs,
         useLiveOdds: params.useLiveOdds,
+        dayRange: params.dayRange,
         countryCode: selectedCountry ? actualCountries.find(c => c.id === selectedCountry)?.code : undefined,
         leagueIds: selectedLeague ? [selectedLeague.id] : undefined,
       });
@@ -789,6 +792,7 @@ const Index = () => {
             minOdds: lastTicketParams.targetMin || 1.25,
             maxOdds: lastTicketParams.targetMax || 5.0,
             includeMarkets: lastTicketParams.includeMarkets || ["goals", "corners", "cards"],
+            dayRange: lastTicketParams.dayRange || "next_3_days",
             countryCode: lastTicketParams.countryCode,
             leagueIds: lastTicketParams.leagueIds,
             previousTicketHash: ticketHash,

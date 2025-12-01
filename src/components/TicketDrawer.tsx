@@ -41,6 +41,7 @@ interface TicketData {
   target_max?: number;
   within_band?: boolean;
   suggestions?: string[];
+  day_range?: "today" | "next_2_days" | "next_3_days";
 }
 
 interface TicketDrawerProps {
@@ -224,6 +225,13 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Mode</div>
                 <div className="text-lg font-bold capitalize">{ticket.mode}</div>
+                {ticket.day_range && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {ticket.day_range === "today" ? "Today only" :
+                     ticket.day_range === "next_2_days" ? "Next 2 days" :
+                     "Next 3 days"}
+                  </div>
+                )}
               </div>
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Total Odds</div>
