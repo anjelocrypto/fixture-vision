@@ -161,24 +161,17 @@ export async function getKeyAttackingInjuries(
   console.log(`[injuries] Checking key player injuries for team ${teamId}, league ${leagueId}, season ${season}`);
   
   try {
-    // Query player_injuries joined with player_importance
-    const { data: injuries, error } = await supabaseClient
+    // First, fetch injuries for the team
+    const { data: injuries, error: injError } = await supabaseClient
       .from('player_injuries')
-      .select(`
-        player_id,
-        player_name,
-        position,
-        status,
-        injury_type,
-        player_importance!inner(importance)
-      `)
+      .select('player_id, player_name, position, status, injury_type')
       .eq('team_id', teamId)
       .eq('league_id', leagueId)
       .eq('season', season)
       .in('status', ['injured', 'doubtful', 'suspended']);
     
-    if (error) {
-      console.error(`[injuries] Error fetching injuries for team ${teamId}:`, error);
+    if (injError) {
+      console.error(`[injuries] Error fetching injuries for team ${teamId}:`, injError);
       return [];
     }
     
@@ -187,14 +180,38 @@ export async function getKeyAttackingInjuries(
       return [];
     }
     
-    console.log(`[injuries] Found ${injuries.length} injuries for team ${teamId}, filtering by importance only (>= 0.6)`);
+    console.log(`[injuries] Found ${injuries.length} injuries for team ${teamId}, fetching importance data`);
+    
+    // Get player IDs
+    const playerIds = injuries.map((inj: any) => inj.player_id);
+    
+    // Fetch importance data for these players
+    const { data: importance, error: impError } = await supabaseClient
+      .from('player_importance')
+      .select('player_id, importance')
+      .eq('team_id', teamId)
+      .eq('league_id', leagueId)
+      .eq('season', season)
+      .in('player_id', playerIds);
+    
+    if (impError) {
+      console.error(`[injuries] Error fetching importance for team ${teamId}:`, impError);
+      return [];
+    }
+    
+    // Create map of player_id -> importance
+    const importanceMap = new Map<number, number>();
+    (importance || []).forEach((imp: any) => {
+      importanceMap.set(imp.player_id, Number(imp.importance));
+    });
+    
+    console.log(`[injuries] Fetched importance for ${importanceMap.size} players, filtering by importance >= 0.6`);
     
     // Filter by importance ONLY - ignore injury_type completely
     const IMPORTANCE_THRESHOLD = 0.6;
     
     const impactfulInjuries = injuries.filter((inj: any) => {
-      // Get importance from joined table
-      const importance = Number(inj.player_importance?.importance ?? 0);
+      const importance = importanceMap.get(inj.player_id) ?? 0;
       const isKeyPlayer = importance >= IMPORTANCE_THRESHOLD;
       
       if (!isKeyPlayer) {
@@ -217,7 +234,7 @@ export async function getKeyAttackingInjuries(
       position: inj.position,
       status: inj.status,
       injury_type: inj.injury_type, // Display only - not used in calculations
-      importance: Number(inj.player_importance?.importance ?? 0),
+      importance: importanceMap.get(inj.player_id) ?? 0,
     }));
   } catch (err) {
     console.error(`[injuries] Exception fetching injuries for team ${teamId}:`, err);
