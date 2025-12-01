@@ -122,15 +122,16 @@ async function fetchFixtureTeamStats(
   
   let goals = 0;
   if (fixture) {
-    const homeId = fixture?.teams?.home?.id;
-    const awayId = fixture?.teams?.away?.id;
+    const homeId = Number(fixture?.teams?.home?.id);
+    const awayId = Number(fixture?.teams?.away?.id);
+    const targetTeamId = Number(teamId);
     const gHome = Number(fixture?.goals?.home ?? fixture?.score?.fulltime?.home ?? 0);
     const gAway = Number(fixture?.goals?.away ?? fixture?.score?.fulltime?.away ?? 0);
     
-    if (teamId === homeId) {
+    if (targetTeamId === homeId) {
       goals = gHome;
       console.log(`[stats] Team ${teamId} is home team: ${gHome} goals`);
-    } else if (teamId === awayId) {
+    } else if (targetTeamId === awayId) {
       goals = gAway;
       console.log(`[stats] Team ${teamId} is away team: ${gAway} goals`);
     }
