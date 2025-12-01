@@ -278,7 +278,35 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
                         <div className="text-sm font-medium">
                           {leg.home_team} vs {leg.away_team}
                         </div>
-                        <div className="text-xs text-muted-foreground">{leg.league}</div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {leg.kickoff && (() => {
+                            const kickoffDate = new Date(leg.kickoff);
+                            const now = new Date();
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            const tomorrow = new Date(today);
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const kickoffDay = new Date(kickoffDate.getFullYear(), kickoffDate.getMonth(), kickoffDate.getDate());
+                            
+                            const timeStr = kickoffDate.toLocaleTimeString(i18n.language === 'ka' ? 'ka-GE' : 'en-US', { 
+                              hour: '2-digit', 
+                              minute: '2-digit',
+                              hour12: false 
+                            });
+                            
+                            if (kickoffDay.getTime() === today.getTime()) {
+                              return i18n.language === 'ka' ? `დღეს · ${timeStr}` : `Today · ${timeStr}`;
+                            } else if (kickoffDay.getTime() === tomorrow.getTime()) {
+                              return i18n.language === 'ka' ? `ხვალ · ${timeStr}` : `Tomorrow · ${timeStr}`;
+                            } else {
+                              const dateStr = kickoffDate.toLocaleDateString(i18n.language === 'ka' ? 'ka-GE' : 'en-US', {
+                                day: '2-digit',
+                                month: 'short'
+                              });
+                              return `${dateStr} · ${timeStr}`;
+                            }
+                          })()}
+                          {leg.league && <span>• {leg.league}</span>}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {canShuffle && (
