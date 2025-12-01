@@ -76,6 +76,7 @@ const AITicketSchema = z.object({
   legsMax: z.number().int().min(1).max(50),
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
   useLiveOdds: z.boolean().optional(),
+  dayRange: z.enum(["today", "next_2_days", "next_3_days"]).optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
   debug: z.boolean().optional(),
@@ -410,6 +411,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     legsMax,
     includeMarkets,
     useLiveOdds = false,
+    dayRange = "next_3_days",
     countryCode,
     leagueIds,
     debug = false,
@@ -422,22 +424,40 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   let usedLive = false;
   let fallbackToPrematch = false;
 
-  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}`);
-  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}]}`);
+  // Calculate date range based on dayRange parameter
+  const now = new Date();
+  now.setHours(0, 0, 0, 0); // Start of today
+  const endDate = new Date(now);
+  
+  let dayRangeLabel = "";
+  switch (dayRange) {
+    case "today":
+      endDate.setDate(endDate.getDate() + 1); // End of today
+      dayRangeLabel = "Today only";
+      break;
+    case "next_2_days":
+      endDate.setDate(endDate.getDate() + 2); // Today + tomorrow
+      dayRangeLabel = "Next 2 days";
+      break;
+    case "next_3_days":
+      endDate.setDate(endDate.getDate() + 3); // Today + tomorrow + day after
+      dayRangeLabel = "Next 3 days";
+      break;
+  }
 
-  // GLOBAL MODE: Query optimized_selections for next 48h
+  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}, dayRange: ${dayRangeLabel}`);
+  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], dateRange:[${now.toISOString()}, ${endDate.toISOString()}]}`);
+
+  // GLOBAL MODE: Query optimized_selections for selected date range
   if (globalMode) {
-    logs.push("[Global Mode] Building candidate pool from next 48 hours...");
-    
-    const now = new Date();
-    const end48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel}...`);
     
     let query = supabase
       .from("optimized_selections")
       .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version`)
       .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
       .gte("utc_kickoff", now.toISOString())
-      .lte("utc_kickoff", end48h.toISOString())
+      .lt("utc_kickoff", endDate.toISOString())
       .in("market", markets);
     
     if (!useLiveOdds) query = query.eq("is_live", false);
@@ -456,7 +476,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         .from("fixtures")
         .select("id")
         .gte("timestamp", Math.floor(now.getTime() / 1000))
-        .lte("timestamp", Math.floor(end48h.getTime() / 1000))
+        .lte("timestamp", Math.floor(endDate.getTime() / 1000))
         .limit(50);
       
       if (fixtures && fixtures.length > 0) {
@@ -890,6 +910,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       within_band: ticket.within_band,
       used_live: usedLive && !fallbackToPrematch,
       fallback_to_prematch: fallbackToPrematch,
+      day_range_label: dayRangeLabel,
       diagnostic: debug ? {
         reason: "SUCCESS",
         target: { min: minOdds, max: maxOdds, logMin, logMax },
