@@ -109,6 +109,8 @@ serve(async (req) => {
         break;
     }
     
+    console.log(`[shuffle-ticket] DATE FILTER: ${dayRange} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
+    
     let query = supabase
       .from("optimized_selections")
       .select(`
@@ -138,10 +140,17 @@ serve(async (req) => {
     }
 
     if (!candidateSelections || candidateSelections.length === 0) {
+      let dayRangeHint = "";
+      if (dayRange === "today") {
+        dayRangeHint = " There are no qualifying matches today. Try 'Next 2 days' or 'Next 3 days' instead.";
+      } else if (dayRange === "next_2_days") {
+        dayRangeHint = " Not enough qualifying matches in the next 2 days. Try 'Next 3 days'.";
+      }
+      
       return new Response(
         JSON.stringify({ 
           error: "No candidates available",
-          message: "No eligible selections found with current filters. Try loosening your criteria."
+          message: `No eligible selections found with current filters.${dayRangeHint} Also try: unlocking some legs, selecting more markets, or choosing more leagues.`
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
