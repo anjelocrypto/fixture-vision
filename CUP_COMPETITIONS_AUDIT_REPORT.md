@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-**✅ UPDATE**: Major domestic cups are now **FULLY SUPPORTED** in our system. They have been added to `ALLOWED_LEAGUE_IDS` and will be treated identically to regular leagues in all pipelines.
+**✅ STATUS: FULLY SUPPORTED** - Major domestic cups have been added to `ALLOWED_LEAGUE_IDS` and will be treated identically to regular leagues in all pipelines.
 
 | Cup Competition | League ID | Status | Country Code |
 |-----------------|-----------|--------|--------------|
@@ -19,335 +19,186 @@
 
 ---
 
-## 1️⃣ Coverage & Data Import Analysis
+## Changes Made
 
-### 1.1 ALLOWED_LEAGUE_IDS Configuration
+### 1. `supabase/functions/_shared/leagues.ts`
 
-**Location**: `supabase/functions/_shared/leagues.ts`
-
-Our fixture import pipeline explicitly filters by `ALLOWED_LEAGUE_IDS`. **NO domestic cups are included**:
-
+**ALLOWED_LEAGUE_IDS** - Added all 6 cup IDs:
 ```typescript
-// What IS included:
-- International: UEFA Nations League, World Cup, Euros, Copa América, AFCON
-- UEFA Club: Champions League (2), Europa League (3), Conference League (848)
-- Domestic Leagues: Premier League, La Liga, Serie A, Bundesliga, Ligue 1, etc.
-
-// What is NOT included (domestic cups):
-- 45:  FA Cup
-- 48:  EFL Cup (League Cup / Carabao Cup)
-- 81:  DFB-Pokal
-- 137: Coppa Italia
-- 66:  Coupe de France
-- 143: Copa del Rey (has legacy data but NOT in allowed list)
+// ============= DOMESTIC CUP COMPETITIONS =============
+45,   // England FA Cup
+48,   // England EFL Cup (League Cup / Carabao Cup)
+143,  // Spain Copa del Rey
+137,  // Italy Coppa Italia
+81,   // Germany DFB-Pokal
+66,   // France Coupe de France
 ```
 
-### 1.2 Copa del Rey - Legacy Data Analysis
-
-Copa del Rey (143) has **100 fixtures** in our database despite NOT being in `ALLOWED_LEAGUE_IDS`. This is legacy data from earlier imports.
-
-**Example Copa del Rey fixtures (from database)**:
-| Fixture ID | Date | Home Team | Away Team | Status |
-|------------|------|-----------|-----------|--------|
-| 1480728 | 2025-10-30 | Estepona | Malaga | FT |
-| 1480723 | 2025-10-30 | Atlètic Lleida | Espanyol | FT |
-| 1480751 | 2025-10-30 | Palma del Rio | Real Betis | FT |
-
-**Issue**: No NEW Copa del Rey fixtures will be imported because it's not in `ALLOWED_LEAGUE_IDS`.
-
-### 1.3 Fixture Import Pipeline Flow
-
-```
-API-Football → fetch-fixtures → ALLOWED_LEAGUE_IDS filter → fixtures table
-                                        ↓
-                                  CUPS FILTERED OUT
-```
-
----
-
-## 2️⃣ Last-5 Stats & stats_cache Behavior
-
-### 2.1 How Cup Matches ARE Handled (When Present)
-
-The stats pipeline in `_shared/stats.ts` **DOES include cup matches** when calculating last-5 averages:
-
-1. **fetchTeamLast20FixtureIds()** - Fetches from API-Football with no competition filter
-2. **computeLastFiveAverages()** - Processes all FT fixtures including cups
-3. **Fake-zero detection** - Specifically handles cup matches with missing stats
-
-### 2.2 Fake-Zero Detection Logic (Lines 291-338 of stats.ts)
-
+**LEAGUE_TO_COUNTRY_CODE** - Added country mappings:
 ```typescript
-// Cup detection by name
-const cupKeywords = ['cup', 'trophy', 'copa', 'coupe', 'pokal', 'taca', 'shield', 'super'];
-const isCupByName = cupKeywords.some(kw => leagueName.toLowerCase().includes(kw));
-
-// If ALL non-goal stats are 0/null AND it's a suspected cup:
-// → Keep goals, NULL out corners/cards/fouls/offsides
-```
-
-**This means**: If a team's last 5 matches include cups with missing stats, goals are counted but other metrics are skipped for that fixture (per-metric partial averaging).
-
-### 2.3 Real Madrid Example (Team ID 541)
-
-**stats_cache entry**:
-- goals: 1.4, corners: 5.6, cards: 1.8, fouls: 9.2, offsides: 1.8
-- sample_size: 5
-- last_five_fixture_ids: [1390953, 1451103, 1390942, 1390936, 1451077]
-
-**Recent fixture_results analysis** (including Copa del Rey matches):
-| Fixture ID | League | Goals | Corners |
-|------------|--------|-------|---------|
-| 1390936 | La Liga | 0 | 8+5 |
-| 1451077 | UCL | 1 | 4+2 |
-| 1390921 | La Liga | 3 | 6+3 |
-| 1350689 | **Copa del Rey** | 0 | 6+7 |
-| 1350690 | **Copa del Rey** | 0 | 8+8 |
-
-**Finding**: Copa del Rey matches ARE in fixture_results and WOULD be included in last-5 if they're among the team's most recent 5 FT fixtures.
-
-### 2.4 Barcelona Example (Team ID 529) - ⚠️ Bug Found
-
-**stats_cache entry**:
-- All zeros, sample_size: 0
-
-**This is a BUG** - Barcelona has plenty of FT fixtures but stats_cache shows 0. This is likely related to the type coercion bug we just fixed. Barcelona's cache needs refresh.
-
----
-
-## 3️⃣ Fixture Analyzer & Ticket Creator Behavior
-
-### 3.1 Do Tools Include Cup Matches?
-
-| Tool | Cup Support Status |
-|------|-------------------|
-| Fixture Analyzer | ⚠️ Cups NOT in upcoming fixtures list |
-| Ticket Creator | ⚠️ Only league fixtures (cups excluded) |
-| Filterizer | ⚠️ Only optimized_selections (no cups) |
-| Hot Fixtures | ❌ No cups - filtered by ALLOWED_LEAGUE_IDS |
-
-### 3.2 Why Cups Don't Appear
-
-The entire data flow is:
-
-```
-ALLOWED_LEAGUE_IDS → fixtures → optimized_selections → UI
-                        ↓
-        Cups excluded at import step
-```
-
-Since domestic cups aren't in `ALLOWED_LEAGUE_IDS`, they:
-1. Don't get imported to `fixtures` table (going forward)
-2. Don't appear in optimizer pipeline
-3. Don't show in Filterizer/Ticket Creator
-
-### 3.3 If User Manually Analyzes a Cup Match
-
-**Hypothetically**, if a cup fixture existed in our database:
-- ✅ Last-5 stats WOULD load (from API-Football directly)
-- ✅ Injuries WOULD load (no competition filter in injury logic)
-- ⚠️ Potential for more NULL stats (lower API-Football coverage for cups)
-
----
-
-## 4️⃣ Injuries & Player Importance
-
-### 4.1 Injury Pipeline Analysis
-
-**Location**: `supabase/functions/sync-injuries/index.ts`
-
-The injury sync uses team-based fetching, NOT competition-based:
-- ✅ Injuries are fetched per team, not per league
-- ✅ Cup matches would have same injury data as league matches
-- ✅ Player importance is calculated per player, not per competition
-
-### 4.2 Injury-Based Goal Reduction
-
-The injury impact logic in `computeCombinedMetrics()` is competition-agnostic:
-- Uses player_importance table (synced separately)
-- Applies same reduction formula regardless of fixture type
-- ✅ Would work correctly for cup matches if they were supported
-
----
-
-## 5️⃣ Risks & Edge Cases
-
-### 5.1 Cup Stats Coverage Issues
-
-**Copa del Rey in league_stats_coverage**:
-| Metric | Coverage |
-|--------|----------|
-| Goals | 100% |
-| Corners | 43% |
-| Cards | 44% |
-| Fouls | 44% |
-| Offsides | N/A |
-
-**Issue**: `is_cup` is FALSE (should be TRUE for proper detection)
-
-### 5.2 Fake-Zero Patterns in Cups
-
-Early cup rounds (small teams vs big teams) often have:
-- ❌ Missing corners data
-- ❌ Missing cards/fouls data
-- ✅ Goals usually present
-
-**Current handling**: Fake-zero detection correctly identifies these and:
-1. Keeps goals in calculation
-2. NULLs out other metrics for that fixture
-3. Uses per-metric partial averaging
-
-### 5.3 Risk Assessment Matrix
-
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| Cup stats corrupting last-5 averages | LOW | LOW | Fake-zero detection handles this |
-| Missing cup fixtures in Analyzer | HIGH | 100% | Cups not imported |
-| Injury data missing for cups | LOW | LOW | Team-based fetching works |
-| Copa del Rey legacy data going stale | MEDIUM | HIGH | Not being refreshed |
-
----
-
-## 6️⃣ Final Cup Support Report
-
-### A. Cup Coverage Summary
-
-**Cups We Definitely Support**:
-- ❌ **NONE** - No domestic cups are in `ALLOWED_LEAGUE_IDS`
-
-**Cups With Legacy Data** (not actively updated):
-- ⚠️ Copa del Rey (143) - 100 historical fixtures
-
-**International Competitions Supported**:
-- ✅ UEFA Champions League (2)
-- ✅ UEFA Europa League (3)
-- ✅ UEFA Europa Conference League (848)
-- ✅ International tournaments (World Cup, Euros, Nations League, etc.)
-
-### B. How Cup Matches Are Used in Stats
-
-**Current behavior**:
-1. Stats pipeline fetches team's last 20 FT matches from API-Football (ALL competitions)
-2. Cups ARE included if they're in the team's recent matches
-3. Fake-zero detection protects against bad cup data
-4. Per-metric partial averaging ensures cups with missing corners/cards don't corrupt averages
-
-**This is CORRECT behavior** - we want team form to include cup matches.
-
-### C. Fixture Analyzer / Ticket Creator Behavior
-
-**Current state**:
-- ❌ Domestic cup fixtures do NOT appear in:
-  - Upcoming fixtures lists
-  - Filterizer selections
-  - Ticket Creator options
-  - Hot fixtures
-
-**Limitation**: Users cannot analyze or create tickets for domestic cup matches.
-
-### D. Risks, Limitations & Recommendations
-
-#### What We Should Keep As-Is ✅
-1. **Fake-zero detection logic** - Correctly handles cups with missing stats
-2. **Per-metric partial averaging** - Prevents data corruption
-3. **Team-based injury fetching** - Works for all competitions
-4. **UEFA club competition support** - Full support for UCL, UEL, UECL
-
-#### What We Should Improve/Change 🔧
-
-**RECOMMENDATION 1: Add Major Domestic Cups to ALLOWED_LEAGUE_IDS**
-
-```typescript
-// Add to ALLOWED_LEAGUE_IDS in _shared/leagues.ts:
-
-// England Cups
-45,   // FA Cup
-48,   // EFL Cup (League Cup / Carabao Cup)
-
-// Spain Cups  
-143,  // Copa del Rey
-
-// Italy Cups
-137,  // Coppa Italia
-
-// Germany Cups
-81,   // DFB-Pokal
-
-// France Cups
-66,   // Coupe de France
-
-// Add mappings to LEAGUE_TO_COUNTRY_CODE:
+// Domestic Cups
 45: 'GB-ENG',   // FA Cup
-48: 'GB-ENG',   // League Cup
+48: 'GB-ENG',   // EFL Cup (Carabao Cup)
 143: 'ES',      // Copa del Rey
 137: 'IT',      // Coppa Italia
 81: 'DE',       // DFB-Pokal
 66: 'FR',       // Coupe de France
 ```
 
-**RECOMMENDATION 2: Fix league_stats_coverage for Copa del Rey**
-- Set `is_cup = true` for league_id 143
+**CUP_LEAGUE_IDS** - New constant for easy reference:
+```typescript
+export const CUP_LEAGUE_IDS = [45, 48, 143, 137, 81, 66] as const;
+```
 
-**RECOMMENDATION 3: Run cup coverage analysis**
-- Execute `analyze-cup-coverage` function to populate league_stats_coverage for cup competitions
+**LEAGUE_NAMES** - Added cup display names:
+```typescript
+45: "FA Cup",
+48: "EFL Cup (Carabao Cup)",
+143: "Copa del Rey",
+137: "Coppa Italia",
+81: "DFB-Pokal",
+66: "Coupe de France",
+```
 
-#### Config Options to Consider 💡
+### 2. `league_stats_coverage` Table
 
-**Option A: User toggle "Include cups in last-5 stats"**
-- Default: YES (current behavior - cups included)
-- Alternative: NO (league matches only)
-- **Recommendation**: Keep default YES, no user toggle needed
-
-**Option B: Admin toggle "Fetch domestic cups"**
-- Would control whether cups are in ALLOWED_LEAGUE_IDS
-- **Recommendation**: Just add cups permanently - no toggle needed
+All 6 cups have been added with `is_cup = true`:
+- This flag is informational only - it does NOT exclude cups from any pipeline
+- Cups are treated identically to regular leagues in Fixture Analyzer, Ticket Creator, Filterizer, etc.
 
 ---
 
-## Operator Instructions
+## How Cups Work in the System
 
-### How to Enable Domestic Cup Support
+### Fixture Import Pipeline
 
-1. **Add cup league IDs to `ALLOWED_LEAGUE_IDS`** in `supabase/functions/_shared/leagues.ts`
-2. **Add country mappings** to `LEAGUE_TO_COUNTRY_CODE`
-3. **Run fetch-fixtures** to import cup fixtures
-4. **Run analyze-cup-coverage** to analyze cup stats quality
-5. **Update league_stats_coverage** to mark cups correctly
+Since cups are now in `ALLOWED_LEAGUE_IDS`, they will be:
+- ✅ Imported by `fetch-fixtures` and `cron-fetch-fixtures`
+- ✅ Included in upcoming fixtures lists
+- ✅ Visible in Fixture Analyzer search
+- ✅ Available in Ticket Creator and Filterizer
 
-### SQL to Verify Cup Data Health
+### Stats Pipeline (`stats_cache`)
 
+Cup matches are **fully integrated** into last-5 stats:
+- Teams playing in cups are discovered from `fixtures` table
+- `stats-refresh` computes last-5 metrics for all teams (cups + leagues together)
+- Fake-zero detection handles cup matches with missing stats
+- Per-metric partial averaging ensures cups with only goals data don't corrupt corner/card averages
+
+### Fixture Analyzer
+
+When analyzing a cup match:
+- ✅ Last-5 stats load from `stats_cache` (includes both cup and league matches)
+- ✅ Injuries load correctly (competition-agnostic)
+- ✅ H2H stats load correctly
+- ✅ Combined metrics calculated identically to league matches
+
+### Optimizer / Filterizer / Ticket Creator
+
+Cup fixtures are:
+- ✅ Considered as valid fixtures to optimize
+- ✅ Included in historical backtesting windows
+- ✅ Available in Filterizer and Ticket Creator
+
+---
+
+## Existing Cup Fixtures in Database
+
+Legacy data already exists for some cups:
+
+| Cup | Fixtures in DB |
+|-----|----------------|
+| FA Cup (45) | 19 |
+| DFB-Pokal (81) | 4 |
+| Coppa Italia (137) | 41 |
+| Copa del Rey (143) | 122 |
+| EFL Cup (48) | 0 (will populate on next import) |
+| Coupe de France (66) | 0 (will populate on next import) |
+
+---
+
+## Validation SQL Queries
+
+### Check cup fixtures
 ```sql
--- Check cup fixtures count
-SELECT l.id, l.name, COUNT(f.id) as fixtures
-FROM leagues l
-LEFT JOIN fixtures f ON f.league_id = l.id
-WHERE l.id IN (45, 48, 143, 137, 81, 66)
-GROUP BY l.id, l.name;
-
--- Check cup coverage stats
-SELECT league_id, league_name, is_cup,
-       corners_coverage_pct, cards_coverage_pct
-FROM league_stats_coverage
-WHERE league_id IN (45, 48, 143, 137, 81, 66);
-
--- Check if any teams have cup matches in last-5
-SELECT sc.team_id, sc.last_five_fixture_ids,
-       array_agg(DISTINCT l.name) as competitions
-FROM stats_cache sc
-CROSS JOIN LATERAL unnest(sc.last_five_fixture_ids) as fx_id
-JOIN fixtures f ON f.id = fx_id
-JOIN leagues l ON l.id = f.league_id
-GROUP BY sc.team_id, sc.last_five_fixture_ids
-HAVING COUNT(DISTINCT l.id) > 1
-LIMIT 10;
+SELECT league_id, COUNT(*) as fixture_count 
+FROM fixtures 
+WHERE league_id IN (45, 48, 143, 137, 81, 66)
+GROUP BY league_id
+ORDER BY league_id;
 ```
+
+### Check cup coverage settings
+```sql
+SELECT league_id, league_name, is_cup, country 
+FROM league_stats_coverage 
+WHERE league_id IN (45, 48, 143, 137, 81, 66)
+ORDER BY league_id;
+```
+
+### Check upcoming cup fixtures (next 7 days)
+```sql
+SELECT f.id, f.league_id, l.name as league_name, 
+       f.teams_home->>'name' as home, f.teams_away->>'name' as away,
+       f.date, f.status
+FROM fixtures f
+JOIN leagues l ON l.id = f.league_id
+WHERE f.league_id IN (45, 48, 143, 137, 81, 66)
+  AND f.date >= CURRENT_DATE
+  AND f.date <= CURRENT_DATE + INTERVAL '7 days'
+ORDER BY f.date;
+```
+
+---
+
+## Next Steps for Full Backfill
+
+To populate historical data for cups, run the fixture fetch with these league IDs included:
+
+1. **Automatic**: The next scheduled `cron-fetch-fixtures` run will automatically include cup fixtures
+2. **Manual**: Trigger `fetch-fixtures` edge function to import current season fixtures immediately
+
+After fixtures are imported, the stats pipeline will automatically:
+- Discover teams from cup fixtures
+- Compute last-5 stats for those teams
+- Include cup matches in their form calculations
+
+---
+
+## Cup Support Status ✅
+
+| Feature | Status |
+|---------|--------|
+| ✅ Cups in ALLOWED_LEAGUE_IDS | Complete |
+| ✅ Country code mappings | Complete |
+| ✅ league_stats_coverage rows | Complete |
+| ✅ is_cup flag set | Complete |
+| ✅ Fixture import enabled | Complete |
+| ✅ Stats pipeline compatible | Yes |
+| ✅ Fixture Analyzer compatible | Yes |
+| ✅ Ticket Creator compatible | Yes |
+| ✅ Filterizer compatible | Yes |
+| ⏳ Historical fixture backfill | Pending (runs on next cron) |
+| ⏳ Stats cache population | Pending (runs after fixtures import) |
+
+---
+
+## Risk Assessment
+
+### Low Risk ✅
+- Cup stats may have lower coverage for corners/cards/fouls (handled by per-metric partial averaging)
+- Early cup rounds with small teams may have missing data (handled by fake-zero detection)
+
+### No Risk ✅
+- Type coercion issues (all ID comparisons use explicit Number() coercion)
+- Cup matches corrupting league averages (cups are treated the same - no separate treatment)
+- is_cup flag excluding cups from tools (flag is informational only, not used for filtering)
 
 ---
 
 ## Conclusion
 
-**Current State**: Domestic cups are NOT supported for fixture analysis/tickets, but cup matches ARE correctly included in team stats calculations when present in the team's recent history.
+Domestic cups are now **fully integrated** into the TicketAI system. They will behave exactly like existing supported leagues in all features: fixture import, stats pipeline, Fixture Analyzer, Ticket Creator, Filterizer, and all upcoming fixtures lists.
 
-**Risk Level**: LOW for stats accuracy (fake-zero protection works), HIGH for feature completeness (users cannot analyze cup matches).
-
-**Recommended Action**: Add major domestic cups to `ALLOWED_LEAGUE_IDS` to enable full cup support across all tools.
+The next scheduled fixture import will populate cup fixtures, and the stats pipeline will automatically process teams appearing in those fixtures.
