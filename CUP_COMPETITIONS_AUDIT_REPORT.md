@@ -1,20 +1,21 @@
 # Cup Competitions Audit Report
 *Generated: December 3, 2025*
+*Updated: December 3, 2025 - CUPS NOW FULLY SUPPORTED*
 
 ---
 
 ## Executive Summary
 
-**CRITICAL FINDING**: Major domestic cups (FA Cup, EFL Cup, DFB-Pokal, Coppa Italia, Coupe de France) are **NOT SUPPORTED** in our system. They are explicitly excluded from `ALLOWED_LEAGUE_IDS` in our fixture import pipeline.
+**✅ UPDATE**: Major domestic cups are now **FULLY SUPPORTED** in our system. They have been added to `ALLOWED_LEAGUE_IDS` and will be treated identically to regular leagues in all pipelines.
 
-| Cup Competition | League ID | Status | Fixtures in DB |
-|-----------------|-----------|--------|----------------|
-| FA Cup | 45 | ❌ NOT IMPORTED | 0 |
-| EFL Cup (Carabao Cup) | 48 | ❌ NOT IMPORTED | 0 |
-| Copa del Rey | 143 | ⚠️ LEGACY DATA ONLY | 100 |
-| Coppa Italia | 137 | ❌ NOT IMPORTED | 0 |
-| DFB-Pokal | 81 | ❌ NOT IMPORTED | 0 |
-| Coupe de France | 66 | ❌ NOT IMPORTED | 0 |
+| Cup Competition | League ID | Status | Country Code |
+|-----------------|-----------|--------|--------------|
+| FA Cup | 45 | ✅ SUPPORTED | GB-ENG |
+| EFL Cup (Carabao Cup) | 48 | ✅ SUPPORTED | GB-ENG |
+| Copa del Rey | 143 | ✅ SUPPORTED | ES |
+| Coppa Italia | 137 | ✅ SUPPORTED | IT |
+| DFB-Pokal | 81 | ✅ SUPPORTED | DE |
+| Coupe de France | 66 | ✅ SUPPORTED | FR |
 
 ---
 
