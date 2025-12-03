@@ -24,7 +24,15 @@ export const ALLOWED_LEAGUE_IDS = [
   3,    // UEFA Europa League
   848,  // UEFA Europa Conference League
   
-  // England (9 leagues)
+  // ============= DOMESTIC CUP COMPETITIONS =============
+  45,   // England FA Cup
+  48,   // England EFL Cup (League Cup / Carabao Cup)
+  143,  // Spain Copa del Rey
+  137,  // Italy Coppa Italia
+  81,   // Germany DFB-Pokal
+  66,   // France Coupe de France
+  
+  // England (9 leagues + 2 cups)
   39,   // Premier League
   40,   // Championship
   41,   // League One
@@ -214,6 +222,14 @@ export const ALLOWED_LEAGUE_IDS = [
  * All other leagues MUST be mapped here to prevent data corruption.
  */
 export const LEAGUE_TO_COUNTRY_CODE: Record<number, string> = {
+  // Domestic Cups
+  45: 'GB-ENG',   // FA Cup
+  48: 'GB-ENG',   // EFL Cup (Carabao Cup)
+  143: 'ES',      // Copa del Rey
+  137: 'IT',      // Coppa Italia
+  81: 'DE',       // DFB-Pokal
+  66: 'FR',       // Coupe de France
+  
   // England
   39: 'GB-ENG', 40: 'GB-ENG', 41: 'GB-ENG', 42: 'GB-ENG',
   43: 'GB-ENG', 50: 'GB-ENG', 51: 'GB-ENG', 667: 'GB-ENG',
@@ -368,6 +384,19 @@ export const LEAGUE_TO_COUNTRY_CODE: Record<number, string> = {
  */
 export const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 2, 3, 848];
 
+/**
+ * Domestic cup competition IDs
+ * These are fully supported like regular leagues in all pipelines
+ */
+export const CUP_LEAGUE_IDS = [
+  45,   // England FA Cup
+  48,   // England EFL Cup (League Cup / Carabao Cup)
+  143,  // Spain Copa del Rey
+  137,  // Italy Coppa Italia
+  81,   // Germany DFB-Pokal
+  66,   // France Coupe de France
+] as const;
+
 export const LEAGUE_NAMES: Record<number, string> = {
   // International
   5: "UEFA Nations League",
@@ -388,6 +417,14 @@ export const LEAGUE_NAMES: Record<number, string> = {
   2: "UEFA Champions League",
   3: "UEFA Europa League",
   848: "UEFA Europa Conference League",
+  
+  // Domestic Cups
+  45: "FA Cup",
+  48: "EFL Cup (Carabao Cup)",
+  143: "Copa del Rey",
+  137: "Coppa Italia",
+  81: "DFB-Pokal",
+  66: "Coupe de France",
   
   // England
   39: "Premier League",
