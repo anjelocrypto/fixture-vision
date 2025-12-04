@@ -196,6 +196,16 @@ serve(async (req) => {
       user: user.email
     });
 
+    // Build per-metric availability info for frontend
+    // A metric is "available" if sample_size >= 3 AND value > 0 (except cards/offsides which can be 0)
+    const buildMetricInfo = (stats: any) => ({
+      goals: { available: stats.sample_size >= MIN_SAMPLE_SIZE, value: stats.goals },
+      corners: { available: stats.sample_size >= MIN_SAMPLE_SIZE && stats.corners > 0, value: stats.corners },
+      cards: { available: stats.sample_size >= MIN_SAMPLE_SIZE, value: stats.cards },
+      fouls: { available: stats.sample_size >= MIN_SAMPLE_SIZE && stats.fouls > 0, value: stats.fouls },
+      offsides: { available: stats.sample_size >= MIN_SAMPLE_SIZE, value: stats.offsides },
+    });
+
     return new Response(
       JSON.stringify({
         stats_available: true,
@@ -207,7 +217,8 @@ serve(async (req) => {
           fouls: homeStats.fouls,
           offsides: homeStats.offsides,
           sample_size: homeStats.sample_size,
-          computed_at: homeStats.computed_at
+          computed_at: homeStats.computed_at,
+          metrics: buildMetricInfo(homeStats),
         },
         away: {
           team_id: awayStats.team_id,
@@ -217,7 +228,8 @@ serve(async (req) => {
           fouls: awayStats.fouls,
           offsides: awayStats.offsides,
           sample_size: awayStats.sample_size,
-          computed_at: awayStats.computed_at
+          computed_at: awayStats.computed_at,
+          metrics: buildMetricInfo(awayStats),
         },
         h2h: h2hStats ? {
           goals: h2hStats.goals,
@@ -231,7 +243,12 @@ serve(async (req) => {
           home: homeInjuries,
           away: awayInjuries
         },
-        combined
+        combined,
+        // Include integrity check details for debugging
+        integrity: {
+          home_team_status: integrityCheck.homeTeam,
+          away_team_status: integrityCheck.awayTeam,
+        }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
