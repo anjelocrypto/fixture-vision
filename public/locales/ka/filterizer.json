@@ -14,5 +14,10 @@
   "scope_label": "მასშტაბი",
   "scope_selected_league": "მხოლოდ არჩეული ლიგა",
   "scope_all_leagues": "ყველა ლიგა (შემდეგი 120 საათი)",
-  "all_leagues_caption": "ნაჩვენებია საუკეთესო შესაძლებლობები ყველა ლიგიდან მომდევნო 120 საათში"
+  "all_leagues_caption": "ნაჩვენებია საუკეთესო შესაძლებლობები ყველა ლიგიდან მომდევნო 120 საათში",
+  "match_day_range": "მატჩის დღის დიაპაზონი",
+  "day_range_all": "ყველა",
+  "day_range_today": "დღეს",
+  "day_range_2_days": "2 დღე",
+  "day_range_3_days": "3 დღე"
 }

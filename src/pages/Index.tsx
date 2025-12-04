@@ -891,6 +891,7 @@ const Index = () => {
           showAllOdds: filters.showAllOdds,
           includeModelOnly: filters.includeModelOnly ?? true, // Default to true
           allLeagues: filters.allLeagues ?? false, // All-leagues mode
+          dayRange: filters.dayRange ?? "all", // Date filter (same as Ticket Creator)
           limit: 50,
           offset: 0,
           // Only send league/country filters if NOT in all-leagues mode
@@ -944,6 +945,7 @@ const Index = () => {
           showAllOdds: filterCriteria.showAllOdds,
           includeModelOnly: filterCriteria.includeModelOnly ?? true,
           allLeagues: filterCriteria.allLeagues ?? false,
+          dayRange: filterCriteria.dayRange ?? "all", // Date filter (same as Ticket Creator)
           limit: 50,
           offset: newOffset,
           // Only send league/country filters if NOT in all-leagues mode

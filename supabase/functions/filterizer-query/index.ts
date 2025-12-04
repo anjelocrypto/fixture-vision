@@ -23,6 +23,7 @@ const RequestSchema = z.object({
   showAllOdds: z.boolean().optional(), // NEW: show all bookmaker odds instead of best per fixture
   includeModelOnly: z.boolean().optional(), // NEW: include model-only selections (no odds)
   allLeagues: z.boolean().optional(), // NEW: all leagues mode (next 120h)
+  dayRange: z.enum(["all", "today", "next_2_days", "next_3_days"]).optional(), // NEW: date filter like Ticket Creator
   limit: z.number().int().positive().max(200).optional(), // pagination
   offset: z.number().int().min(0).optional(), // pagination
 });
@@ -86,6 +87,7 @@ serve(async (req) => {
       showAllOdds = false,
       includeModelOnly = true, // Default to true
       allLeagues = false,
+      dayRange = "all", // Default to all (no date restriction)
       limit = 50,
       offset = 0
     } = validation.data;
@@ -112,13 +114,13 @@ serve(async (req) => {
       );
     }
     
-    console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} allLeagues=${allLeagues} rules=${RULES_VERSION}`);
+    console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} allLeagues=${allLeagues} dayRange=${dayRange} rules=${RULES_VERSION}`);
     
     if (allLeagues) {
       console.log(`[filterizer-query] allLeagues mode enabled - querying all leagues for next 120 hours`);
     }
 
-    // Calculate time window based on mode
+    // Calculate time window based on mode and dayRange
     let startDate: Date;
     let endDate: Date;
     
@@ -127,6 +129,24 @@ serve(async (req) => {
       startDate = new Date();
       endDate = new Date();
       endDate.setTime(endDate.getTime() + (120 * 60 * 60 * 1000)); // now + 120 hours
+    } else if (dayRange !== "all") {
+      // Day range mode: filter by selected range (same logic as Ticket Creator)
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0); // Start of today
+      endDate = new Date(startDate);
+      
+      switch (dayRange) {
+        case "today":
+          endDate.setDate(endDate.getDate() + 1); // End of today
+          break;
+        case "next_2_days":
+          endDate.setDate(endDate.getDate() + 2); // Today + tomorrow
+          break;
+        case "next_3_days":
+          endDate.setDate(endDate.getDate() + 3); // Today + next 2 days
+          break;
+      }
+      console.log(`[filterizer-query] dayRange=${dayRange} window=[${startDate.toISOString()} → ${endDate.toISOString()}]`);
     } else {
       // Normal mode: 7-day window from selected date
       startDate = new Date(date);
