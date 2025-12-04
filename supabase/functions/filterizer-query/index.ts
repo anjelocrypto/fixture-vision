@@ -132,21 +132,32 @@ serve(async (req) => {
     } else if (dayRange !== "all") {
       // Day range mode: filter by selected range (same logic as Ticket Creator)
       startDate = new Date();
-      startDate.setHours(0, 0, 0, 0); // Start of today
+      startDate.setHours(0, 0, 0, 0); // Start of today (midnight local time)
       endDate = new Date(startDate);
       
       switch (dayRange) {
         case "today":
-          endDate.setDate(endDate.getDate() + 1); // End of today
+          endDate.setDate(endDate.getDate() + 1); // End of today (midnight tomorrow)
           break;
         case "next_2_days":
-          endDate.setDate(endDate.getDate() + 2); // Today + tomorrow
+          endDate.setDate(endDate.getDate() + 2); // Today + tomorrow (midnight in 2 days)
           break;
         case "next_3_days":
-          endDate.setDate(endDate.getDate() + 3); // Today + next 2 days
+          endDate.setDate(endDate.getDate() + 3); // Today + next 2 days (midnight in 3 days)
           break;
       }
-      console.log(`[filterizer-query] dayRange=${dayRange} window=[${startDate.toISOString()} → ${endDate.toISOString()}]`);
+      
+      // DEBUG: Log date filter details for audit
+      const fromTs = Math.floor(startDate.getTime() / 1000);
+      const toTs = Math.floor(endDate.getTime() / 1000);
+      console.log(`[filterizer] date filter`, {
+        dayRange,
+        fromTs,
+        toTs,
+        fromIso: startDate.toISOString(),
+        toIso: endDate.toISOString(),
+        windowHours: Math.round((toTs - fromTs) / 3600),
+      });
     } else {
       // Normal mode: 7-day window from selected date
       startDate = new Date(date);
