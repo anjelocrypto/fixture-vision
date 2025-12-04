@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
+import { MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 
 // STRICT THRESHOLDS for upcoming teams - these trigger CRITICAL status
 const UPCOMING_THRESHOLDS = {
@@ -20,8 +21,6 @@ const UPCOMING_THRESHOLDS = {
   fouls:    { warning: 1.5, error: 2.5, critical: 3.0 },
   offsides: { warning: 0.8, error: 1.2, critical: 1.5 },
 };
-
-const MIN_SAMPLE_SIZE = 3; // Minimum fixtures required for valid stats
 
 interface TeamDiscovery {
   team_id: number;
