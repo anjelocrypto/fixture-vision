@@ -101,3 +101,15 @@ verify_jwt = false
 
 [functions.sync-player-importance]
 verify_jwt = false
+
+[functions.stats-health-check]
+verify_jwt = false
+
+[functions.list-leagues-grouped]
+verify_jwt = false
+
+[functions.get-latest-odds]
+verify_jwt = true
+
+[functions.admin-health]
+verify_jwt = false
