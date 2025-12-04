@@ -161,7 +161,7 @@ Already done - `_shared/stats_integrity.ts` exports shared validation types
 
 ## 5. Cron Jobs Duplication
 
-### 5.1 Current Active Cron Jobs
+### 5.1 Current Active Cron Jobs (AFTER CLEANUP)
 
 ```sql
 SELECT jobid, jobname, schedule FROM cron.job ORDER BY jobid;
@@ -176,29 +176,26 @@ SELECT jobid, jobname, schedule FROM cron.job ORDER BY jobid;
 | 29 | warmup-optimizer-cron | */30 * * * * | ✅ Primary pipeline |
 | 30 | results-refresh-30m | */30 9-23 * * * | ✅ Results |
 | 31 | cron-fetch-fixtures-10m | */10 * * * * | ✅ Fixtures |
-| 32 | backfill-fixture-results-daily | 30 2 * * * | ⚠️ Overlaps with #33 |
-| 33 | backfill-fixture-results-weekly | 0 3 * * 0 | ⚠️ Overlaps with #32 |
-| 34 | backfill-fixture-results-turbo | */10 * * * * | ⚠️ Too frequent |
 | 37 | sync-injuries-12h | 0 */4 * * * | ✅ Injuries |
 | 38 | sync-player-importance-daily | 0 3 * * * | ✅ Player data |
 | 39 | stats-health-check-hourly | 0 * * * * | ✅ Monitoring |
 | 40 | fixtures-history-backfill-cron | 0 */6 * * * | ✅ Historical data |
 
-### 5.2 Issues Found
+### 5.2 Issues Found & RESOLVED
 
 **Q15: Overlapping work?**  
-**YES** - Three backfill jobs do similar work:
-- `backfill-fixture-results-daily` (job 32)
-- `backfill-fixture-results-weekly` (job 33)
-- `backfill-fixture-results-turbo` (job 34) - runs every 10 minutes!
+**RESOLVED** - Removed 3 redundant backfill jobs:
+- ~~`backfill-fixture-results-daily` (job 32)~~ - DELETED
+- ~~`backfill-fixture-results-weekly` (job 33)~~ - DELETED
+- ~~`backfill-fixture-results-turbo` (job 34)~~ - DELETED
 
 **Q16: Could cause double-processing?**  
-**YES** - Job 34 (`turbo`) runs every 10 minutes, likely redundant with `results-refresh-30m`
+**NO LONGER** - Redundant jobs removed
 
-**Q17: Recommendation?**  
-**DELETE jobs 32, 33, 34** - Keep only:
-- `results-refresh-30m` (job 30) for recent results
-- `fixtures-history-backfill-cron` (job 40) for historical data
+**Q17: Final state?**  
+✅ **CLEAN** - 11 cron jobs remain, each with a unique purpose:
+- `results-refresh-30m` (job 30) handles recent results
+- `fixtures-history-backfill-cron` (job 40) handles historical data
 
 ---
 
@@ -230,28 +227,18 @@ Several migration files contain cron.schedule calls for jobs that **no longer ex
 
 ## 7. Concrete Refactor Plan
 
-### 7.1 Immediate Actions (Safe)
+### 7.1 Immediate Actions - ✅ COMPLETED
 
-#### Action 1: Consolidate MIN_SAMPLE_SIZE constant
-**Files to update**:
-- `supabase/functions/_shared/stats_db.ts` - Import from stats_integrity
-- `supabase/functions/stats-health-check/index.ts` - Import from stats_integrity
+#### Action 1: ✅ Consolidated MIN_SAMPLE_SIZE constant
+**Files updated**:
+- `supabase/functions/_shared/stats_db.ts` - Now imports from stats_integrity
+- `supabase/functions/stats-health-check/index.ts` - Now imports from stats_integrity
 
-```typescript
-// Change from:
-const MIN_SAMPLE_SIZE = 3;
-
-// To:
-import { MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
-```
-
-#### Action 2: Remove redundant backfill cron jobs
-**Jobs to delete** (SQL):
-```sql
-SELECT cron.unschedule('backfill-fixture-results-daily');
-SELECT cron.unschedule('backfill-fixture-results-weekly');
-SELECT cron.unschedule('backfill-fixture-results-turbo');
-```
+#### Action 2: ✅ Removed redundant backfill cron jobs
+**Jobs deleted**:
+- `backfill-fixture-results-daily` (job 32)
+- `backfill-fixture-results-weekly` (job 33)
+- `backfill-fixture-results-turbo` (job 34)
 
 ### 7.2 No Action Needed
 
@@ -292,24 +279,26 @@ npm run duplicate-check
 1. **Single source of truth** for stats computation: `_shared/stats.ts`
 2. **Single source of truth** for validation: `_shared/stats_integrity.ts`
 3. **Single source of truth** for league IDs: `_shared/leagues.ts`
-4. **No hidden duplicate implementations** of last-5 averages logic
-5. **All edge functions** correctly import from shared modules
-6. **No dead code** in components, pages, or functions
+4. **Single source of truth** for MIN_SAMPLE_SIZE: `_shared/stats_integrity.ts` (consolidated)
+5. **No hidden duplicate implementations** of last-5 averages logic
+6. **All edge functions** correctly import from shared modules
+7. **No dead code** in components, pages, or functions
+8. **Clean cron jobs** - 11 jobs, each with unique purpose (3 redundant removed)
 
-### ⚠️ Remaining Items
+### ✅ Refactors Completed
 
-1. **MIN_SAMPLE_SIZE** defined in 3 places (minor, recommended to consolidate)
-2. **3 redundant backfill cron jobs** (recommend deletion)
-3. **Migration files** contain old cron schedules (expected, immutable)
+1. **MIN_SAMPLE_SIZE** - Now imported from single source (`stats_integrity.ts`) in all files
+2. **Cron jobs** - Removed 3 redundant backfill jobs (32, 33, 34)
 
 ### 🔒 Risk Assessment
 
 | Risk | Level | Mitigation |
 |------|-------|------------|
 | Updating one stats module without the other | **LOW** | They serve different purposes (API vs DB) |
-| Cron job conflicts | **MEDIUM** | Remove redundant backfill jobs |
+| Cron job conflicts | **RESOLVED** | Redundant backfill jobs deleted |
 | Future duplicate files | **LOW** | Add duplicate-check script |
 
 ---
 
 *Report generated by automated audit on 2025-12-04*
+*Refactors completed: MIN_SAMPLE_SIZE consolidation, cron job cleanup*
