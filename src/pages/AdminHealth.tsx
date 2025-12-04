@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle, ShieldAlert } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { StatsHealthDashboard } from "@/components/StatsHealthDashboard";
 
 type AdminHealthResponse = {
   fixturesCoverage: {
@@ -240,6 +242,24 @@ const AdminHealth = () => {
         </div>
       </div>
 
+      {/* Tabs for different sections */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview">
+            <Activity className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="stats-health">
+            <ShieldAlert className="w-4 h-4 mr-2" />
+            Stats Health
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="stats-health">
+          <StatsHealthDashboard />
+        </TabsContent>
+
+        <TabsContent value="overview" className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <Card className={getFixtureCoverageBg(data.fixturesCoverage.coverage_pct)}>
@@ -498,6 +518,8 @@ const AdminHealth = () => {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

@@ -811,6 +811,57 @@ export type Database = {
         }
         Relationships: []
       }
+      stats_health_violations: {
+        Row: {
+          cache_value: number | null
+          created_at: string
+          db_value: number | null
+          diff: number | null
+          id: number
+          league_ids: number[] | null
+          metric: string
+          notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          sample_size: number | null
+          severity: string
+          team_id: number
+          team_name: string | null
+        }
+        Insert: {
+          cache_value?: number | null
+          created_at?: string
+          db_value?: number | null
+          diff?: number | null
+          id?: number
+          league_ids?: number[] | null
+          metric: string
+          notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sample_size?: number | null
+          severity: string
+          team_id: number
+          team_name?: string | null
+        }
+        Update: {
+          cache_value?: number | null
+          created_at?: string
+          db_value?: number | null
+          diff?: number | null
+          id?: number
+          league_ids?: number[] | null
+          metric?: string
+          notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sample_size?: number | null
+          severity?: string
+          team_id?: number
+          team_name?: string | null
+        }
+        Relationships: []
+      }
       team_totals_candidates: {
         Row: {
           computed_at: string
