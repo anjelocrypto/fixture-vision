@@ -13,7 +13,10 @@
 // we can compute accurate stats without API calls.
 // ============================================================================
 
-export const MIN_FIXTURES_FOR_RELIABLE_STATS = 3;
+import { MIN_SAMPLE_SIZE } from "./stats_integrity.ts";
+
+// Re-export for backwards compatibility
+export const MIN_FIXTURES_FOR_RELIABLE_STATS = MIN_SAMPLE_SIZE;
 export const OPTIMAL_FIXTURE_COUNT = 5;
 
 export interface DBStatsResult {
