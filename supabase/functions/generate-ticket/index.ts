@@ -34,6 +34,7 @@ import { pickFromCombined, RULES, RULES_VERSION, type StatMarket } from "../_sha
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
+import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -526,6 +527,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       
       const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
 
+      // STATS INTEGRITY CHECK: Validate all fixtures have reliable stats
+      const fixturesToValidate = (fixtures || []).map((f: any) => ({
+        fixture_id: f.id,
+        home_team_id: Number(f.teams_home?.id),
+        away_team_id: Number(f.teams_away?.id)
+      }));
+      
+      const validationResults = await validateFixturesBatch(supabase, fixturesToValidate);
+      let statsIntegrityDropped = 0;
+
       const rawCount = selections.length;
       const byMarket: Record<string, number> = {};
       for (const s of selections) byMarket[(s as any).market] = (byMarket[(s as any).market] || 0) + 1;
@@ -541,6 +552,14 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       for (const sel of selections) {
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
+        
+        // STATS INTEGRITY CHECK: Skip fixtures with unreliable stats
+        const validation = validationResults.get((sel as any).fixture_id);
+        if (validation && !validation.isValid) {
+          statsIntegrityDropped++;
+          logs.push(`[STATS_INTEGRITY_FAIL] fixture ${(sel as any).fixture_id} - ${validation.reason} - DROPPED`);
+          continue;
+        }
         
         // Enforce global odds band [ODDS_MIN, ODDS_MAX]
         if ((sel as any).odds < ODDS_MIN || (sel as any).odds > ODDS_MAX) {
@@ -588,6 +607,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           source: (sel as any).is_live ? "live" : "prematch",
         });
       }
+      
+      logs.push(`[ticket] stats_integrity_dropped=${statsIntegrityDropped}`);
       
       // Dedupe: keep best odds per fixture+market
       const dedupMap = new Map<string, TicketLeg>();
