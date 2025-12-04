@@ -7,9 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, XCircle, RefreshCw, Activity, Database } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { AlertTriangle, CheckCircle2, XCircle, RefreshCw, Activity, Database, Info, Shield } from "lucide-react";
+import { format } from "date-fns";
+
+// Top 5 leagues that matter for CRITICAL status
+const TOP_LEAGUE_IDS = [39, 140, 135, 78, 61];
+// All allowed leagues
+const ALLOWED_LEAGUE_IDS = [39, 140, 135, 78, 61, 45, 48, 143, 137, 81, 66, 2, 3, 848, 5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964];
 
 interface Violation {
   id: number;
@@ -24,6 +30,8 @@ interface Violation {
   sample_size: number | null;
   severity: string;
   notes: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
 }
 
 interface HealthSummary {
@@ -33,12 +41,24 @@ interface HealthSummary {
   warning: number;
   info: number;
   by_metric: Record<string, number>;
+  top_league_goals_critical: number;
 }
+
+const isTopLeague = (leagueIds: number[] | null) => {
+  if (!leagueIds) return false;
+  return leagueIds.some(lid => TOP_LEAGUE_IDS.includes(lid));
+};
+
+const isAllowedLeague = (leagueIds: number[] | null) => {
+  if (!leagueIds) return false;
+  return leagueIds.some(lid => ALLOWED_LEAGUE_IDS.includes(lid));
+};
 
 export const StatsHealthDashboard = () => {
   const queryClient = useQueryClient();
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [metricFilter, setMetricFilter] = useState<string>("all");
+  const [leagueTierFilter, setLeagueTierFilter] = useState<string>("all");
   const [isRunningCheck, setIsRunningCheck] = useState(false);
 
   // Fetch violations summary
@@ -49,8 +69,9 @@ export const StatsHealthDashboard = () => {
       
       const { data, error } = await supabase
         .from("stats_health_violations")
-        .select("severity, metric")
-        .gte("created_at", since);
+        .select("severity, metric, league_ids")
+        .gte("created_at", since)
+        .is("resolved_at", null); // Only count unresolved
 
       if (error) throw error;
 
@@ -60,7 +81,8 @@ export const StatsHealthDashboard = () => {
         error: 0,
         warning: 0,
         info: 0,
-        by_metric: {}
+        by_metric: {},
+        top_league_goals_critical: 0
       };
 
       for (const v of data || []) {
@@ -70,6 +92,11 @@ export const StatsHealthDashboard = () => {
         else result.info++;
 
         result.by_metric[v.metric] = (result.by_metric[v.metric] || 0) + 1;
+
+        // Count top-league goals critical
+        if (v.severity === 'critical' && v.metric === 'goals' && isTopLeague(v.league_ids)) {
+          result.top_league_goals_critical++;
+        }
       }
 
       return result;
@@ -79,7 +106,7 @@ export const StatsHealthDashboard = () => {
 
   // Fetch violations list
   const { data: violations, isLoading: violationsLoading } = useQuery<Violation[]>({
-    queryKey: ["stats-health-violations", severityFilter, metricFilter],
+    queryKey: ["stats-health-violations", severityFilter, metricFilter, leagueTierFilter],
     queryFn: async () => {
       let query = supabase
         .from("stats_health_violations")
@@ -96,7 +123,18 @@ export const StatsHealthDashboard = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      
+      // Filter by league tier client-side
+      let filtered = data || [];
+      if (leagueTierFilter === "top") {
+        filtered = filtered.filter(v => isTopLeague(v.league_ids));
+      } else if (leagueTierFilter === "allowed") {
+        filtered = filtered.filter(v => isAllowedLeague(v.league_ids));
+      } else if (leagueTierFilter === "other") {
+        filtered = filtered.filter(v => !isAllowedLeague(v.league_ids));
+      }
+      
+      return filtered;
     },
     refetchInterval: 60000
   });
@@ -116,7 +154,7 @@ export const StatsHealthDashboard = () => {
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success(`Health check complete: ${data.violations_by_severity?.critical || 0} critical, ${data.violations_by_severity?.error || 0} errors`);
+      toast.success(`Health check complete: ${data.top_league_goals_critical || 0} top-league critical, ${data.auto_healed || 0} auto-healed`);
       queryClient.invalidateQueries({ queryKey: ["stats-health-summary"] });
       queryClient.invalidateQueries({ queryKey: ["stats-health-violations"] });
       setIsRunningCheck(false);
@@ -127,23 +165,34 @@ export const StatsHealthDashboard = () => {
     }
   });
 
-  // Force refresh team stats
-  const forceRefreshTeam = useMutation({
+  // Auto-heal team mutation (clear cache + mark resolved)
+  const autoHealTeam = useMutation({
     mutationFn: async (teamId: number) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      // Delete from stats_cache to force recalculation
+      // Delete from stats_cache
       await supabase.from("stats_cache").delete().eq("team_id", teamId);
+      
+      // Mark violations as resolved
+      await supabase
+        .from("stats_health_violations")
+        .update({ 
+          resolved_at: new Date().toISOString(),
+          resolved_by: 'manual-heal'
+        })
+        .eq("team_id", teamId)
+        .is("resolved_at", null);
 
-      toast.info(`Cleared stats_cache for team ${teamId}. Will be recalculated on next refresh.`);
       return teamId;
     },
-    onSuccess: () => {
+    onSuccess: (teamId) => {
+      toast.success(`Auto-healed team ${teamId}. Cache cleared and violations marked resolved.`);
       queryClient.invalidateQueries({ queryKey: ["stats-health-violations"] });
+      queryClient.invalidateQueries({ queryKey: ["stats-health-summary"] });
     },
     onError: (error) => {
-      toast.error(`Failed to clear team stats: ${error.message}`);
+      toast.error(`Auto-heal failed: ${error.message}`);
     }
   });
 
@@ -160,12 +209,58 @@ export const StatsHealthDashboard = () => {
     }
   };
 
+  const getLeagueTierBadge = (leagueIds: number[] | null) => {
+    if (isTopLeague(leagueIds)) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Badge variant="default" className="bg-primary">Top 5</Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Premier League, La Liga, Serie A, Bundesliga, or Ligue 1</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+    if (isAllowedLeague(leagueIds)) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Badge variant="secondary">Tracked</Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Tracked league with full stats support</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <Badge variant="outline" className="text-muted-foreground">Other</Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Lower division or limited coverage league - safe to ignore</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  // CRITICAL status only if there are unresolved top-league GOALS critical violations
   const getOverallStatus = () => {
-    if (!summary) return { status: 'unknown', color: 'text-muted-foreground', icon: Activity };
-    if (summary.critical > 10 || summary.error > 50) {
+    if (!summary) return { status: 'Loading', color: 'text-muted-foreground', icon: Activity };
+    
+    // Only top-league GOALS critical violations matter for CRITICAL status
+    if (summary.top_league_goals_critical > 3) {
       return { status: 'CRITICAL', color: 'text-destructive', icon: XCircle };
     }
-    if (summary.critical > 0 || summary.error > 10) {
+    if (summary.top_league_goals_critical > 0 || summary.critical > 50) {
       return { status: 'DEGRADED', color: 'text-yellow-500', icon: AlertTriangle };
     }
     return { status: 'HEALTHY', color: 'text-green-500', icon: CheckCircle2 };
@@ -202,7 +297,7 @@ export const StatsHealthDashboard = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-6">
         <Card className={`border-2 ${overallStatus.color.replace('text-', 'border-')}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Overall Status</CardTitle>
@@ -215,12 +310,35 @@ export const StatsHealthDashboard = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-2 border-destructive/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Critical</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-1">
+              Top League Critical
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-3 h-3" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>GOALS critical violations in Top 5 leagues only</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-3xl font-bold text-destructive">
+              {summary?.top_league_goals_critical || 0}
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">All Critical</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className="text-3xl font-bold text-destructive/70">
               {summary?.critical || 0}
             </span>
           </CardContent>
@@ -250,7 +368,7 @@ export const StatsHealthDashboard = () => {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Total (24h)</CardTitle>
+            <CardTitle className="text-sm">Unresolved (24h)</CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-3xl font-bold">
@@ -264,7 +382,7 @@ export const StatsHealthDashboard = () => {
       {summary && Object.keys(summary.by_metric).length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Violations by Metric (24h)</CardTitle>
+            <CardTitle className="text-sm">Violations by Metric (Unresolved)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
@@ -279,7 +397,7 @@ export const StatsHealthDashboard = () => {
       )}
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
         <Select value={severityFilter} onValueChange={setSeverityFilter}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Severity" />
@@ -309,6 +427,18 @@ export const StatsHealthDashboard = () => {
             <SelectItem value="missing_results">Missing Results</SelectItem>
           </SelectContent>
         </Select>
+
+        <Select value={leagueTierFilter} onValueChange={setLeagueTierFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="League Tier" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Leagues</SelectItem>
+            <SelectItem value="top">Top 5 Only</SelectItem>
+            <SelectItem value="allowed">Tracked Leagues</SelectItem>
+            <SelectItem value="other">Other/Lower</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Violations Table */}
@@ -325,18 +455,20 @@ export const StatsHealthDashboard = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Team</TableHead>
+                    <TableHead>League Tier</TableHead>
                     <TableHead>Metric</TableHead>
                     <TableHead>DB Value</TableHead>
                     <TableHead>Cache Value</TableHead>
                     <TableHead>Diff</TableHead>
                     <TableHead>Severity</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {violations.map((v) => (
-                    <TableRow key={v.id}>
+                    <TableRow key={v.id} className={v.resolved_at ? 'opacity-50' : ''}>
                       <TableCell>
                         <div>
                           <div className="font-medium">{v.team_name || `Team ${v.team_id}`}</div>
@@ -344,26 +476,53 @@ export const StatsHealthDashboard = () => {
                         </div>
                       </TableCell>
                       <TableCell>
+                        {getLeagueTierBadge(v.league_ids)}
+                      </TableCell>
+                      <TableCell>
                         <Badge variant="outline">{v.metric}</Badge>
                       </TableCell>
                       <TableCell>{v.db_value?.toFixed(2) ?? '-'}</TableCell>
                       <TableCell>{v.cache_value?.toFixed(2) ?? '-'}</TableCell>
-                      <TableCell className={v.diff && v.diff > 0.4 ? 'text-destructive font-bold' : ''}>
+                      <TableCell className={v.diff && v.diff >= 1.0 ? 'text-destructive font-bold' : ''}>
                         {v.diff?.toFixed(2) ?? '-'}
                       </TableCell>
                       <TableCell>{getSeverityBadge(v.severity)}</TableCell>
+                      <TableCell>
+                        {v.resolved_at ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Badge variant="secondary" className="bg-green-500/20 text-green-600">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Healed
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Resolved by: {v.resolved_by}</p>
+                                <p>At: {format(new Date(v.resolved_at), 'MMM d, HH:mm')}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <Badge variant="outline" className="text-orange-500">
+                            Open
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {format(new Date(v.created_at), 'MMM d, HH:mm')}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => forceRefreshTeam.mutate(v.team_id)}
-                        >
-                          <RefreshCw className="w-3 h-3 mr-1" />
-                          Clear Cache
-                        </Button>
+                        {!v.resolved_at && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => autoHealTeam.mutate(v.team_id)}
+                          >
+                            <Shield className="w-3 h-3 mr-1" />
+                            Auto-Heal
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

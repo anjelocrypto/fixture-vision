@@ -1,8 +1,17 @@
 // Stats Health Check - Global integrity monitoring for stats pipeline
 // Runs periodically to detect and log violations to stats_health_violations table
+// KEY FEATURES:
+// - Deduplication: Uses upsert to avoid duplicate violations for same team/metric
+// - Auto-healing: Clears stale cache for critical violations and triggers recompute
+// - Per-metric thresholds: Different sensitivity for goals (strict) vs fouls (lenient)
+// - Top-league focus: Only considers ALLOWED_LEAGUE_IDS teams for CRITICAL status
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
+
+// Top 5 leagues for strict monitoring - only these trigger CRITICAL status for goals
+const TOP_LEAGUE_IDS = [39, 140, 135, 78, 61]; // Premier League, La Liga, Serie A, Bundesliga, Ligue 1
 
 interface TeamDiscovery {
   team_id: number;
@@ -52,6 +61,8 @@ interface HealthCheckResult {
   top_violations: Violation[];
   recommendations: string[];
   duration_ms: number;
+  auto_healed: number;
+  top_league_goals_critical: number;
 }
 
 // Metric-specific thresholds to reduce noise while catching real bugs
@@ -69,7 +80,7 @@ const METRIC_THRESHOLDS: Record<string, { warning: number; error: number; critic
 const DEFAULT_THRESHOLDS = { warning: 0.5, error: 1.0, critical: 2.0 };
 
 const LOOKBACK_DAYS = 365;
-const BATCH_SIZE = 50; // Process teams in batches
+const BATCH_SIZE = 50;
 
 function getSeverityForMetric(metric: string, diff: number): 'info' | 'warning' | 'error' | 'critical' {
   const thresholds = METRIC_THRESHOLDS[metric] || DEFAULT_THRESHOLDS;
@@ -77,6 +88,16 @@ function getSeverityForMetric(metric: string, diff: number): 'info' | 'warning' 
   if (diff >= thresholds.error) return 'error';
   if (diff >= thresholds.warning) return 'warning';
   return 'info';
+}
+
+// Check if team plays in a top league
+function isTopLeagueTeam(leagueIds: number[]): boolean {
+  return leagueIds.some(lid => TOP_LEAGUE_IDS.includes(lid));
+}
+
+// Check if team plays in any ALLOWED league
+function isAllowedLeagueTeam(leagueIds: number[]): boolean {
+  return leagueIds.some(lid => ALLOWED_LEAGUE_IDS.includes(lid));
 }
 
 Deno.serve(async (req: Request) => {
@@ -133,6 +154,7 @@ Deno.serve(async (req: Request) => {
     const lookbackTimestamp = Math.floor((Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000) / 1000);
     const violations: Violation[] = [];
     const teamsDiscovered: TeamDiscovery[] = [];
+    const teamsToAutoHeal: number[] = [];
 
     // Step 1: Discover all teams from finished fixtures in allowed leagues
     console.log("[stats-health-check] Step 1: Discovering teams from fixtures...");
@@ -153,7 +175,6 @@ Deno.serve(async (req: Request) => {
       .gt("timestamp", lookbackTimestamp)
       .limit(5000);
 
-    // Build team map with leagues
     const teamMap = new Map<number, { name: string; leagues: Set<number> }>();
     
     for (const row of homeTeams || []) {
@@ -188,15 +209,16 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[stats-health-check] Discovered ${teamsDiscovered.length} teams`);
 
-    // Step 2: Check for FT fixtures missing fixture_results
-    console.log("[stats-health-check] Step 2: Checking for missing fixture_results...");
+    // Step 2: Check for FT fixtures missing fixture_results (limit scope to recent 60 days)
+    console.log("[stats-health-check] Step 2: Checking for missing fixture_results (last 60 days)...");
     
+    const recentLookback = Math.floor((Date.now() - 60 * 24 * 3600 * 1000) / 1000);
     const { data: ftFixtures } = await supabase
       .from("fixtures")
       .select("id, league_id, teams_home, teams_away")
       .in("league_id", ALLOWED_LEAGUE_IDS)
       .in("status", ["FT", "AET", "PEN"])
-      .gt("timestamp", lookbackTimestamp)
+      .gt("timestamp", recentLookback)
       .limit(2000);
 
     if (ftFixtures && ftFixtures.length > 0) {
@@ -211,7 +233,6 @@ Deno.serve(async (req: Request) => {
       
       console.log(`[stats-health-check] Found ${missingFixtures.length} FT fixtures missing results`);
       
-      // Create violations for missing results (group by team)
       const teamsMissingResults = new Map<number, { name: string; count: number; leagues: Set<number> }>();
       
       for (const f of missingFixtures) {
@@ -237,7 +258,7 @@ Deno.serve(async (req: Request) => {
       }
       
       for (const [teamId, data] of teamsMissingResults) {
-        if (data.count >= 2) { // Only report if 2+ missing
+        if (data.count >= 2) {
           violations.push({
             team_id: teamId,
             team_name: data.name,
@@ -257,7 +278,6 @@ Deno.serve(async (req: Request) => {
     // Step 3: Process teams in batches to check stats consistency
     console.log("[stats-health-check] Step 3: Checking stats consistency...");
     
-    // Get all stats_cache entries
     const { data: allStatsCache } = await supabase
       .from("stats_cache")
       .select("team_id, goals, corners, cards, fouls, offsides, sample_size, computed_at");
@@ -274,7 +294,6 @@ Deno.serve(async (req: Request) => {
 
     for (const batch of teamBatches) {
       for (const team of batch) {
-        // Get last 5 fixtures for this team
         const { data: teamFixtures } = await supabase
           .from("fixtures")
           .select("id, league_id, teams_home, teams_away, timestamp")
@@ -289,7 +308,6 @@ Deno.serve(async (req: Request) => {
         const fixtureIds = teamFixtures.map(f => f.id);
         const fixtureLeagues = [...new Set(teamFixtures.map(f => f.league_id))];
 
-        // Get results for these fixtures
         const { data: results } = await supabase
           .from("fixture_results")
           .select("fixture_id, goals_home, goals_away, corners_home, corners_away, cards_home, cards_away, fouls_home, fouls_away, offsides_home, offsides_away")
@@ -297,7 +315,6 @@ Deno.serve(async (req: Request) => {
 
         const resultsMap = new Map((results || []).map(r => [r.fixture_id, r]));
 
-        // Compute DB-based averages with per-metric null handling
         let totalGoals = 0, countGoals = 0;
         let totalCorners = 0, countCorners = 0;
         let totalCards = 0, countCards = 0;
@@ -311,35 +328,30 @@ Deno.serve(async (req: Request) => {
           const homeId = Number(fixture.teams_home?.id);
           const isHome = homeId === team.team_id;
 
-          // Goals
           const goals = isHome ? result.goals_home : result.goals_away;
           if (goals !== null && goals !== undefined) {
             totalGoals += goals;
             countGoals++;
           }
 
-          // Corners
           const corners = isHome ? result.corners_home : result.corners_away;
           if (corners !== null && corners !== undefined) {
             totalCorners += corners;
             countCorners++;
           }
 
-          // Cards
           const cards = isHome ? result.cards_home : result.cards_away;
           if (cards !== null && cards !== undefined) {
             totalCards += cards;
             countCards++;
           }
 
-          // Fouls
           const fouls = isHome ? result.fouls_home : result.fouls_away;
           if (fouls !== null && fouls !== undefined) {
             totalFouls += fouls;
             countFouls++;
           }
 
-          // Offsides
           const offsides = isHome ? result.offsides_home : result.offsides_away;
           if (offsides !== null && offsides !== undefined) {
             totalOffsides += offsides;
@@ -362,7 +374,6 @@ Deno.serve(async (req: Request) => {
           league_ids: fixtureLeagues
         };
 
-        // Check cache entry
         const cacheEntry = statsCacheMap.get(team.team_id);
 
         // Missing cache check
@@ -379,6 +390,10 @@ Deno.serve(async (req: Request) => {
             severity: 'error',
             notes: `Team has ${countGoals} FT fixtures but no stats_cache entry`
           });
+          // Mark for auto-heal if in allowed leagues
+          if (isAllowedLeagueTeam(fixtureLeagues)) {
+            teamsToAutoHeal.push(team.team_id);
+          }
           continue;
         }
 
@@ -398,6 +413,7 @@ Deno.serve(async (req: Request) => {
             severity: 'error',
             notes: `Invalid sample_size: ${cacheEntry.sample_size} (expected 1-5)`
           });
+          teamsToAutoHeal.push(team.team_id);
         }
 
         // Compare each metric
@@ -410,12 +426,11 @@ Deno.serve(async (req: Request) => {
         ];
 
         for (const m of metrics) {
-          if (m.db === null || m.count < 2) continue; // Skip if not enough data
+          if (m.db === null || m.count < 2) continue;
           
           const diff = Math.abs(m.db - m.cache);
           const severity = getSeverityForMetric(m.name, diff);
           
-          // Only log violations that are at least warning level
           if (severity !== 'info') {
             violations.push({
               team_id: team.team_id,
@@ -429,24 +444,49 @@ Deno.serve(async (req: Request) => {
               severity,
               notes: `DB avg: ${m.db.toFixed(2)}, Cache: ${m.cache.toFixed(2)}, Diff: ${diff.toFixed(2)}`
             });
+
+            // Auto-heal: mark CRITICAL goals violations in ALLOWED leagues for cache clear
+            if (m.name === 'goals' && severity === 'critical' && isAllowedLeagueTeam(fixtureLeagues)) {
+              teamsToAutoHeal.push(team.team_id);
+            }
           }
         }
 
         teamsProcessed++;
       }
 
-      // Log progress
       console.log(`[stats-health-check] Processed ${teamsProcessed}/${teamsDiscovered.length} teams, ${violations.length} violations so far`);
     }
 
-    // Step 4: Insert violations into table
-    console.log(`[stats-health-check] Step 4: Inserting ${violations.length} violations...`);
+    // Step 4: Upsert violations (deduplicate by team_id + metric)
+    // First delete old unresolved violations for teams we're about to update
+    console.log(`[stats-health-check] Step 4: Upserting ${violations.length} violations (with deduplication)...`);
     
-    if (violations.length > 0) {
-      // Insert in batches
+    // Group violations by team_id+metric to keep only the most recent
+    const violationMap = new Map<string, Violation>();
+    for (const v of violations) {
+      const key = `${v.team_id}_${v.metric}`;
+      violationMap.set(key, v); // Later violations overwrite earlier ones
+    }
+    
+    const deduplicatedViolations = Array.from(violationMap.values());
+    console.log(`[stats-health-check] After deduplication: ${deduplicatedViolations.length} unique violations`);
+    
+    // Delete existing unresolved violations for teams we're updating
+    const teamIds = [...new Set(deduplicatedViolations.map(v => v.team_id))];
+    if (teamIds.length > 0) {
+      await supabase
+        .from("stats_health_violations")
+        .delete()
+        .in("team_id", teamIds)
+        .is("resolved_at", null);
+    }
+    
+    // Insert new violations
+    if (deduplicatedViolations.length > 0) {
       const insertBatches = [];
-      for (let i = 0; i < violations.length; i += 100) {
-        insertBatches.push(violations.slice(i, i + 100));
+      for (let i = 0; i < deduplicatedViolations.length; i += 100) {
+        insertBatches.push(deduplicatedViolations.slice(i, i + 100));
       }
 
       for (const batch of insertBatches) {
@@ -471,56 +511,91 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Step 5: Auto-heal critical violations (clear cache for affected teams)
+    const uniqueTeamsToHeal = [...new Set(teamsToAutoHeal)];
+    let autoHealedCount = 0;
+    
+    if (uniqueTeamsToHeal.length > 0) {
+      console.log(`[stats-health-check] Step 5: Auto-healing ${uniqueTeamsToHeal.length} teams with critical violations...`);
+      
+      // Delete stats_cache entries for these teams to force recalculation
+      const { error: deleteError } = await supabase
+        .from("stats_cache")
+        .delete()
+        .in("team_id", uniqueTeamsToHeal);
+      
+      if (!deleteError) {
+        autoHealedCount = uniqueTeamsToHeal.length;
+        console.log(`[stats-health-check] Cleared stats_cache for ${autoHealedCount} teams. They will be recomputed by next stats-refresh batch.`);
+        
+        // Mark violations as auto-healed in notes
+        await supabase
+          .from("stats_health_violations")
+          .update({ 
+            notes: 'Auto-heal initiated - cache cleared'
+          })
+          .in("team_id", uniqueTeamsToHeal)
+          .is("resolved_at", null);
+      } else {
+        console.error("[stats-health-check] Auto-heal delete error:", deleteError.message);
+      }
+    }
+
     // Build summary
     const violationsBySeverity = { info: 0, warning: 0, error: 0, critical: 0 };
     const violationsByMetric: Record<string, number> = {};
 
-    for (const v of violations) {
+    // Count only the deduplicated violations
+    for (const v of deduplicatedViolations) {
       violationsBySeverity[v.severity]++;
       violationsByMetric[v.metric] = (violationsByMetric[v.metric] || 0) + 1;
     }
 
-    // Determine status
+    // Count top-league goals critical for status determination
+    const topLeagueGoalsCritical = deduplicatedViolations.filter(v => 
+      v.metric === 'goals' && 
+      v.severity === 'critical' && 
+      v.league_ids && 
+      isTopLeagueTeam(v.league_ids)
+    ).length;
+
+    // Determine status based on TOP LEAGUE GOALS CRITICAL count only
+    // This prevents lower-division noise from triggering false alarms
     let status: "HEALTHY" | "DEGRADED" | "CRITICAL" = "HEALTHY";
-    const recommendations: string[] = [];
-
-    if (violationsBySeverity.critical > 10 || violationsBySeverity.error > 50) {
+    if (topLeagueGoalsCritical > 3) {
       status = "CRITICAL";
-      recommendations.push("Run results-refresh with backfill_mode=true and window_hours=720");
-      recommendations.push("Clear and rebuild stats_cache for affected teams");
-    } else if (violationsBySeverity.critical > 0 || violationsBySeverity.error > 10) {
+    } else if (topLeagueGoalsCritical > 0 || violationsBySeverity.critical > 50) {
       status = "DEGRADED";
-      recommendations.push("Run stats-refresh with force=true to rebuild affected teams");
     }
 
-    if ((violationsByMetric['missing_results'] || 0) > 0) {
-      recommendations.push(`${violationsByMetric['missing_results']} teams have missing fixture_results - run results-refresh`);
-    }
-    if ((violationsByMetric['missing_cache'] || 0) > 0) {
-      recommendations.push(`${violationsByMetric['missing_cache']} teams missing from stats_cache - run stats-refresh`);
-    }
+    const durationMs = Date.now() - startTime;
 
-    const duration = Date.now() - startTime;
+    // Generate recommendations
+    const recommendations: string[] = [];
+    if (topLeagueGoalsCritical > 0) {
+      recommendations.push(`⚠️ ${topLeagueGoalsCritical} TOP LEAGUE teams have critical GOALS violations - auto-heal initiated`);
+    }
+    if (violationsByMetric['missing_results'] > 0) {
+      recommendations.push(`Run results-refresh to backfill ${violationsByMetric['missing_results']} fixtures with missing results`);
+    }
+    if (violationsByMetric['missing_cache'] > 0) {
+      recommendations.push(`Run stats-refresh to populate ${violationsByMetric['missing_cache']} teams with missing cache`);
+    }
+    if (autoHealedCount > 0) {
+      recommendations.push(`✅ Auto-healed ${autoHealedCount} teams - cache cleared, awaiting next stats-refresh`);
+    }
 
     // Log to optimizer_run_logs
     await supabase.from("optimizer_run_logs").insert({
       run_type: "stats-health-check",
       window_start: new Date(lookbackTimestamp * 1000).toISOString(),
       window_end: new Date().toISOString(),
-      scanned: teamsDiscovered.length,
-      upserted: violations.length,
-      skipped: 0,
-      failed: violationsBySeverity.critical + violationsBySeverity.error,
-      duration_ms: duration,
-      notes: JSON.stringify({
-        status,
-        teams_checked: teamsProcessed,
-        violations_by_severity: violationsBySeverity,
-        violations_by_metric: violationsByMetric
-      })
+      scanned: teamsProcessed,
+      upserted: deduplicatedViolations.length,
+      failed: 0,
+      duration_ms: durationMs,
+      notes: `Status: ${status}, Critical: ${violationsBySeverity.critical}, TopLeagueCritical: ${topLeagueGoalsCritical}, AutoHealed: ${autoHealedCount}`
     });
-
-    console.log(`[stats-health-check] Completed in ${duration}ms, status: ${status}, violations: ${violations.length}`);
 
     const result: HealthCheckResult = {
       timestamp: new Date().toISOString(),
@@ -528,22 +603,22 @@ Deno.serve(async (req: Request) => {
       violations_by_severity: violationsBySeverity,
       violations_by_metric: violationsByMetric,
       status,
-      top_violations: violations
+      top_violations: deduplicatedViolations
         .filter(v => v.severity === 'critical' || v.severity === 'error')
         .slice(0, 20),
       recommendations,
-      duration_ms: duration
+      duration_ms: durationMs,
+      auto_healed: autoHealedCount,
+      top_league_goals_critical: topLeagueGoalsCritical
     };
+
+    console.log(`[stats-health-check] Complete. Status: ${status}, Critical: ${violationsBySeverity.critical}, TopLeagueGoalsCritical: ${topLeagueGoalsCritical}, AutoHealed: ${autoHealedCount}, Duration: ${durationMs}ms`);
 
     return jsonResponse(result, origin, 200, req);
 
   } catch (error) {
     console.error("[stats-health-check] Error:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Unknown error",
-      origin,
-      500,
-      req
-    );
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    return errorResponse(errMsg, origin, 500, req);
   }
 });
