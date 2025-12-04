@@ -1,4 +1,5 @@
 // Fetch final match results and upsert into fixture_results
+// CRITICAL FIX: Also updates fixtures.status from NS to FT for finished matches
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
@@ -21,6 +22,10 @@ interface FixtureResultRow {
   corners_away?: number;
   cards_home?: number;
   cards_away?: number;
+  fouls_home?: number;
+  fouls_away?: number;
+  offsides_home?: number;
+  offsides_away?: number;
   status: string;
   source: string;
   fetched_at: string;
@@ -192,25 +197,29 @@ Deno.serve(async (req: Request) => {
       console.log("[results-refresh] No past/finished fixtures to clean");
     }
 
-    // Fetch mode: get finished fixtures
+    // ============================================================================
+    // CRITICAL FIX: Query by TIMESTAMP, not STATUS
+    // Find fixtures where kickoff was >2 hours ago (should be finished)
+    // This fixes the bug where fixtures.status never gets updated from NS to FT
+    // ============================================================================
     const startTime = Date.now();
-    const windowStart = new Date(Date.now() - windowHours * 3600 * 1000);
-    // Allow longer lookback for backfill mode (up to 365 days)
     const maxLookbackDays = body.backfill_mode ? 365 : 14;
     const lookbackLimit = new Date(Date.now() - maxLookbackDays * 24 * 3600 * 1000);
-
-    console.log(`[results-refresh] Fetching finished fixtures from last ${windowHours}h (lookback: ${maxLookbackDays} days, backfill: ${body.backfill_mode || false})`);
-
-    // Find fixtures that are finished but not yet in fixture_results
-    const batchSize = body.batch_size || (body.backfill_mode ? 100 : 1000);
     
-    // First, get all FT fixtures
+    // Fixtures that kicked off >2 hours ago should be finished
+    const finishedThreshold = Math.floor((Date.now() - 2 * 3600 * 1000) / 1000);
+    
+    console.log(`[results-refresh] Finding fixtures that kicked off >2h ago (lookback: ${maxLookbackDays} days, backfill: ${body.backfill_mode || false})`);
+
+    const batchSize = body.batch_size || (body.backfill_mode ? 100 : 200);
+    
+    // CRITICAL: Query by timestamp, not status - find matches that should be finished
     let fixturesQuery = supabase
       .from("fixtures")
       .select("id, league_id, timestamp, status")
-      .in("status", ["FT", "AET", "PEN"])
+      .lt("timestamp", finishedThreshold) // Kickoff was >2 hours ago
       .order("timestamp", { ascending: false })
-      .limit(batchSize * 2); // Get more to account for filtering
+      .limit(batchSize * 3); // Get more to account for filtering
     
     // In normal mode, filter by lookback limit
     if (!body.backfill_mode) {
@@ -225,18 +234,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!allFixtures || allFixtures.length === 0) {
-      console.log("[results-refresh] No finished fixtures found in database");
+      console.log("[results-refresh] No past fixtures found in database");
       return jsonResponse({
         success: true, 
         window_hours: windowHours,
         scanned: 0, 
         inserted: 0, 
         skipped: 0,
-        errors: 0
+        errors: 0,
+        status_updates: 0
       }, origin, 200, req);
     }
 
-    // Now check which ones already have results
+    console.log(`[results-refresh] Found ${allFixtures.length} fixtures that kicked off >2h ago`);
+
+    // Check which ones already have results
     const fixtureIds = allFixtures.map((f: any) => f.id);
     const { data: existingResults } = await supabase
       .from("fixture_results")
@@ -246,7 +258,7 @@ Deno.serve(async (req: Request) => {
     const existingIds = new Set((existingResults || []).map((r: any) => r.fixture_id));
     const fixtures = allFixtures.filter((f: any) => !existingIds.has(f.id)).slice(0, batchSize);
     
-    console.log(`[results-refresh] Total FT fixtures: ${allFixtures.length}, Already have results: ${existingIds.size}, Need results: ${fixtures.length}`);
+    console.log(`[results-refresh] Total past fixtures: ${allFixtures.length}, Already have results: ${existingIds.size}, Need results: ${fixtures.length}`);
 
     if (!fixtures || fixtures.length === 0) {
       console.log("[results-refresh] No new finished fixtures to process");
@@ -256,14 +268,16 @@ Deno.serve(async (req: Request) => {
         scanned: 0, 
         inserted: 0, 
         skipped: 0,
-        errors: 0
+        errors: 0,
+        status_updates: 0
       }, origin, 200, req);
     }
 
-    console.log(`[results-refresh] Found ${fixtures.length} finished fixtures to process`);
+    console.log(`[results-refresh] Processing ${fixtures.length} fixtures without results`);
 
     // Fetch results from API for each fixture
     const results: FixtureResultRow[] = [];
+    const statusUpdates: { id: number; status: string }[] = [];
     let inserted = 0;
     let skipped = 0;
     let errors = 0;
@@ -282,10 +296,35 @@ Deno.serve(async (req: Request) => {
         const json = await res.json();
         const apiFixture = json.response?.[0];
         
-        if (!apiFixture || !apiFixture.score || !apiFixture.teams) {
+        if (!apiFixture || !apiFixture.teams) {
           console.warn(`[results-refresh] Incomplete data for fixture ${fixture.id}`);
           skipped++;
           continue;
+        }
+
+        // Get API status
+        const apiStatus = apiFixture.fixture?.status?.short || "NS";
+        
+        // Check if the match is actually finished
+        const isFinished = ["FT", "AET", "PEN", "AWD", "WO"].includes(apiStatus);
+        
+        if (!isFinished) {
+          // Match not finished yet - update local status if different but don't fetch results
+          if (fixture.status !== apiStatus) {
+            console.log(`[results-refresh] Fixture ${fixture.id}: API status=${apiStatus}, updating from ${fixture.status}`);
+            statusUpdates.push({ id: fixture.id, status: apiStatus });
+          }
+          skipped++;
+          continue;
+        }
+
+        // ============================================================================
+        // CRITICAL: Update fixtures.status to FT (or actual status)
+        // This is the fix for the root cause bug
+        // ============================================================================
+        if (fixture.status !== apiStatus) {
+          console.log(`[results-refresh] Fixture ${fixture.id}: Updating status from ${fixture.status} to ${apiStatus}`);
+          statusUpdates.push({ id: fixture.id, status: apiStatus });
         }
 
         const goalsHome = apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0;
@@ -296,6 +335,10 @@ Deno.serve(async (req: Request) => {
         let cornersAway: number | null = null;
         let cardsHome: number | null = null;
         let cardsAway: number | null = null;
+        let foulsHome: number | null = null;
+        let foulsAway: number | null = null;
+        let offsidesHome: number | null = null;
+        let offsidesAway: number | null = null;
 
         const statsData = await fetchFixtureStatistics(fixture.id);
         
@@ -312,6 +355,12 @@ Deno.serve(async (req: Request) => {
             const yellowCards = homeStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
             const redCards = homeStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
             cardsHome = (yellowCards || 0) + (redCards || 0);
+            
+            const foulsStat = homeStats.statistics.find((st: any) => st.type === "Fouls");
+            foulsHome = foulsStat?.value ?? null;
+            
+            const offsidesStat = homeStats.statistics.find((st: any) => st.type === "Offsides");
+            offsidesHome = offsidesStat?.value ?? null;
           }
           
           if (awayStats?.statistics) {
@@ -323,6 +372,12 @@ Deno.serve(async (req: Request) => {
             const yellowCards = awayStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
             const redCards = awayStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
             cardsAway = (yellowCards || 0) + (redCards || 0);
+            
+            const foulsStat = awayStats.statistics.find((st: any) => st.type === "Fouls");
+            foulsAway = foulsStat?.value ?? null;
+            
+            const offsidesStat = awayStats.statistics.find((st: any) => st.type === "Offsides");
+            offsidesAway = offsidesStat?.value ?? null;
           }
         }
         
@@ -339,7 +394,11 @@ Deno.serve(async (req: Request) => {
           corners_away: cornersAway ?? undefined,
           cards_home: cardsHome ?? undefined,
           cards_away: cardsAway ?? undefined,
-          status: apiFixture.fixture?.status?.short || "FT",
+          fouls_home: foulsHome ?? undefined,
+          fouls_away: foulsAway ?? undefined,
+          offsides_home: offsidesHome ?? undefined,
+          offsides_away: offsidesAway ?? undefined,
+          status: apiStatus,
           source: "api-football",
           fetched_at: new Date().toISOString(),
         };
@@ -350,9 +409,9 @@ Deno.serve(async (req: Request) => {
         errors++;
       }
 
-        // Rate limiting: longer delay in backfill mode to respect API limits
-        const delayMs = body.backfill_mode ? 1200 : 100; // ~50 RPM for backfill
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+      // Rate limiting: longer delay in backfill mode to respect API limits
+      const delayMs = body.backfill_mode ? 1200 : 100; // ~50 RPM for backfill
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
     // Batch upsert results
@@ -370,12 +429,35 @@ Deno.serve(async (req: Request) => {
       console.log(`[results-refresh] Successfully upserted ${inserted} results`);
     }
 
+    // ============================================================================
+    // CRITICAL: Update fixtures.status for all processed fixtures
+    // ============================================================================
+    let statusUpdateCount = 0;
+    if (statusUpdates.length > 0) {
+      console.log(`[results-refresh] Updating status for ${statusUpdates.length} fixtures`);
+      
+      for (const update of statusUpdates) {
+        const { error: updateError } = await supabase
+          .from("fixtures")
+          .update({ status: update.status })
+          .eq("id", update.id);
+        
+        if (updateError) {
+          console.warn(`[results-refresh] Failed to update status for fixture ${update.id}:`, updateError);
+        } else {
+          statusUpdateCount++;
+        }
+      }
+      
+      console.log(`[results-refresh] Successfully updated ${statusUpdateCount} fixture statuses`);
+    }
+
     const duration = Date.now() - startTime;
 
     // Log to optimizer_run_logs
     await supabase.from("optimizer_run_logs").insert({
       run_type: body.backfill_mode ? "backfill-fixture-results" : "results-refresh",
-      window_start: windowStart.toISOString(),
+      window_start: lookbackLimit.toISOString(),
       window_end: new Date().toISOString(),
       scanned: fixtures.length,
       upserted: inserted,
@@ -384,7 +466,7 @@ Deno.serve(async (req: Request) => {
       duration_ms: duration,
       started_at: new Date(startTime).toISOString(),
       finished_at: new Date().toISOString(),
-      notes: body.backfill_mode ? `backfill_mode=true, batch_size=${batchSize}` : `window_hours=${windowHours}`,
+      notes: `batch_size=${batchSize}, status_updates=${statusUpdateCount}${body.backfill_mode ? ', backfill_mode=true' : ''}`,
     });
 
     return jsonResponse({
@@ -394,6 +476,7 @@ Deno.serve(async (req: Request) => {
       inserted,
       skipped,
       errors,
+      status_updates: statusUpdateCount,
       duration_ms: duration,
     }, origin, 200, req);
 
