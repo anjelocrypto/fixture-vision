@@ -117,33 +117,29 @@ serve(async (req) => {
     console.log(`[filterizer-query] market=${market} side=${side} line=${line} minOdds=${minOdds} allLeagues=${allLeagues} dayRange=${dayRange} rules=${RULES_VERSION}`);
     
     if (allLeagues) {
-      console.log(`[filterizer-query] allLeagues mode enabled - querying all leagues for next 120 hours`);
+      console.log(`[filterizer-query] allLeagues mode enabled`);
     }
 
-    // Calculate time window based on mode and dayRange
+    // Calculate time window based on dayRange (applies to both allLeagues and single-league modes)
     let startDate: Date;
     let endDate: Date;
     
-    if (allLeagues) {
-      // All-leagues mode: next 120 hours from now
-      startDate = new Date();
-      endDate = new Date();
-      endDate.setTime(endDate.getTime() + (120 * 60 * 60 * 1000)); // now + 120 hours
-    } else if (dayRange !== "all") {
+    if (dayRange !== "all") {
       // Day range mode: filter by selected range (same logic as Ticket Creator)
+      // This applies regardless of allLeagues setting
       startDate = new Date();
-      startDate.setHours(0, 0, 0, 0); // Start of today (midnight local time)
+      startDate.setUTCHours(0, 0, 0, 0); // Start of today (midnight UTC)
       endDate = new Date(startDate);
       
       switch (dayRange) {
         case "today":
-          endDate.setDate(endDate.getDate() + 1); // End of today (midnight tomorrow)
+          endDate.setUTCDate(endDate.getUTCDate() + 1); // End of today (midnight tomorrow UTC)
           break;
         case "next_2_days":
-          endDate.setDate(endDate.getDate() + 2); // Today + tomorrow (midnight in 2 days)
+          endDate.setUTCDate(endDate.getUTCDate() + 2); // Today + tomorrow (midnight in 2 days UTC)
           break;
         case "next_3_days":
-          endDate.setDate(endDate.getDate() + 3); // Today + next 2 days (midnight in 3 days)
+          endDate.setUTCDate(endDate.getUTCDate() + 3); // Today + next 2 days (midnight in 3 days UTC)
           break;
       }
       
@@ -152,12 +148,19 @@ serve(async (req) => {
       const toTs = Math.floor(endDate.getTime() / 1000);
       console.log(`[filterizer] date filter`, {
         dayRange,
+        allLeagues,
         fromTs,
         toTs,
         fromIso: startDate.toISOString(),
         toIso: endDate.toISOString(),
         windowHours: Math.round((toTs - fromTs) / 3600),
       });
+    } else if (allLeagues) {
+      // All-leagues mode with no day range: next 120 hours from now
+      startDate = new Date();
+      endDate = new Date();
+      endDate.setTime(endDate.getTime() + (120 * 60 * 60 * 1000)); // now + 120 hours
+      console.log(`[filterizer] allLeagues mode with dayRange=all: 120h window [${startDate.toISOString()} → ${endDate.toISOString()}]`);
     } else {
       // Normal mode: 7-day window from selected date
       startDate = new Date(date);
