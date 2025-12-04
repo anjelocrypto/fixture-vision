@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.fixtures-history-backfill]
 verify_jwt = false
+
+[functions.stats-consistency-audit]
+verify_jwt = false
