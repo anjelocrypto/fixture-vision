@@ -1,9 +1,22 @@
+// ============================================================================
+// analyze-fixture Edge Function
+// ============================================================================
+// Provides detailed stats analysis for a fixture.
+// 
+// STATS INTEGRITY:
+// - Validates stats_cache exists for both teams
+// - Validates sample_size >= 3
+// - Checks for CRITICAL violations in stats_health_violations
+// - Returns stats_available: false if integrity checks fail
+// ============================================================================
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages, computeCombinedMetrics } from "../_shared/stats.ts";
 import { fetchHeadToHeadStats } from "../_shared/h2h.ts";
 import { getKeyAttackingInjuries } from "../_shared/injuries.ts";
+import { validateFixtureStats, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,6 +79,38 @@ serve(async (req) => {
 
     const { fixtureId, homeTeamId, awayTeamId } = validation.data;
     console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}, user=${user.email}`);
+
+    // STATS INTEGRITY CHECK - validate before returning any stats
+    console.log(`[analyze-fixture] Running stats integrity validation for fixture ${fixtureId}`);
+    const integrityCheck = await validateFixtureStats(supabaseClient, homeTeamId, awayTeamId);
+    
+    if (!integrityCheck.isValid) {
+      console.warn(`[analyze-fixture] STATS INTEGRITY FAIL for fixture ${fixtureId}: ${integrityCheck.reason}`);
+      
+      // Return a structured response indicating stats are not available
+      return new Response(
+        JSON.stringify({
+          stats_available: false,
+          reason: integrityCheck.reason,
+          home_team_status: {
+            has_cache: integrityCheck.homeTeam.hasCache,
+            sample_size: integrityCheck.homeTeam.sampleSize,
+            has_critical_violation: integrityCheck.homeTeam.hasCriticalViolation,
+            sufficient_data: integrityCheck.homeTeam.sampleSize >= MIN_SAMPLE_SIZE
+          },
+          away_team_status: {
+            has_cache: integrityCheck.awayTeam.hasCache,
+            sample_size: integrityCheck.awayTeam.sampleSize,
+            has_critical_violation: integrityCheck.awayTeam.hasCriticalViolation,
+            sufficient_data: integrityCheck.awayTeam.sampleSize >= MIN_SAMPLE_SIZE
+          },
+          message: "Stats not available for this fixture due to insufficient or unreliable data"
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    console.log(`[analyze-fixture] Stats integrity PASSED for fixture ${fixtureId}`);
 
     // Helper to get or compute team stats
     const getTeamStats = async (teamId: number) => {
@@ -153,6 +198,7 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        stats_available: true,
         home: {
           team_id: homeStats.team_id,
           goals: homeStats.goals,
