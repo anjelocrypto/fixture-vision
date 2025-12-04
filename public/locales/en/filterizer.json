@@ -14,5 +14,10 @@
   "scope_label": "Scope",
   "scope_selected_league": "Selected league only",
   "scope_all_leagues": "All leagues (next 120h)",
-  "all_leagues_caption": "Showing best opportunities from all leagues in the next 120 hours"
+  "all_leagues_caption": "Showing best opportunities from all leagues in the next 120 hours",
+  "match_day_range": "Match Day Range",
+  "day_range_all": "All",
+  "day_range_today": "Today",
+  "day_range_2_days": "2 days",
+  "day_range_3_days": "3 days"
 }

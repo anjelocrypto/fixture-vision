@@ -23,6 +23,7 @@ export interface FilterCriteria {
   showAllOdds: boolean; // NEW: show all bookmaker odds
   includeModelOnly?: boolean; // NEW: include picks without odds (model-only)
   allLeagues?: boolean; // NEW: all leagues mode (next 120h)
+  dayRange?: "all" | "today" | "next_2_days" | "next_3_days"; // NEW: date filter
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -47,6 +48,13 @@ const MARKET_OPTIONS = [
   // They can remain in stats panels but should not appear in Filterizer/Ticket Creator
 ];
 
+const DAY_RANGES = [
+  { id: "all", label: "day_range_all" },
+  { id: "today", label: "day_range_today" },
+  { id: "next_2_days", label: "day_range_2_days" },
+  { id: "next_3_days", label: "day_range_3_days" },
+] as const;
+
 export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: FilterizerPanelProps) {
   const { t, i18n } = useTranslation(['filterizer']);
   const [selectedMarket, setSelectedMarket] = useState<string>("goals");
@@ -54,6 +62,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [minOdds, setMinOdds] = useState<number>(1.50);
   const [includeModelOnly, setIncludeModelOnly] = useState<boolean>(true); // Default ON
   const [allLeaguesMode, setAllLeaguesMode] = useState<boolean>(false); // Default OFF
+  const [dayRange, setDayRange] = useState<"all" | "today" | "next_2_days" | "next_3_days">("all"); // Default ALL
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -74,6 +83,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
       showAllOdds: false, // Always use best per match mode
       includeModelOnly,
       allLeagues: allLeaguesMode,
+      dayRange,
     };
     onApplyFilters(filters);
   };
@@ -84,6 +94,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
     setMinOdds(1.50);
     setIncludeModelOnly(true);
     setAllLeaguesMode(false);
+    setDayRange("all");
     onClearFilters();
   };
 
@@ -134,6 +145,24 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
               {t('filterizer:all_leagues_caption')}
             </p>
           )}
+        </div>
+
+        {/* Match Day Range - Same as Ticket Creator */}
+        <div className="space-y-3 pb-4 border-b">
+          <Label className="text-sm font-medium">{t('filterizer:match_day_range')}</Label>
+          <div className="grid grid-cols-4 gap-2">
+            {DAY_RANGES.map((range) => (
+              <Button
+                key={range.id}
+                variant={dayRange === range.id ? "default" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={() => setDayRange(range.id)}
+              >
+                {t(`filterizer:${range.label}`)}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {/* Market Selection */}
