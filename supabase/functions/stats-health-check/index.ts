@@ -54,17 +54,28 @@ interface HealthCheckResult {
   duration_ms: number;
 }
 
-const DIFF_THRESHOLDS = {
-  warning: 0.15,
-  critical: 0.40
+// Metric-specific thresholds to reduce noise while catching real bugs
+// Goals: strictest (core metric)
+// Corners/Cards: moderate (important but some API coverage gaps)
+// Fouls/Offsides: lenient (frequent API coverage issues)
+const METRIC_THRESHOLDS: Record<string, { warning: number; error: number; critical: number }> = {
+  goals:    { warning: 0.3, error: 0.7, critical: 1.0 },    // e.g., 0.8 vs 2.0 = 1.2 diff → critical (real bug)
+  corners:  { warning: 0.8, error: 1.5, critical: 2.5 },    // more variance allowed
+  cards:    { warning: 0.5, error: 1.0, critical: 1.5 },    // moderate strictness
+  fouls:    { warning: 2.0, error: 4.0, critical: 8.0 },    // lenient - API coverage spotty
+  offsides: { warning: 1.0, error: 2.0, critical: 3.0 },    // lenient - API coverage spotty
 };
+
+const DEFAULT_THRESHOLDS = { warning: 0.5, error: 1.0, critical: 2.0 };
 
 const LOOKBACK_DAYS = 365;
 const BATCH_SIZE = 50; // Process teams in batches
 
-function getSeverity(diff: number): 'info' | 'warning' | 'error' | 'critical' {
-  if (diff > DIFF_THRESHOLDS.critical) return 'critical';
-  if (diff > DIFF_THRESHOLDS.warning) return 'warning';
+function getSeverityForMetric(metric: string, diff: number): 'info' | 'warning' | 'error' | 'critical' {
+  const thresholds = METRIC_THRESHOLDS[metric] || DEFAULT_THRESHOLDS;
+  if (diff >= thresholds.critical) return 'critical';
+  if (diff >= thresholds.error) return 'error';
+  if (diff >= thresholds.warning) return 'warning';
   return 'info';
 }
 
@@ -402,7 +413,10 @@ Deno.serve(async (req: Request) => {
           if (m.db === null || m.count < 2) continue; // Skip if not enough data
           
           const diff = Math.abs(m.db - m.cache);
-          if (diff > DIFF_THRESHOLDS.warning) {
+          const severity = getSeverityForMetric(m.name, diff);
+          
+          // Only log violations that are at least warning level
+          if (severity !== 'info') {
             violations.push({
               team_id: team.team_id,
               team_name: team.team_name,
@@ -412,7 +426,7 @@ Deno.serve(async (req: Request) => {
               cache_value: Math.round(m.cache * 1000) / 1000,
               diff: Math.round(diff * 1000) / 1000,
               sample_size: m.count,
-              severity: getSeverity(diff),
+              severity,
               notes: `DB avg: ${m.db.toFixed(2)}, Cache: ${m.cache.toFixed(2)}, Diff: ${diff.toFixed(2)}`
             });
           }
