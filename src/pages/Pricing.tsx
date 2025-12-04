@@ -105,17 +105,8 @@ const Pricing = () => {
         throw new Error(detail);
       }
 
-      // Open in new tab - do this before showing toast to prevent blocking
-      window.open(data.url, "_blank");
-      
-      // Short delay before showing toast to ensure window.open completes
-      setTimeout(() => {
-        toast({
-          title: "Opening checkout...",
-          description: "Complete your purchase in the new tab",
-          duration: 3000,
-        });
-      }, 100);
+      // Redirect in same window - mobile browsers block window.open() popups
+      window.location.href = data.url;
     } catch (error: any) {
       console.error("Checkout error:", error);
       toast({
