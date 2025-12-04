@@ -4,6 +4,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { RULES, RULES_VERSION, pickFromCombined, type StatMarket } from "../_shared/rules.ts";
+import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -490,34 +491,55 @@ serve(async (req) => {
       (fixtures || []).map((f: any) => [f.id, f])
     );
 
-    // Enrich with fixture metadata
-    const enriched = deduped.map((row: any) => {
-      const fixture = fixtureMap.get(row.fixture_id);
-      return {
-        id: row.id,
-        fixture_id: row.fixture_id,
-        league_id: row.league_id,
-        country_code: row.country_code,
-        utc_kickoff: row.utc_kickoff,
-        market: row.market,
-        side: row.side,
-        line: row.line,
-        bookmaker: row.bookmaker,
-        odds: row.odds,
-        is_live: row.is_live,
-        edge_pct: row.edge_pct,
-        model_prob: row.model_prob,
-        sample_size: row.sample_size,
-        combined_snapshot: row.combined_snapshot,
-        // Fixture metadata
-        home_team: fixture?.teams_home?.name || 'Unknown',
-        away_team: fixture?.teams_away?.name || 'Unknown',
-        home_team_logo: fixture?.teams_home?.logo,
-        away_team_logo: fixture?.teams_away?.logo,
-      };
-    });
+    // STATS INTEGRITY CHECK: Validate all fixtures have reliable stats
+    const fixturesToValidate = (fixtures || []).map((f: any) => ({
+      fixture_id: f.id,
+      home_team_id: Number(f.teams_home?.id),
+      away_team_id: Number(f.teams_away?.id)
+    }));
+    
+    const validationResults = await validateFixturesBatch(supabaseClient, fixturesToValidate);
+    let statsIntegrityDropped = 0;
 
-    console.log(`[filterizer-query] Final: ${enriched.length} selections returned`);
+    // Enrich with fixture metadata and filter out fixtures with bad stats
+    const enriched = deduped
+      .map((row: any) => {
+        const fixture = fixtureMap.get(row.fixture_id);
+        
+        // Check stats integrity
+        const validation = validationResults.get(row.fixture_id);
+        if (validation && !validation.isValid) {
+          statsIntegrityDropped++;
+          console.warn(`[filterizer-query] STATS_INTEGRITY_FAIL: fixture ${row.fixture_id} - ${validation.reason}`);
+          return null; // Filter out
+        }
+        
+        return {
+          id: row.id,
+          fixture_id: row.fixture_id,
+          league_id: row.league_id,
+          country_code: row.country_code,
+          utc_kickoff: row.utc_kickoff,
+          market: row.market,
+          side: row.side,
+          line: row.line,
+          bookmaker: row.bookmaker,
+          odds: row.odds,
+          is_live: row.is_live,
+          edge_pct: row.edge_pct,
+          model_prob: row.model_prob,
+          sample_size: row.sample_size,
+          combined_snapshot: row.combined_snapshot,
+          // Fixture metadata
+          home_team: fixture?.teams_home?.name || 'Unknown',
+          away_team: fixture?.teams_away?.name || 'Unknown',
+          home_team_logo: fixture?.teams_home?.logo,
+          away_team_logo: fixture?.teams_away?.logo,
+        };
+      })
+      .filter((row: any) => row !== null);
+
+    console.log(`[filterizer-query] Final: ${enriched.length} selections returned (stats_integrity_dropped=${statsIntegrityDropped})`);
 
     // Acceptance-style logging
     console.log(`[filterizer] market=${market} side=${side} line=${line} minOdds=${minOdds.toFixed(2)} rules=${RULES_VERSION}`);
