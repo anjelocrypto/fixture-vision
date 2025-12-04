@@ -279,6 +279,45 @@ export type Database = {
         }
         Relationships: []
       }
+      league_history_sync_state: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: number
+          last_run_at: string | null
+          last_synced_page: number | null
+          league_id: number
+          season: number
+          status: string
+          total_fixtures_synced: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: number
+          last_run_at?: string | null
+          last_synced_page?: number | null
+          league_id: number
+          season: number
+          status?: string
+          total_fixtures_synced?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: number
+          last_run_at?: string | null
+          last_synced_page?: number | null
+          league_id?: number
+          season?: number
+          status?: string
+          total_fixtures_synced?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       league_stats_coverage: {
         Row: {
           cards_coverage_pct: number | null

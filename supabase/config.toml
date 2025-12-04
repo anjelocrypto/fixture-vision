@@ -113,3 +113,6 @@ verify_jwt = true
 
 [functions.admin-health]
 verify_jwt = false
+
+[functions.fixtures-history-backfill]
+verify_jwt = false

@@ -370,6 +370,18 @@ const Index = () => {
         throw analysisError;
       }
 
+      // Check if stats are available (new integrity check)
+      if (analysisData.stats_available === false) {
+        console.warn("[Index] Stats not available for fixture:", fixture.id, analysisData.reason);
+        toast({
+          title: "Stats Not Available",
+          description: analysisData.message || "Insufficient data for this fixture. Stats are still being collected.",
+          variant: "destructive",
+        });
+        setLoadingAnalysis(false);
+        return;
+      }
+
       // Refresh access to update trial credits count
       await refreshAccess();
 
