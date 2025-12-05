@@ -22,7 +22,22 @@ const AdminRequestSchema = z.object({
 // Batch size per invocation (tuned to stay under 60s Edge Function timeout)
 // With ~1.25s per team, 25 teams = ~31s (safe margin)
 // Updated 2025-11-22: Added season-aware stats fetching with enhanced debug logging
+// Updated 2025-12-05: Added TOP_LEAGUE priority to ensure 100% coverage for major leagues
 const BATCH_SIZE = 25;
+
+// TOP 10 LEAGUES - These get processed FIRST to ensure 100% coverage
+const TOP_LEAGUE_IDS = [
+  39,   // Premier League
+  140,  // La Liga
+  135,  // Serie A
+  78,   // Bundesliga
+  61,   // Ligue 1
+  40,   // Championship
+  136,  // Serie B
+  79,   // 2. Bundesliga
+  88,   // Eredivisie
+  89,   // Eerste Divisie
+];
 
 // Simple delay helper
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -182,57 +197,113 @@ Deno.serve(async (req) => {
       const statsTTL = new Date(now.getTime() - stats_ttl_hours * 60 * 60 * 1000);
 
       // Get upcoming fixtures to identify teams we care about
+      // Join with league_id to enable priority sorting
       const { data: upcomingFixtures } = await supabase
         .from("fixtures")
-        .select("id, teams_home, teams_away")
+        .select("id, league_id, teams_home, teams_away")
         .gte("timestamp", Math.floor(now.getTime() / 1000))
         .lte("timestamp", Math.floor(windowEnd.getTime() / 1000));
 
-      // Extract unique team IDs with explicit Number() coercion
-      const teamIds = new Set<number>();
+      // Extract unique team IDs with league info for priority sorting
+      const teamLeagueMap = new Map<number, Set<number>>(); // team_id -> Set of league_ids
       for (const fixture of upcomingFixtures || []) {
         const homeId = (fixture as any).teams_home?.id;
         const awayId = (fixture as any).teams_away?.id;
-        // Critical: Coerce to Number to prevent string/number comparison bugs
-        if (homeId) teamIds.add(Number(homeId));
-        if (awayId) teamIds.add(Number(awayId));
-      }
-
-      console.log(`[stats-refresh] Found ${teamIds.size} teams in window`);
-
-      // Query stats_cache to find teams needing refresh
-      // Priority: teams with no cache OR oldest cache first
-      const { data: cachedTeams } = await supabase
-        .from("stats_cache")
-        .select("team_id, computed_at")
-        .in("team_id", Array.from(teamIds))
-        .order("computed_at", { ascending: true, nullsFirst: true });
-
-      const cachedTeamIds = new Set((cachedTeams || []).map(t => t.team_id));
-      
-      // Teams to process: uncached + stale cached (up to BATCH_SIZE)
-      const teamsToProcess: number[] = [];
-
-      // First, add teams with no cache
-      for (const teamId of teamIds) {
-        if (!cachedTeamIds.has(teamId)) {
-          teamsToProcess.push(teamId);
-          if (teamsToProcess.length >= BATCH_SIZE) break;
+        const leagueId = fixture.league_id;
+        
+        if (homeId) {
+          const id = Number(homeId);
+          if (!teamLeagueMap.has(id)) teamLeagueMap.set(id, new Set());
+          if (leagueId) teamLeagueMap.get(id)!.add(leagueId);
+        }
+        if (awayId) {
+          const id = Number(awayId);
+          if (!teamLeagueMap.has(id)) teamLeagueMap.set(id, new Set());
+          if (leagueId) teamLeagueMap.get(id)!.add(leagueId);
         }
       }
 
-      // Then add stale cached teams (oldest first)
+      const teamIds = new Set<number>(teamLeagueMap.keys());
+      console.log(`[stats-refresh] Found ${teamIds.size} teams in window`);
+
+      // Query stats_cache to find teams needing refresh
+      const { data: cachedTeams } = await supabase
+        .from("stats_cache")
+        .select("team_id, computed_at, sample_size")
+        .in("team_id", Array.from(teamIds))
+        .order("computed_at", { ascending: true, nullsFirst: true });
+
+      const cacheMap = new Map((cachedTeams || []).map(t => [t.team_id, t]));
+      
+      // Helper: Check if team is in TOP leagues
+      const isTopLeagueTeam = (teamId: number): boolean => {
+        const leagues = teamLeagueMap.get(teamId);
+        if (!leagues) return false;
+        return TOP_LEAGUE_IDS.some(lid => leagues.has(lid));
+      };
+
+      // Helper: Check if team needs refresh
+      const needsRefresh = (teamId: number): boolean => {
+        const cached = cacheMap.get(teamId);
+        if (!cached) return true; // No cache
+        if (force) return true;
+        if (!cached.computed_at) return true;
+        if (new Date(cached.computed_at) < statsTTL) return true;
+        return false;
+      };
+
+      // Helper: Check if team has weak stats (sample < 5)
+      const hasWeakStats = (teamId: number): boolean => {
+        const cached = cacheMap.get(teamId);
+        return !cached || cached.sample_size < 5;
+      };
+
+      // NEW PRIORITY ORDER:
+      // 1. TOP league teams with NO cache or weak stats (sample < 5)
+      // 2. TOP league teams with stale cache
+      // 3. Other teams with no cache
+      // 4. Other teams with stale cache
+      const teamsToProcess: number[] = [];
+      const addedTeams = new Set<number>();
+
+      // Priority 1: TOP league teams needing cache or with weak stats
+      for (const teamId of teamIds) {
+        if (teamsToProcess.length >= BATCH_SIZE) break;
+        if (isTopLeagueTeam(teamId) && (needsRefresh(teamId) || hasWeakStats(teamId))) {
+          teamsToProcess.push(teamId);
+          addedTeams.add(teamId);
+        }
+      }
+
+      const topLeagueTeamsAdded = teamsToProcess.length;
+      console.log(`[stats-refresh] Priority 1 (TOP leagues needing refresh): ${topLeagueTeamsAdded} teams`);
+
+      // Priority 2: Other teams with no cache
       if (teamsToProcess.length < BATCH_SIZE) {
-        for (const cached of cachedTeams || []) {
+        for (const teamId of teamIds) {
           if (teamsToProcess.length >= BATCH_SIZE) break;
-          
-          const needsRefresh = force || 
-            !cached.computed_at || 
-            new Date(cached.computed_at) < statsTTL;
-          
-          if (needsRefresh) {
-            teamsToProcess.push(cached.team_id);
+          if (addedTeams.has(teamId)) continue;
+          if (!cacheMap.has(teamId)) {
+            teamsToProcess.push(teamId);
+            addedTeams.add(teamId);
           }
+        }
+      }
+
+      // Priority 3: Other teams with stale cache (oldest first)
+      if (teamsToProcess.length < BATCH_SIZE) {
+        const sortedStale = (cachedTeams || [])
+          .filter(t => !addedTeams.has(t.team_id) && needsRefresh(t.team_id))
+          .sort((a, b) => {
+            if (!a.computed_at) return -1;
+            if (!b.computed_at) return 1;
+            return new Date(a.computed_at).getTime() - new Date(b.computed_at).getTime();
+          });
+
+        for (const cached of sortedStale) {
+          if (teamsToProcess.length >= BATCH_SIZE) break;
+          teamsToProcess.push(cached.team_id);
+          addedTeams.add(cached.team_id);
         }
       }
 
