@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.stats-consistency-audit]
 verify_jwt = false
+
+[functions.admin-remediate-stats-gaps]
+verify_jwt = false

@@ -1,29 +1,66 @@
 # TicketAI Full Database Health Audit Report
 
 **Generated:** 2025-12-05 01:15 UTC  
+**Updated:** 2025-12-05 - Remediation Function Added  
 **Auditor:** Senior Supabase/Postgres QA Engineer  
-**Status:** 🟡 YELLOW - Requires Manual Admin Intervention
+**Status:** 🟡 YELLOW - Automated Remediation Available
 
 ---
 
-## Post-Remediation Update (2025-12-05 01:15 UTC)
+## Remediation Function: `admin-remediate-stats-gaps`
 
-### Remediation Attempted
-- ✅ Analyzed automated pipeline status (stats-refresh-batch, warmup-optimizer running)
-- ✅ Identified 9 key EPL teams missing stats_cache (Arsenal, Chelsea, Man United, Man City, Tottenham, etc.)
-- ⚠️ **Edge functions require auth** - Cannot invoke directly without admin credentials
+### Overview
+A new admin-only edge function has been created to automatically fix all P0/P1 issues identified in this report.
 
-### Current Blockers
-| Issue | Count | Root Cause |
-|-------|-------|------------|
-| Missing stats_cache | 426 | Pipeline not prioritizing top league teams |
-| EPL coverage | 55% | 9 major teams have NO cache despite 10-23 finished fixtures |
-| Eredivisie results | 54.1% | 50 fixtures need results-refresh |
+### How to Run
 
-### Required Manual Actions (Admin UI)
-1. **Refresh Stats** button for EPL team IDs: 33, 42, 47, 49, 50, 45, 65, 52, 39
-2. **Results Refresh** for leagues 39 (EPL), 140 (La Liga), 88 (Eredivisie)
-3. **Fetch Fixtures** for leagues 3 (UEL), 848 (UECL), 48 (EFL Cup), 66 (Coupe de France)
+**Via curl (using service role or cron key):**
+```bash
+curl -X POST \
+  https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/admin-remediate-stats-gaps \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**With optional parameters:**
+```json
+{
+  "force": true,
+  "leagueIds": [39, 140, 88],
+  "teamIds": [33, 42, 47, 49, 50],
+  "skipFixtureBackfill": false,
+  "skipResultsRefresh": false,
+  "skipStatsRefresh": false
+}
+```
+
+### What It Fixes Automatically
+
+| Issue | Action |
+|-------|--------|
+| **Zero fixtures** in UEL, UECL, EFL Cup, Coupe de France | Backfills from API-Football |
+| **Missing results** in EPL, La Liga, Eredivisie | Fetches results for finished fixtures |
+| **Missing stats_cache** for EPL teams | Force-computes last-5 averages |
+| **Low upcoming coverage** | Refreshes stats for teams with upcoming fixtures |
+
+### Default Targets (from QA report)
+
+**Leagues with bad results coverage:**
+- 39 (EPL): 71.4% → needs 28 results
+- 140 (La Liga): 70.5% → needs 26 results
+- 88 (Eredivisie): 54.1% → needs 50 results
+
+**Leagues with zero fixtures:**
+- 3 (Europa League), 848 (UECL), 48 (EFL Cup), 66 (Coupe de France)
+
+**Priority teams missing cache:**
+- Team IDs: 33, 42, 47, 49, 50, 45, 65, 52, 39
+- (Arsenal, Chelsea, Man United, Man City, Tottenham, Everton, Forest, Palace, Wolves)
+
+---
+
+## Previous Manual Actions (Now Automated)
 
 ---
 
