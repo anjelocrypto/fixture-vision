@@ -707,8 +707,6 @@ Deno.serve(async (req: Request) => {
     console.log(`[turbo] Config: maxAPICallsTotal=${maxAPICallsTotal}, targetCoverage=${targetCoveragePct}%, daysLookback=${daysLookback}, upcomingDays=${upcomingDays}, skipBudgetCheck=${skipBudgetCheck}`);
     console.log(`[turbo] Priority leagues: ${priorityLeagues.length}`);
 
-    const totalStartTime = Date.now();
-
     // Calculate available budget
     const estimatedRecentUsage = await estimateRecentAPIUsage(supabase);
     const dailyLimit = 60000; // Conservative daily limit (75k plan with 20% margin)
@@ -730,7 +728,7 @@ Deno.serve(async (req: Request) => {
       }, origin, 200, req);
     }
 
-    // STAGE 0: Baseline coverage metrics
+    // Compute baseline metrics quickly before starting background job
     console.log("[turbo] Computing baseline coverage metrics...");
     const beforeMetrics = await computeCoverageMetrics(supabase, upcomingDays, priorityLeagues);
     console.log(`[turbo] BEFORE: ${beforeMetrics.teams_sample_gte_3}/${beforeMetrics.total_upcoming_teams} teams with stats (${beforeMetrics.coverage_pct_gte3}%)`);
@@ -746,86 +744,114 @@ Deno.serve(async (req: Request) => {
       }, origin, 200, req);
     }
 
-    const stageResults: StageResult[] = [];
+    // =========================================================================
+    // Background processing using EdgeRuntime.waitUntil to avoid timeout
+    // =========================================================================
+    const totalStartTime = Date.now();
 
-    // STAGE 1: Historical Fixtures Backfill
-    if (canContinue()) {
-      const s1Result = await runHistoryBackfillStage(supabase, priorityLeagues, daysLookback);
-      stageResults.push(s1Result);
-      console.log(`[turbo] Stage 1 complete: ${s1Result.processed} processed, ${s1Result.apiCalls} API calls`);
-    }
+    const backgroundJob = async () => {
+      try {
+        console.log("[turbo-bg] Starting background processing...");
+        const stageResults: StageResult[] = [];
 
-    // STAGE 2: Results Refresh
-    if (canContinue()) {
-      const s2Result = await runResultsRefreshStage(supabase, daysLookback);
-      stageResults.push(s2Result);
-      console.log(`[turbo] Stage 2 complete: ${s2Result.processed} processed, ${s2Result.apiCalls} API calls`);
-    }
+        // STAGE 1: Historical Fixtures Backfill
+        if (canContinue()) {
+          const s1Result = await runHistoryBackfillStage(supabase, priorityLeagues, daysLookback);
+          stageResults.push(s1Result);
+          console.log(`[turbo-bg] Stage 1 complete: ${s1Result.processed} processed, ${s1Result.apiCalls} API calls`);
+        }
 
-    // STAGE 3: Stats Cache Refresh
-    if (canContinue()) {
-      const s3Result = await runStatsCacheRefreshStage(supabase, upcomingDays, priorityLeagues);
-      stageResults.push(s3Result);
-      console.log(`[turbo] Stage 3 complete: ${s3Result.processed} processed, ${s3Result.apiCalls} API calls`);
-    }
+        // STAGE 2: Results Refresh
+        if (canContinue()) {
+          const s2Result = await runResultsRefreshStage(supabase, daysLookback);
+          stageResults.push(s2Result);
+          console.log(`[turbo-bg] Stage 2 complete: ${s2Result.processed} processed, ${s2Result.apiCalls} API calls`);
+        }
 
-    // STAGE 4: Post-run coverage metrics
-    console.log("[turbo] Computing post-run coverage metrics...");
-    const afterMetrics = await computeCoverageMetrics(supabase, upcomingDays, priorityLeagues);
-    console.log(`[turbo] AFTER: ${afterMetrics.teams_sample_gte_3}/${afterMetrics.total_upcoming_teams} teams with stats (${afterMetrics.coverage_pct_gte3}%)`);
+        // STAGE 3: Stats Cache Refresh
+        if (canContinue()) {
+          const s3Result = await runStatsCacheRefreshStage(supabase, upcomingDays, priorityLeagues);
+          stageResults.push(s3Result);
+          console.log(`[turbo-bg] Stage 3 complete: ${s3Result.processed} processed, ${s3Result.apiCalls} API calls`);
+        }
 
-    const totalDuration = Date.now() - totalStartTime;
-    const budgetExhausted = apiCallsUsed >= allowedBudget;
+        // STAGE 4: Post-run coverage metrics
+        console.log("[turbo-bg] Computing post-run coverage metrics...");
+        const afterMetrics = await computeCoverageMetrics(supabase, upcomingDays, priorityLeagues);
+        console.log(`[turbo-bg] AFTER: ${afterMetrics.teams_sample_gte_3}/${afterMetrics.total_upcoming_teams} teams with stats (${afterMetrics.coverage_pct_gte3}%)`);
 
-    // Log to optimizer_run_logs
-    await supabase.from("optimizer_run_logs").insert({
-      run_type: "stats-turbo-backfill",
-      window_start: new Date(totalStartTime).toISOString(),
-      window_end: new Date().toISOString(),
-      scope: {
-        max_api_calls: maxAPICallsTotal,
-        target_coverage_pct: targetCoveragePct,
-        priority_leagues: priorityLeagues.length,
-        days_lookback: daysLookback,
-        upcoming_days: upcomingDays,
-      },
-      scanned: stageResults.reduce((sum, s) => sum + s.processed, 0),
-      upserted: stageResults.reduce((sum, s) => sum + s.processed, 0),
-      failed: 0,
-      started_at: new Date(totalStartTime).toISOString(),
-      finished_at: new Date().toISOString(),
-      duration_ms: totalDuration,
-      notes: JSON.stringify({
-        api_calls_used: apiCallsUsed,
-        allowed_budget: allowedBudget,
-        budget_exhausted: budgetExhausted,
-        before_coverage: beforeMetrics.coverage_pct_gte3,
-        after_coverage: afterMetrics.coverage_pct_gte3,
-        stages: stageResults,
-      }),
-    });
+        const totalDuration = Date.now() - totalStartTime;
+        const budgetExhausted = apiCallsUsed >= allowedBudget;
 
-    // Build response
-    const response = {
-      success: true,
-      api_calls_used: apiCallsUsed,
-      allowed_budget: allowedBudget,
-      budget_exhausted: budgetExhausted,
-      duration_ms: totalDuration,
-      before_metrics: beforeMetrics,
-      after_metrics: afterMetrics,
-      improvement: {
-        coverage_pct_delta: afterMetrics.coverage_pct_gte3 - beforeMetrics.coverage_pct_gte3,
-        teams_added: afterMetrics.teams_sample_gte_3 - beforeMetrics.teams_sample_gte_3,
-      },
-      stages: stageResults,
-      rate_limiter: getRateLimiterStats(),
+        // Log to optimizer_run_logs
+        await supabase.from("optimizer_run_logs").insert({
+          run_type: "stats-turbo-backfill",
+          window_start: new Date(totalStartTime).toISOString(),
+          window_end: new Date().toISOString(),
+          scope: {
+            max_api_calls: maxAPICallsTotal,
+            target_coverage_pct: targetCoveragePct,
+            priority_leagues: priorityLeagues.length,
+            days_lookback: daysLookback,
+            upcoming_days: upcomingDays,
+          },
+          scanned: stageResults.reduce((sum, s) => sum + s.processed, 0),
+          upserted: stageResults.reduce((sum, s) => sum + s.processed, 0),
+          failed: 0,
+          started_at: new Date(totalStartTime).toISOString(),
+          finished_at: new Date().toISOString(),
+          duration_ms: totalDuration,
+          notes: JSON.stringify({
+            api_calls_used: apiCallsUsed,
+            allowed_budget: allowedBudget,
+            budget_exhausted: budgetExhausted,
+            before_coverage: beforeMetrics.coverage_pct_gte3,
+            after_coverage: afterMetrics.coverage_pct_gte3,
+            stages: stageResults,
+          }),
+        });
+
+        console.log(`[turbo-bg] ✅ Turbo Backfill complete: ${apiCallsUsed} API calls, ${totalDuration}ms`);
+        console.log(`[turbo-bg] Coverage improvement: ${beforeMetrics.coverage_pct_gte3}% → ${afterMetrics.coverage_pct_gte3}%`);
+
+      } catch (error) {
+        console.error("[turbo-bg] Background job error:", error);
+        // Log error to optimizer_run_logs
+        await supabase.from("optimizer_run_logs").insert({
+          run_type: "stats-turbo-backfill",
+          window_start: new Date(totalStartTime).toISOString(),
+          window_end: new Date().toISOString(),
+          started_at: new Date(totalStartTime).toISOString(),
+          finished_at: new Date().toISOString(),
+          duration_ms: Date.now() - totalStartTime,
+          failed: 1,
+          notes: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
     };
 
-    console.log(`[turbo] ✅ Turbo Backfill complete: ${apiCallsUsed} API calls, ${totalDuration}ms`);
-    console.log(`[turbo] Coverage improvement: ${beforeMetrics.coverage_pct_gte3}% → ${afterMetrics.coverage_pct_gte3}%`);
+    // Schedule background job using EdgeRuntime.waitUntil
+    // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(backgroundJob());
+      console.log("[turbo] Background job scheduled via EdgeRuntime.waitUntil");
+    } else {
+      // Fallback: run in background without waiting (fire-and-forget)
+      backgroundJob().catch((err) => console.error("[turbo] Background job failed:", err));
+      console.log("[turbo] Background job started (fallback mode)");
+    }
 
-    return jsonResponse(response, origin, 200, req);
+    // Return immediately with "started" response
+    return jsonResponse({
+      success: true,
+      status: "started",
+      message: "Turbo Backfill job started in background. Check logs and optimizer_run_logs for progress.",
+      allowed_budget: allowedBudget,
+      estimated_recent_usage: estimatedRecentUsage,
+      before_metrics: beforeMetrics,
+      priority_leagues_count: priorityLeagues.length,
+    }, origin, 200, req);
 
   } catch (error) {
     console.error("[turbo] Fatal error:", error);
