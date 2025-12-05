@@ -168,9 +168,19 @@ const AdminHealth = () => {
         return;
       }
 
-      toast.success(
-        `Turbo Backfill complete! Coverage: ${result.after?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.apiCallsUsed || 0}`
-      );
+      // Handle background job started response
+      if (result.status === "started") {
+        const beforeCoverage = result.before_metrics?.coverage_pct_gte3 ?? result.before?.coverage_pct_gte3;
+        toast.success(
+          `Turbo Backfill started! Current coverage: ${beforeCoverage?.toFixed?.(1) ?? beforeCoverage ?? 'N/A'}%. Budget: ${result.allowed_budget || 0} API calls. Check logs for progress.`,
+          { duration: 8000 }
+        );
+      } else {
+        // Handle complete response (if function completes synchronously)
+        toast.success(
+          `Turbo Backfill complete! Coverage: ${result.after_metrics?.coverage_pct_gte3?.toFixed(1) || result.after?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before_metrics?.coverage_pct_gte3?.toFixed(1) || result.before?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.api_calls_used || result.apiCallsUsed || 0}`
+        );
+      }
       
       // Refresh the dashboard data
       refetch();
