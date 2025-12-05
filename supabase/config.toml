@@ -130,3 +130,7 @@ verify_jwt = false
 # One-time aggressive backfill function (Turbo Backfill Day)
 [functions.stats-turbo-backfill]
 verify_jwt = false
+
+# Stats audit: compare cached vs recomputed last-5 averages
+[functions.stats-audit-last-five]
+verify_jwt = false
