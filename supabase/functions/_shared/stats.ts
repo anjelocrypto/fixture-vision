@@ -1,8 +1,20 @@
+// =============================================================================
 // Shared stats computation utilities
-// Deployment trigger: 2025-12-05 03:30 UTC - CRITICAL FIX: Use centralized rate limiter
+// =============================================================================
+// Deployment trigger: 2025-12-05 - DATA OWNERSHIP CLARIFICATION
 //
+// IMPORTANT DATA OWNERSHIP RULES (see docs/data-model/stats.md):
+// ---------------------------------------------------------------
+// - stats_cache = CANONICAL last-5 averages (from API-Football, matches Flashscore)
+// - fixture_results = secondary historical mirror, NOT guaranteed to match API-Football
+//
+// DO NOT use fixture_results to validate stats_cache correctness.
+// stats_cache is aligned with API-Football and real-world data (Flashscore).
+// fixture_results is a derived historical table and may differ slightly.
+//
+// =============================================================================
 // API-FOOTBALL ENDPOINT REFERENCE (v3):
-// =====================================
+// =============================================================================
 // 1. Last 5 finished fixtures:
 //    GET /fixtures?team={TEAM_ID}&season=2025&status=FT&last=20
 //    - season=2025 for 2025-2026 season (use year of season start)
