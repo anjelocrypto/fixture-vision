@@ -126,3 +126,7 @@ verify_jwt = false
 # Weekly automated remediation cron target (every Monday 03:00 UTC)
 [functions.admin-remediate-stats-gaps-weekly]
 verify_jwt = false
+
+# One-time aggressive backfill function (Turbo Backfill Day)
+[functions.stats-turbo-backfill]
+verify_jwt = false
