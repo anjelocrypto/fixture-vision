@@ -2,7 +2,46 @@
 
 **Date**: December 5, 2025  
 **Author**: AI Deep-Dive Investigation  
-**Status**: 🔴 CRITICAL - Multiple systemic issues identified
+**Status**: 🟢 MITIGATED - Automated pipeline upgraded
+
+---
+
+## ✅ Mitigation Implemented (December 5, 2025)
+
+### 1. Centralized API Rate Limiting (`_shared/api_football.ts`)
+A new centralized API-Football client ensures all functions respect rate limits:
+- **Token bucket algorithm**: Tracks requests per minute
+- **Configurable RPM**: Set via `STATS_API_MAX_RPM` env var (default: 50)
+- **Exponential backoff**: Auto-retry on 429/5xx with delays up to 60s
+- **Structured logging**: All calls logged with endpoint, status, retries, duration
+
+### 2. Upgraded Pipeline Functions
+| Function | Change |
+|----------|--------|
+| `fixtures-history-backfill` | Now uses centralized rate limiter, batch size 20 leagues |
+| `results-refresh` | 30-day lookback, batch size 400, centralized client |
+| `admin-remediate-stats-gaps` | Weekly mode support, rate limit tracking |
+| `stats-refresh` | Enhanced retry logic (5 retries @ 2000ms base) |
+
+### 3. Weekly Automated Remediation
+New cron job: `admin-remediate-stats-gaps-weekly`
+- **Schedule**: Every Monday 03:00 UTC
+- **Targets**: Top 5 leagues, domestic cups, UEFA competitions
+- **Rate limited**: Respects `maxAPICallsPerRun` parameter
+
+### 4. How to Verify System Health
+```bash
+# Check pipeline health
+SELECT * FROM pipeline_health_check;
+
+# Check cron jobs (should see 7 active jobs)
+SELECT jobname, schedule, active FROM cron.job WHERE active = true;
+
+# Check remediation logs
+SELECT * FROM optimizer_run_logs 
+WHERE run_type = 'admin-remediate-stats-gaps' 
+ORDER BY started_at DESC LIMIT 5;
+```
 
 ---
 
