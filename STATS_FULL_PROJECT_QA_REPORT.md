@@ -1,9 +1,37 @@
 # TicketAI Full Database Health Audit Report
 
 **Generated:** 2025-12-05 01:15 UTC  
-**Updated:** 2025-12-05 02:15 UTC - ROOT CAUSE ANALYSIS COMPLETE  
+**Updated:** 2025-12-05 03:00 UTC - AUTOMATED PIPELINE UPGRADED  
 **Auditor:** Senior Supabase/Postgres QA Engineer  
-**Status:** 🟠 FIXING - P0 Code Changes Deployed
+**Status:** ✅ MITIGATED - Centralized Rate Limiting + Weekly Remediation
+
+---
+
+## 🚀 Automated Pipeline Upgrade (December 5, 2025)
+
+### Changes Deployed:
+1. **Centralized API Rate Limiter** (`_shared/api_football.ts`)
+   - Token bucket algorithm with configurable `STATS_API_MAX_RPM` (default: 50)
+   - Exponential backoff on 429/5xx errors
+   - All pipeline functions now use this client
+
+2. **Weekly Automated Remediation** (cron: `0 3 * * 1`)
+   - Runs `admin-remediate-stats-gaps` every Monday 03:00 UTC
+   - Targets all priority leagues automatically
+   - Respects API rate limits
+
+3. **Smarter Health Checks**
+   - Backfill-aware: leagues in progress get "warning" not "critical"
+   - Only marks critical when backfill complete but coverage still low
+
+### How to Verify:
+```sql
+-- Check cron jobs
+SELECT jobname, schedule, active FROM cron.job WHERE active = true;
+
+-- Check last remediation run
+SELECT * FROM optimizer_run_logs WHERE run_type = 'admin-remediate-stats-gaps' ORDER BY started_at DESC LIMIT 1;
+```
 
 ---
 
