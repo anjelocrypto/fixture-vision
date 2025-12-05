@@ -49,9 +49,9 @@ export function CenterRail({
   onAnalyze,
 }: CenterRailProps) {
   const { t, i18n } = useTranslation(['fixtures']);
-  // Show only next 48 hours: Today + Tomorrow (UTC-normalized to prevent timezone bugs)
+  // Show only next 48 hours: Today + Tomorrow (local timezone)
   const today = new Date();
-  today.setUTCHours(0, 0, 0, 0); // P0 FIX: Use UTC midnight to prevent off-by-one-day bugs
+  today.setHours(0, 0, 0, 0); // Use LOCAL midnight - UTC would shift dates for users west of UTC
   const dates = Array.from({ length: 2 }, (_, i) => addDays(today, i));
 
   return (
