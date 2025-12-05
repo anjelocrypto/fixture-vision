@@ -12,7 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
-import { DAILY_CALL_BUDGET, RPM_LIMIT, PREMATCH_TTL_MINUTES } from "../_shared/config.ts";
+import { DAILY_CALL_BUDGET, RPM_LIMIT, PREMATCH_TTL_MINUTES, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,8 +40,8 @@ serve(async (req) => {
 
     console.log(`[backfill-odds] Starting batch odds backfill (batch_size=${BATCH_SIZE})`);
 
-    // Parse window_hours from request body (default 48h per UPCOMING_WINDOW_HOURS)
-    const { window_hours = 48 } = await req.json().catch(() => ({}));
+    // Parse window_hours from request body (default to UPCOMING_WINDOW_HOURS constant)
+    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
 
     const now = new Date();
     const startedAt = now;
