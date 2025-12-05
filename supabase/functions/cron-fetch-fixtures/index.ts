@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ALLOWED_LEAGUE_IDS, getCountryIdForLeague } from '../_shared/leagues.ts';
 import { apiHeaders, API_BASE } from '../_shared/api.ts';
+import { UPCOMING_WINDOW_HOURS } from '../_shared/config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,12 +60,13 @@ serve(async (req) => {
 
     console.log('[cron-fetch-fixtures] Lock acquired, starting job');
 
-    // 4. Parse window_hours (default to 48h per UPCOMING_WINDOW_HOURS)
-    const { window_hours = 48 } = await req.json().catch(() => ({ window_hours: 48 }));
+    // 4. ALWAYS use UPCOMING_WINDOW_HOURS from config (ignores any body override)
+    // This ensures 48h is the single source of truth even if cron passes 120
+    const window_hours = UPCOMING_WINDOW_HOURS;
     const now = new Date();
     const windowEnd = new Date(now.getTime() + window_hours * 60 * 60 * 1000);
 
-    console.log(`[cron-fetch-fixtures] Fetching fixtures for next ${window_hours}h (${now.toISOString()} to ${windowEnd.toISOString()})`);
+    console.log(`[cron-fetch-fixtures] Fetching fixtures for next ${window_hours}h (${now.toISOString()} to ${windowEnd.toISOString()}) [forced from UPCOMING_WINDOW_HOURS]`);
 
     // 5. Fetch existing fixtures to avoid redundant fetches
     const fetchCutoff = new Date(now.getTime() - FETCH_TTL_HOURS * 60 * 60 * 1000);
