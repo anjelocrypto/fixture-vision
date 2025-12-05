@@ -1,14 +1,27 @@
 /**
- * stats-audit-last-five: Audits stats_cache accuracy against live recomputation
+ * stats-audit-last-five: Audits stats_cache accuracy against live API-Football recomputation
  * 
- * Purpose: Compare cached last-5 averages (goals, corners, offsides, fouls, cards)
- * against freshly computed values to verify data integrity.
+ * =============================================================================
+ * IMPORTANT DATA OWNERSHIP RULES (see docs/data-model/stats.md)
+ * =============================================================================
  * 
+ * - stats_cache = CANONICAL last-5 averages (from API-Football, matches Flashscore)
+ * - fixture_results = secondary historical mirror, NOT guaranteed to match API-Football
+ * 
+ * This audit compares:
+ *   A) stats_cache (cached values)
+ *   B) Fresh recomputation using computeLastFiveAverages() (API-Football based)
+ * 
+ * Goal: Measure INTERNAL PIPELINE CONSISTENCY, not cross-source differences.
+ * 
+ * DO NOT use fixture_results to judge whether stats_cache is "wrong".
+ * stats_cache is aligned with API-Football and real-world data (Flashscore).
+ * 
+ * =============================================================================
  * Auth: x-cron-key OR service_role OR admin user (is_user_whitelisted)
+ * =============================================================================
  * 
- * =============================================================================
  * HELPER SQL QUERIES (for manual inspection)
- * =============================================================================
  * 
  * 1) Count teams with fresh stats in next 48h:
  * 

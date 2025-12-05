@@ -1,16 +1,26 @@
 // ============================================================================
-// DB-Based Stats Recomputation - Single Source of Truth
+// DB-Based Stats Recomputation - SECONDARY (Not Ground Truth)
 // ============================================================================
-// This module provides functions to recompute team stats purely from our local DB
-// (fixtures + fixture_results) instead of calling API-Football.
 //
-// Used by:
-// - stats-health-check (validation)
-// - Fixture Analyzer (optional DB-based mode)
-// - stats-refresh (when DB has sufficient history)
+// IMPORTANT DATA OWNERSHIP RULES (see docs/data-model/stats.md):
+// ---------------------------------------------------------------
+// - stats_cache = CANONICAL last-5 averages (from API-Football, matches Flashscore)
+// - fixture_results = SECONDARY historical mirror, NOT guaranteed to match API-Football
 //
-// KEY PRINCIPLE: If we have 5+ fixtures in fixture_results for a team,
-// we can compute accurate stats without API calls.
+// DO NOT treat fixture_results as "ground truth" when validating stats_cache.
+// stats_cache is aligned with API-Football and real-world data (Flashscore).
+// fixture_results is a derived historical table and MAY DIFFER SLIGHTLY due to:
+//   - Timing differences in data capture
+//   - Incomplete backfill for some leagues/seasons
+//   - Different "last 5 fixtures" set selection
+//
+// This module provides functions to recompute team stats from local DB
+// (fixtures + fixture_results). Used for:
+//   - Debugging and historical analysis
+//   - Backtest sample generation  
+//   - Cross-checking when DB has complete data
+//
+// NOT for validating stats_cache correctness - the cache is the canonical source.
 // ============================================================================
 
 import { MIN_SAMPLE_SIZE } from "./stats_integrity.ts";
