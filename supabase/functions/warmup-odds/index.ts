@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 // Helper to call edge functions with internal auth
 async function callEdgeFunction(name: string, body: unknown) {
@@ -138,7 +139,7 @@ serve(async (req) => {
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
-    const { window_hours = 48, force = false } = await req.json().catch(() => ({}));
+    const { window_hours = UPCOMING_WINDOW_HOURS, force = false } = await req.json().catch(() => ({}));
     
     console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup (force=${force})`);
 

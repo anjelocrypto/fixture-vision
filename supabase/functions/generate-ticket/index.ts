@@ -77,7 +77,7 @@ const AITicketSchema = z.object({
   legsMax: z.number().int().min(1).max(50),
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])).optional(),
   useLiveOdds: z.boolean().optional(),
-  dayRange: z.enum(["today", "next_2_days", "next_3_days"]).optional(),
+  dayRange: z.enum(["today", "tomorrow", "next_2_days"]).optional(),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
   debug: z.boolean().optional(),
@@ -412,7 +412,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     legsMax,
     includeMarkets,
     useLiveOdds = false,
-    dayRange = "next_3_days",
+    dayRange = "next_2_days",
     countryCode,
     leagueIds,
     debug = false,
@@ -436,13 +436,13 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       endDate.setDate(endDate.getDate() + 1); // End of today
       dayRangeLabel = "Today only";
       break;
-    case "next_2_days":
+    case "tomorrow":
       endDate.setDate(endDate.getDate() + 2); // Today + tomorrow
-      dayRangeLabel = "Next 2 days";
+      dayRangeLabel = "Tomorrow";
       break;
-    case "next_3_days":
-      endDate.setDate(endDate.getDate() + 3); // Today + tomorrow + day after
-      dayRangeLabel = "Next 3 days";
+    case "next_2_days":
+      endDate.setDate(endDate.getDate() + 2); // Today + tomorrow (48h window)
+      dayRangeLabel = "Today + Tomorrow";
       break;
   }
 

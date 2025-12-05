@@ -1,6 +1,7 @@
 // Deployment trigger: 2025-11-22 16:24:45 UTC
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,8 +69,8 @@ serve(async (req) => {
     lockAcquired = true;
     console.log('[cron-warmup-odds] Lock acquired, starting job');
 
-    // 4. Parse window_hours (default 120h for cron)
-    const { window_hours = 120 } = await req.json().catch(() => ({ window_hours: 120 }));
+    // 4. Parse window_hours (default 48h for cron)
+    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({ window_hours: UPCOMING_WINDOW_HOURS }));
     console.log(`[cron-warmup-odds] Processing ${window_hours}h window`);
 
     // 5. Call batched backfill-odds once (processes up to 30 fixtures)

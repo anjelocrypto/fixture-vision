@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
-import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
+import { ODDS_MIN, ODDS_MAX, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { RULES, RULES_VERSION, pickFromCombined, type StatMarket } from "../_shared/rules.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 
@@ -23,8 +23,8 @@ const RequestSchema = z.object({
   live: z.boolean().optional(),
   showAllOdds: z.boolean().optional(), // NEW: show all bookmaker odds instead of best per fixture
   includeModelOnly: z.boolean().optional(), // NEW: include model-only selections (no odds)
-  allLeagues: z.boolean().optional(), // NEW: all leagues mode (next 120h)
-  dayRange: z.enum(["all", "today", "next_2_days", "next_3_days"]).optional(), // NEW: date filter like Ticket Creator
+  allLeagues: z.boolean().optional(), // NEW: all leagues mode (next 48h)
+  dayRange: z.enum(["all", "today", "tomorrow"]).optional(), // Date filter (48h horizon)
   limit: z.number().int().positive().max(200).optional(), // pagination
   offset: z.number().int().min(0).optional(), // pagination
 });
@@ -136,11 +136,8 @@ serve(async (req) => {
         case "today":
           endDate.setUTCDate(endDate.getUTCDate() + 1); // End of today (midnight tomorrow UTC)
           break;
-        case "next_2_days":
+        case "tomorrow":
           endDate.setUTCDate(endDate.getUTCDate() + 2); // Today + tomorrow (midnight in 2 days UTC)
-          break;
-        case "next_3_days":
-          endDate.setUTCDate(endDate.getUTCDate() + 3); // Today + next 2 days (midnight in 3 days UTC)
           break;
       }
       
@@ -157,19 +154,18 @@ serve(async (req) => {
         windowHours: Math.round((toTs - fromTs) / 3600),
       });
     } else if (allLeagues) {
-      // All-leagues mode with no day range: next 120 hours from now
+      // All-leagues mode with no day range: next 48 hours from now
       startDate = new Date();
       endDate = new Date();
-      endDate.setTime(endDate.getTime() + (120 * 60 * 60 * 1000)); // now + 120 hours
-      console.log(`[filterizer] allLeagues mode with dayRange=all: 120h window [${startDate.toISOString()} → ${endDate.toISOString()}]`);
+      endDate.setTime(endDate.getTime() + (UPCOMING_WINDOW_HOURS * 60 * 60 * 1000)); // now + 48 hours
+      console.log(`[filterizer] allLeagues mode with dayRange=all: ${UPCOMING_WINDOW_HOURS}h window [${startDate.toISOString()} → ${endDate.toISOString()}]`);
     } else {
-      // Normal mode: 7-day window from selected date
+      // Normal mode: 48-hour window from selected date
       startDate = new Date(date);
       startDate.setUTCHours(0, 0, 0, 0);
       
       endDate = new Date(startDate);
-      endDate.setUTCDate(endDate.getUTCDate() + 7);
-      endDate.setUTCHours(23, 59, 59, 999);
+      endDate.setTime(endDate.getTime() + (UPCOMING_WINDOW_HOURS * 60 * 60 * 1000));
     }
     
     const queryStart = startDate;

@@ -2,6 +2,13 @@
  * Global configuration for odds constraints and system behavior
  */
 
+// ============================================================================
+// UPCOMING FIXTURE WINDOW (SINGLE SOURCE OF TRUTH)
+// ============================================================================
+// All "upcoming fixture" logic across stats-refresh, optimizer, filterizer, 
+// ticket creator, and UI MUST use this horizon. This is a hard product rule.
+export const UPCOMING_WINDOW_HOURS = 48;
+
 // Per-leg odds band: reject tiny insurance legs and crazy longshots
 export const ODDS_MIN = 1.25;
 export const ODDS_MAX = 5.00;

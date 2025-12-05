@@ -16,7 +16,7 @@ const ShuffleRequestSchema = z.object({
   minOdds: z.number().positive().min(1.01),
   maxOdds: z.number().positive().min(1.01),
   includeMarkets: z.array(z.enum(["goals", "corners", "cards", "offsides", "fouls"])),
-  dayRange: z.enum(["today", "next_2_days", "next_3_days"]).optional().default("next_3_days"),
+  dayRange: z.enum(["today", "tomorrow", "next_2_days"]).optional().default("next_2_days"),
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
   previousTicketHash: z.string().optional(),
@@ -101,11 +101,11 @@ serve(async (req) => {
       case "today":
         endDate.setDate(endDate.getDate() + 1);
         break;
-      case "next_2_days":
+      case "tomorrow":
         endDate.setDate(endDate.getDate() + 2);
         break;
-      case "next_3_days":
-        endDate.setDate(endDate.getDate() + 3);
+      case "next_2_days":
+        endDate.setDate(endDate.getDate() + 2);
         break;
     }
     

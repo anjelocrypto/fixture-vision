@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,15 +96,15 @@ serve(async (req) => {
       fixturesCoverage = coverageData;
     }
 
-    // 2. Stats Coverage for Upcoming Teams (next 120 hours)
+    // 2. Stats Coverage for Upcoming Teams (next 48 hours)
     const nowEpoch = Math.floor(Date.now() / 1000);
-    const in120h = nowEpoch + (120 * 60 * 60);
+    const in48h = nowEpoch + (UPCOMING_WINDOW_HOURS * 60 * 60);
     
     const { data: upcomingFixtures } = await supabaseService
       .from("fixtures")
       .select("teams_home, teams_away")
       .gte("timestamp", nowEpoch)
-      .lte("timestamp", in120h)
+      .lte("timestamp", in48h)
       .in("status", ["NS", "TBD"]);
     
     const teamIds = new Set<number>();
@@ -139,8 +140,7 @@ serve(async (req) => {
       usable_pct: Math.round(usablePct * 100) / 100,
     };
 
-    // 3. Selection Coverage (next 48 hours)
-    const in48h = nowEpoch + (48 * 60 * 60);
+    // 3. Selection Coverage (next 48 hours) - reuses in48h from above
     
     const { data: upcoming48h } = await supabaseService
       .from("fixtures")
