@@ -118,7 +118,7 @@ const AdminHealth = () => {
 
   // Top leagues for targeted turbo backfill
   const TOP_LEAGUES = {
-    ids: [39, 40, 78, 79, 135, 136, 61, 88, 89],
+    ids: [39, 40, 78, 79, 135, 136, 61, 88, 89, 140],
     names: {
       39: "Premier League",
       40: "Championship", 
@@ -128,7 +128,8 @@ const AdminHealth = () => {
       136: "Serie B",
       61: "Ligue 1",
       88: "Eredivisie",
-      89: "Eerste Divisie"
+      89: "Eerste Divisie",
+      140: "La Liga"
     }
   };
 
