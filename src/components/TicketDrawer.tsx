@@ -41,7 +41,7 @@ interface TicketData {
   target_max?: number;
   within_band?: boolean;
   suggestions?: string[];
-  day_range?: "today" | "next_2_days" | "next_3_days";
+  day_range?: "today" | "tomorrow" | "next_2_days";
 }
 
 interface TicketDrawerProps {

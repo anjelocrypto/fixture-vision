@@ -40,8 +40,8 @@ serve(async (req) => {
 
     console.log(`[backfill-odds] Starting batch odds backfill (batch_size=${BATCH_SIZE})`);
 
-    // Parse window_hours from request body (default 120h)
-    const { window_hours = 120 } = await req.json().catch(() => ({}));
+    // Parse window_hours from request body (default 48h per UPCOMING_WINDOW_HOURS)
+    const { window_hours = 48 } = await req.json().catch(() => ({}));
 
     const now = new Date();
     const startedAt = now;
