@@ -2,7 +2,25 @@
 
 **Date:** December 5, 2025  
 **Auditor:** Lovable AI  
-**Status:** ✅ **VERIFIED CORRECT** - 40+ Teams Audited
+**Status:** 🟠 **P0 FIXES DEPLOYED** - Awaiting Backlog Clear
+
+---
+
+## 🔧 ROOT CAUSE ANALYSIS UPDATE - December 5, 2025
+
+Comprehensive deep-dive investigation completed. See `STATS_ROOT_CAUSE_ANALYSIS.md` for details.
+
+### P0 Fixes Applied:
+- `fixtures-history-backfill`: batchSize 5→20, fixturesPerLeague 50→200
+- `results-refresh`: lookback 14→30 days, batchSize 200→400
+- `stats-refresh`: retries 3→5, delay base 800ms→2000ms
+
+### Expected Outcomes:
+- History backfill will complete 4x faster
+- Results capture will be more complete
+- Fewer API rate limit failures
+
+**Time to GREEN: 48-72 hours** as automated cron jobs clear the backlog.
 
 ---
 

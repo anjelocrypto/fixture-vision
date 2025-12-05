@@ -27,16 +27,17 @@ const BATCH_SIZE = 25;
 // Simple delay helper
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-// Compute with retry wrapper
-async function computeWithRetry(teamId: number, supabase: any, retries = 3) {
+// P1 FIX: Improved retry logic with more attempts and longer delays for better rate limit handling
+async function computeWithRetry(teamId: number, supabase: any, retries = 5) {
   let attempt = 0;
   while (true) {
     try {
       return await computeLastFiveAverages(teamId, supabase);
     } catch (e) {
       if (attempt < retries) {
-        const delay = 800 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
-        console.warn(`[stats-refresh] compute team ${teamId} failed, retrying in ${delay}ms`);
+        // Longer base delay (2000ms vs 800ms) for better rate limit handling
+        const delay = 2000 * Math.pow(2, attempt) + Math.floor(Math.random() * 1000);
+        console.warn(`[stats-refresh] compute team ${teamId} failed (attempt ${attempt + 1}/${retries}), retrying in ${delay}ms`);
         await sleep(delay);
         attempt++;
         continue;

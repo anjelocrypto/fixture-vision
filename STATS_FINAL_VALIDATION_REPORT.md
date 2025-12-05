@@ -1,5 +1,24 @@
 # TicketAI Stats – Final Validation Report
 
+## ⚠️ ROOT CAUSE ANALYSIS UPDATE - December 5, 2025
+
+A comprehensive deep-dive investigation was completed. See `STATS_ROOT_CAUSE_ANALYSIS.md` for full details.
+
+### Root Causes Identified:
+1. History backfill processing only 5 leagues every 6 hours (too slow)
+2. Results-refresh limited to 14-day lookback (missing older fixtures)
+3. Some competitions (UEL, UECL, EFL Cup, Coupe de France) had 0 fixtures
+4. Stats retry logic too aggressive for API rate limits
+
+### P0 Fixes Deployed:
+- Backfill speed increased 4x
+- Results lookback extended to 30 days
+- Retry logic improved with longer delays
+
+**Status: 🟡 YELLOW → Expected GREEN in 48-72 hours**
+
+---
+
 **Date:** 2025-12-05  
 **Author:** Lovable AI QA System  
 **Report Version:** 1.0
