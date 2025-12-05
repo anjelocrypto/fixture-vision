@@ -13,7 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { LEAGUE_NAMES, ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
-import { API_BASE, apiHeaders } from "../_shared/api.ts";
+import { fetchAPIFootball, fetchFixtureStatistics, getRateLimiterStats } from "../_shared/api_football.ts";
 
 // ============================================================================
 // CONFIGURATION: Derived from QA Reports
@@ -87,6 +87,8 @@ interface RequestBody {
   skipResultsRefresh?: boolean;
   skipStatsRefresh?: boolean;
   skipHealthCheck?: boolean;
+  mode?: 'default' | 'weekly';  // 'weekly' mode for scheduled remediation
+  maxAPICallsPerRun?: number;   // Limit API calls to respect rate limits
 }
 
 interface RemediationResult {
@@ -110,21 +112,6 @@ interface RemediationResult {
 // ============================================================================
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Fetch with retry for rate limiting
-async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(url, { headers: apiHeaders() });
-    if (res.status === 429 || res.status >= 500) {
-      const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-      console.warn(`[remediate] Got ${res.status}, retrying in ${delay}ms`);
-      await sleep(delay);
-      continue;
-    }
-    return res;
-  }
-  throw new Error(`Failed after ${maxRetries} retries`);
-}
 
 // Get current violations count
 async function getCriticalViolationsCount(supabase: any): Promise<number> {
@@ -191,31 +178,33 @@ async function getUpcomingCoverage(supabase: any): Promise<Record<string, number
   return coverage;
 }
 
-// Backfill fixtures for a league using API-Football
+// Backfill fixtures for a league using centralized API client
 async function backfillLeagueFixtures(
   supabase: any,
   leagueId: number,
   season: number
-): Promise<{ fixtures: number; errors: string[] }> {
+): Promise<{ fixtures: number; errors: string[]; apiCalls: number }> {
   const errors: string[] = [];
   let fixturesUpserted = 0;
+  let apiCalls = 0;
 
   try {
-    const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&status=NS-FT-AET-PEN`;
-    console.log(`[remediate] Fetching fixtures: ${url}`);
+    const result = await fetchAPIFootball(
+      `/fixtures?league=${leagueId}&season=${season}&status=NS-FT-AET-PEN`,
+      { logPrefix: "[remediate]" }
+    );
+    apiCalls++;
     
-    const res = await fetchWithRetry(url);
-    if (!res.ok) {
-      errors.push(`Failed to fetch fixtures for league ${leagueId}: ${res.status}`);
-      return { fixtures: 0, errors };
+    if (!result.ok) {
+      errors.push(`Failed to fetch fixtures for league ${leagueId}: ${result.error}`);
+      return { fixtures: 0, errors, apiCalls };
     }
 
-    const json = await res.json();
-    const apiFixtures = json?.response || [];
+    const apiFixtures = result.data || [];
     
     if (apiFixtures.length === 0) {
       console.log(`[remediate] No fixtures returned for league ${leagueId} season ${season}`);
-      return { fixtures: 0, errors };
+      return { fixtures: 0, errors, apiCalls };
     }
 
     // Prepare upsert batch
@@ -243,16 +232,18 @@ async function backfillLeagueFixtures(
     errors.push(`Exception backfilling league ${leagueId}: ${e.message}`);
   }
 
-  return { fixtures: fixturesUpserted, errors };
+  return { fixtures: fixturesUpserted, errors, apiCalls };
 }
 
-// Fetch results for finished fixtures in a league
+// Fetch results for finished fixtures in a league using centralized API client
 async function refreshLeagueResults(
   supabase: any,
-  leagueId: number
-): Promise<{ results: number; errors: string[] }> {
+  leagueId: number,
+  maxFixtures = 25
+): Promise<{ results: number; errors: string[]; apiCalls: number }> {
   const errors: string[] = [];
   let resultsFetched = 0;
+  let apiCalls = 0;
 
   try {
     // Find finished fixtures without results
@@ -265,7 +256,7 @@ async function refreshLeagueResults(
       .limit(100);
 
     if (!missingResults || missingResults.length === 0) {
-      return { results: 0, errors };
+      return { results: 0, errors, apiCalls };
     }
 
     // Check which ones actually have results
@@ -280,34 +271,33 @@ async function refreshLeagueResults(
 
     console.log(`[remediate] League ${leagueId}: ${needsResults.length} fixtures need results`);
 
-    // Process in small batches to avoid rate limits
-    for (let i = 0; i < Math.min(needsResults.length, 25); i++) {
+    // Process in small batches
+    for (let i = 0; i < Math.min(needsResults.length, maxFixtures); i++) {
       const fixture = needsResults[i];
       
       try {
-        // Fetch fixture details
-        const fixtureUrl = `${API_BASE}/fixtures?id=${fixture.id}`;
-        const fixtureRes = await fetchWithRetry(fixtureUrl);
+        // Fetch fixture details using centralized client
+        const fixtureResult = await fetchAPIFootball(
+          `/fixtures?id=${fixture.id}`,
+          { logPrefix: "[remediate]" }
+        );
+        apiCalls++;
         
-        if (!fixtureRes.ok) continue;
+        if (!fixtureResult.ok || !fixtureResult.data?.length) continue;
         
-        const fixtureJson = await fixtureRes.json();
-        const apiFixture = fixtureJson?.response?.[0];
-        
+        const apiFixture = fixtureResult.data[0];
         if (!apiFixture) continue;
 
-        // Fetch statistics
-        const statsUrl = `${API_BASE}/fixtures/statistics?fixture=${fixture.id}`;
-        const statsRes = await fetchWithRetry(statsUrl);
-        const statsJson = statsRes.ok ? await statsRes.json() : { response: [] };
-        const statsData = statsJson?.response || [];
+        // Fetch statistics using centralized client
+        const statsData = await fetchFixtureStatistics(fixture.id);
+        apiCalls++;
 
         // Extract home/away stats
         const homeTeamId = apiFixture.teams.home.id;
         const awayTeamId = apiFixture.teams.away.id;
         
-        const homeStats = statsData.find((s: any) => s.team.id === homeTeamId)?.statistics || [];
-        const awayStats = statsData.find((s: any) => s.team.id === awayTeamId)?.statistics || [];
+        const homeStats = (statsData || []).find((s: any) => s.team?.id === homeTeamId)?.statistics || [];
+        const awayStats = (statsData || []).find((s: any) => s.team?.id === awayTeamId)?.statistics || [];
 
         const getStat = (stats: any[], types: string[]): number | null => {
           for (const type of types) {
@@ -347,9 +337,6 @@ async function refreshLeagueResults(
         if (!upsertError) {
           resultsFetched++;
         }
-
-        // Rate limit
-        await sleep(200);
       } catch (e: any) {
         errors.push(`Error fetching result for fixture ${fixture.id}: ${e.message}`);
       }
@@ -358,7 +345,7 @@ async function refreshLeagueResults(
     errors.push(`Exception refreshing results for league ${leagueId}: ${e.message}`);
   }
 
-  return { results: resultsFetched, errors };
+  return { results: resultsFetched, errors, apiCalls };
 }
 
 // Refresh stats for a team

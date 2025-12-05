@@ -3,25 +3,21 @@
 // ============================================================================
 // Imports historical fixtures + results from API-Football into our DB for all
 // allowed leagues. Tracks progress in league_history_sync_state table.
-//
-// ARCHITECTURE SUMMARY:
-// - For each league in ALLOWED_LEAGUE_IDS, backfills past fixtures for N seasons
-// - Uses pagination-like progress tracking via league_history_sync_state
-// - Respects API rate limits with configurable delays
-// - Can be called via cron or manually from admin
+// Uses centralized API rate limiter for safe, automated operation.
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
-import { API_BASE, apiHeaders } from "../_shared/api.ts";
+import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
 
 interface RequestBody {
-  seasonsBack?: number;      // How many seasons to backfill (default: 2)
-  leagueIds?: number[];      // Specific leagues to process (default: all)
-  batchSize?: number;        // Leagues per run (default: 5)
-  fixturesPerLeague?: number;// Max fixtures per league per run (default: 50)
-  force?: boolean;           // Re-sync even if completed
+  seasonsBack?: number;
+  leagueIds?: number[];
+  batchSize?: number;
+  fixturesPerLeague?: number;
+  force?: boolean;
+  parallelLeagues?: number;
 }
 
 interface FixtureResultRow {
@@ -58,33 +54,10 @@ function getSeasonsToBackfill(seasonsBack: number): number[] {
   return seasons;
 }
 
-// Fetch with retry for rate limiting
-async function fetchWithRetry(url: string, headers: Record<string, string>, maxRetries = 3): Promise<Response> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(url, { headers });
-    if (res.status === 429 || res.status >= 500) {
-      const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-      console.warn(`[history-backfill] Got ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      continue;
-    }
-    return res;
-  }
-  throw new Error(`Failed after ${maxRetries} retries`);
-}
-
-// Fetch fixture statistics
+// Fetch fixture statistics using centralized client
 async function fetchFixtureStatistics(fixtureId: number): Promise<any> {
-  const url = `${API_BASE}/fixtures/statistics?fixture=${fixtureId}`;
-  const res = await fetchWithRetry(url, apiHeaders());
-  
-  if (!res.ok) {
-    console.warn(`[history-backfill] API error for statistics ${fixtureId}: ${res.status}`);
-    return null;
-  }
-  
-  const json = await res.json();
-  return json.response || null;
+  const stats = await fetchStats(fixtureId);
+  return stats.length > 0 ? stats : null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -149,15 +122,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const seasonsBack = body.seasonsBack ?? 2;
-    // P0 FIX: Increased batch size from 5 to 20 for 4x faster backfill
     const batchSize = body.batchSize ?? 20;
-    // P0 FIX: Increased fixtures per league from 50 to 200 for more complete backfill
     const fixturesPerLeague = body.fixturesPerLeague ?? 200;
     const force = body.force ?? false;
     const targetLeagues = body.leagueIds ?? ALLOWED_LEAGUE_IDS;
     const seasons = getSeasonsToBackfill(seasonsBack);
 
-    console.log(`[history-backfill] Starting backfill: ${targetLeagues.length} leagues, seasons=${seasons.join(',')}, batchSize=${batchSize}, fixturesPerLeague=${fixturesPerLeague}`);
+    console.log(`[history-backfill] Starting backfill: ${targetLeagues.length} leagues, seasons=${seasons.join(',')}, batchSize=${batchSize}`);
 
     const startTime = Date.now();
     let totalFixturesProcessed = 0;
@@ -178,8 +149,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Get league/season combos that need processing
-    // P0 FIX: Prioritize leagues with fewer fixtures synced (empty leagues first)
+    // Get league/season combos that need processing - prioritize empty leagues
     let query = supabase
       .from("league_history_sync_state")
       .select("*")
@@ -206,7 +176,8 @@ Deno.serve(async (req: Request) => {
         message: "All leagues are fully synced",
         leagues_processed: 0,
         fixtures_processed: 0,
-        results_inserted: 0
+        results_inserted: 0,
+        rate_limiter: getRateLimiterStats()
       }, origin, 200, req);
     }
 
@@ -225,19 +196,17 @@ Deno.serve(async (req: Request) => {
 
         console.log(`[history-backfill] Processing league ${leagueId}, season ${season}`);
 
-        // Fetch fixtures from API-Football
-        const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&status=FT-AET-PEN`;
-        console.log(`[history-backfill] Fetching: ${url}`);
+        // Fetch fixtures using centralized rate-limited client
+        const fixturesResult = await fetchAPIFootball(
+          `/fixtures?league=${leagueId}&season=${season}&status=FT-AET-PEN`,
+          { logPrefix: "[history-backfill]" }
+        );
         
-        const res = await fetchWithRetry(url, apiHeaders());
-        
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
+        if (!fixturesResult.ok) {
+          throw new Error(`API error: ${fixturesResult.error}`);
         }
 
-        const json = await res.json();
-        const apiFixtures = json.response || [];
-        
+        const apiFixtures = fixturesResult.data || [];
         console.log(`[history-backfill] League ${leagueId} season ${season}: ${apiFixtures.length} fixtures from API`);
 
         // Get existing fixture IDs from our DB
@@ -246,14 +215,14 @@ Deno.serve(async (req: Request) => {
           .from("fixtures")
           .select("id")
           .in("id", fixtureIds);
-        const existingFixtureIds = new Set((existingFixtures || []).map(f => f.id));
+        const existingFixtureIds = new Set((existingFixtures || []).map((f: any) => f.id));
 
         // Get existing results
         const { data: existingResults } = await supabase
           .from("fixture_results")
           .select("fixture_id")
           .in("fixture_id", fixtureIds);
-        const existingResultIds = new Set((existingResults || []).map(r => r.fixture_id));
+        const existingResultIds = new Set((existingResults || []).map((r: any) => r.fixture_id));
 
         // Process fixtures (limited per run)
         const fixturesToProcess = apiFixtures.slice(0, fixturesPerLeague);
@@ -288,7 +257,6 @@ Deno.serve(async (req: Request) => {
 
           // Fetch and upsert results if not exists
           if (!existingResultIds.has(fixtureId)) {
-            // Fetch detailed statistics
             let cornersHome: number | null = null;
             let cornersAway: number | null = null;
             let cardsHome: number | null = null;
@@ -355,9 +323,6 @@ Deno.serve(async (req: Request) => {
 
             await supabase.from("fixture_results").upsert(result, { onConflict: 'fixture_id' });
             resultsUpserted++;
-
-            // Rate limit: 100ms between stats calls
-            await new Promise(resolve => setTimeout(resolve, 100));
           }
 
           totalFixturesProcessed++;
@@ -378,9 +343,6 @@ Deno.serve(async (req: Request) => {
         leaguesProcessed++;
 
         console.log(`[history-backfill] League ${leagueId} season ${season}: ${fixturesUpserted} fixtures, ${resultsUpserted} results`);
-
-        // Delay between leagues
-        await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (err) {
         console.error(`[history-backfill] Error processing league ${leagueId} season ${season}:`, err);
@@ -426,6 +388,7 @@ Deno.serve(async (req: Request) => {
       results_inserted: totalResultsInserted,
       errors,
       duration_ms: duration,
+      rate_limiter: getRateLimiterStats(),
       message: `Processed ${leaguesProcessed} league/season combos, ${totalResultsInserted} new results`
     }, origin, 200, req);
 
