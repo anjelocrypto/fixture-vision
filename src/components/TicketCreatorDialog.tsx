@@ -22,7 +22,7 @@ export interface GenerateParams {
   minLegs: number;
   maxLegs: number;
   useLiveOdds: boolean;
-  dayRange: "today" | "next_2_days" | "next_3_days";
+  dayRange: "today" | "tomorrow" | "next_2_days";
 }
 
 const PRESET_RANGES = [
@@ -43,8 +43,8 @@ const MARKETS = [
 
 const DAY_RANGES = [
   { id: "today", label: "day_range_today" },
+  { id: "tomorrow", label: "day_range_tomorrow" },
   { id: "next_2_days", label: "day_range_2_days" },
-  { id: "next_3_days", label: "day_range_3_days" },
 ] as const;
 
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
@@ -55,7 +55,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
   const [minLegs, setMinLegs] = useState(5);
   const [maxLegs, setMaxLegs] = useState(15);
   const [useLiveOdds, setUseLiveOdds] = useState(false);
-  const [dayRange, setDayRange] = useState<"today" | "next_2_days" | "next_3_days">("next_3_days");
+  const [dayRange, setDayRange] = useState<"today" | "tomorrow" | "next_2_days">("next_2_days");
   const [generating, setGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -202,7 +202,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
                   variant={dayRange === range.id ? "default" : "outline"}
                   size="sm"
                   className="text-xs"
-                  onClick={() => setDayRange(range.id as "today" | "next_2_days" | "next_3_days")}
+                  onClick={() => setDayRange(range.id as "today" | "tomorrow" | "next_2_days")}
                 >
                   {t(`ticket:${range.label}`)}
                 </Button>

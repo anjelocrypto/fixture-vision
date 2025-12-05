@@ -4,7 +4,7 @@ import { pickFromCombined, RULES, RULES_VERSION, StatMarket } from "../_shared/r
 import { normalizeOddsValue, matchesTarget } from "../_shared/odds_normalization.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { computeCombinedMetrics } from "../_shared/stats.ts";
-import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS } from "../_shared/config.ts";
+import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { detectAvailableMarkets } from "../_shared/market_detection.ts";
 import { hasKeyAttackingInjuries } from "../_shared/injuries.ts";
 
@@ -28,8 +28,8 @@ serve(async (req) => {
 
     console.log(`[optimize-selections-refresh] Starting refresh (internal call)`);
 
-    // Parse window_hours from request body (default 120h for QA runway)
-    const { window_hours = 120 } = await req.json().catch(() => ({}));
+    // Parse window_hours from request body (default 48h for production)
+    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
 
     // GUARD: Don't let short-window cron stomps long-window manual runs
     // If this is a short window (≤24h) and a longer window is running, skip

@@ -13,11 +13,11 @@
   "market_offsides": "Offsides",
   "scope_label": "Scope",
   "scope_selected_league": "Selected league only",
-  "scope_all_leagues": "All leagues (next 120h)",
-  "all_leagues_caption": "Showing best opportunities from all leagues in the next 120 hours",
+  "scope_all_leagues": "All leagues (next 48h)",
+  "all_leagues_caption": "Showing best opportunities from all leagues in the next 48 hours",
   "match_day_range": "Match Day Range",
-  "day_range_all": "All Matches",
+  "day_range_all": "All (48h)",
   "day_range_today": "Today",
-  "day_range_2_days": "Next 2 days",
-  "day_range_3_days": "Next 3 days"
+  "day_range_tomorrow": "Tomorrow",
+  "day_range_2_days": "Today + Tomorrow"
 }

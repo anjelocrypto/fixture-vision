@@ -11,6 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 // Validation schema for admin request parameters
 const AdminRequestSchema = z.object({
@@ -86,7 +87,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Parse and validate request body
-    let window_hours = 120;
+    let window_hours = UPCOMING_WINDOW_HOURS;
     let stats_ttl_hours = 24;
     let force = false;
     

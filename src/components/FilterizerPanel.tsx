@@ -22,8 +22,8 @@ export interface FilterCriteria {
   minOdds: number;
   showAllOdds: boolean; // NEW: show all bookmaker odds
   includeModelOnly?: boolean; // NEW: include picks without odds (model-only)
-  allLeagues?: boolean; // NEW: all leagues mode (next 120h)
-  dayRange?: "all" | "today" | "next_2_days" | "next_3_days"; // NEW: date filter
+  allLeagues?: boolean; // NEW: all leagues mode (next 48h)
+  dayRange?: "all" | "today" | "tomorrow"; // Date filter (48h horizon)
 }
 
 // Rules-based lines from _shared/rules.ts
@@ -51,8 +51,7 @@ const MARKET_OPTIONS = [
 const DAY_RANGES = [
   { id: "all", label: "day_range_all" },
   { id: "today", label: "day_range_today" },
-  { id: "next_2_days", label: "day_range_2_days" },
-  { id: "next_3_days", label: "day_range_3_days" },
+  { id: "tomorrow", label: "day_range_tomorrow" },
 ] as const;
 
 export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: FilterizerPanelProps) {
@@ -62,7 +61,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
   const [minOdds, setMinOdds] = useState<number>(1.50);
   const [includeModelOnly, setIncludeModelOnly] = useState<boolean>(true); // Default ON
   const [allLeaguesMode, setAllLeaguesMode] = useState<boolean>(false); // Default OFF
-  const [dayRange, setDayRange] = useState<"all" | "today" | "next_2_days" | "next_3_days">("all"); // Default ALL
+  const [dayRange, setDayRange] = useState<"all" | "today" | "tomorrow">("all"); // Default ALL (48h)
 
   const currentMarketOption = MARKET_OPTIONS.find(m => m.id === selectedMarket);
 
@@ -150,7 +149,7 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         {/* Match Day Range - Same as Ticket Creator */}
         <div className="space-y-3 pb-4 border-b">
           <Label className="text-sm font-medium">{t('filterizer:match_day_range')}</Label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {DAY_RANGES.map((range) => (
               <Button
                 key={range.id}

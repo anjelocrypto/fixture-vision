@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES, getCountryIdForLeague } from "../_shared/leagues.ts";
-import { RPM_LIMIT } from "../_shared/config.ts";
+import { RPM_LIMIT, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 const FIXTURE_TTL_HOURS = 12;
@@ -76,7 +76,7 @@ serve(async (req) => {
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
-    const { window_hours = 120 } = await req.json();
+    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json();
     
     console.log(`[fetch-fixtures] Starting bulk fetch for ${window_hours}h window`);
     
