@@ -203,7 +203,8 @@ Deno.serve(async (req: Request) => {
     // This fixes the bug where fixtures.status never gets updated from NS to FT
     // ============================================================================
     const startTime = Date.now();
-    const maxLookbackDays = body.backfill_mode ? 365 : 14;
+    // P0 FIX: Extended lookback from 14 to 30 days for better coverage
+    const maxLookbackDays = body.backfill_mode ? 365 : 30;
     const lookbackLimit = new Date(Date.now() - maxLookbackDays * 24 * 3600 * 1000);
     
     // Fixtures that kicked off >2 hours ago should be finished
@@ -211,7 +212,8 @@ Deno.serve(async (req: Request) => {
     
     console.log(`[results-refresh] Finding fixtures that kicked off >2h ago (lookback: ${maxLookbackDays} days, backfill: ${body.backfill_mode || false})`);
 
-    const batchSize = body.batch_size || (body.backfill_mode ? 100 : 200);
+    // P0 FIX: Increased batch size from 200 to 400 for faster results capture
+    const batchSize = body.batch_size || (body.backfill_mode ? 100 : 400);
     
     // CRITICAL: Query by timestamp, not status - find matches that should be finished
     let fixturesQuery = supabase

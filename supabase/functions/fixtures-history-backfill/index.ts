@@ -149,8 +149,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const seasonsBack = body.seasonsBack ?? 2;
-    const batchSize = body.batchSize ?? 5;
-    const fixturesPerLeague = body.fixturesPerLeague ?? 50;
+    // P0 FIX: Increased batch size from 5 to 20 for 4x faster backfill
+    const batchSize = body.batchSize ?? 20;
+    // P0 FIX: Increased fixtures per league from 50 to 200 for more complete backfill
+    const fixturesPerLeague = body.fixturesPerLeague ?? 200;
     const force = body.force ?? false;
     const targetLeagues = body.leagueIds ?? ALLOWED_LEAGUE_IDS;
     const seasons = getSeasonsToBackfill(seasonsBack);
@@ -177,11 +179,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Get league/season combos that need processing
+    // P0 FIX: Prioritize leagues with fewer fixtures synced (empty leagues first)
     let query = supabase
       .from("league_history_sync_state")
       .select("*")
       .in("league_id", targetLeagues)
       .in("season", seasons)
+      .order("total_fixtures_synced", { ascending: true, nullsFirst: true })
       .order("last_run_at", { ascending: true, nullsFirst: true });
 
     if (!force) {
