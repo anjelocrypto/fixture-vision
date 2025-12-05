@@ -231,3 +231,49 @@ FROM stats_cache;
 ---
 
 **Audit Complete** ✅
+
+---
+
+## Steady-State Guarantees
+
+### Automated Data Freshness
+
+The following cron jobs ensure continuous data freshness without manual intervention:
+
+| Cron Job | Schedule | Purpose |
+|----------|----------|---------|
+| `cron-fetch-fixtures-10m` | */10 * * * * | Fetches new fixtures from API-Football |
+| `results-refresh-30m` | */30 9-23 * * * | Populates fixture_results for finished matches |
+| `stats-refresh-batch-cron` | */10 * * * * | Refreshes stats_cache (25 teams per batch) |
+| `fixtures-history-backfill-cron` | 0 */6 * * * | Backfills historical fixtures |
+| `stats-health-check-hourly` | 0 * * * * | Monitors stats integrity |
+| `warmup-optimizer-cron` | */30 * * * * | Refreshes odds and optimized selections |
+
+### One-Time Remediation
+
+Historical gaps (e.g., UEFA competitions with zero fixtures, EPL teams missing cache) are fixed by running:
+
+```bash
+curl -X POST \
+  https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/admin-remediate-stats-gaps \
+  -H "Authorization: Bearer SERVICE_ROLE_KEY"
+```
+
+### When Gaps May Reoccur
+
+Future gaps should only occur if:
+1. **New leagues are added** to `ALLOWED_LEAGUE_IDS` without backfill
+2. **API outages** or rate limiting prevents fixture fetching
+3. **Manual deletions** of stats_cache or fixture_results data
+4. **New season transitions** (August) require fresh historical data
+
+### Admin Re-Remediation
+
+If coverage drops or new gaps appear, admins can re-run `admin-remediate-stats-gaps`:
+- **Full remediation:** Call with empty body `{}`
+- **Targeted remediation:** Specify `leagueIds` and/or `teamIds`
+- **Skip phases:** Use `skipFixtureBackfill`, `skipResultsRefresh`, `skipStatsRefresh` flags
+
+---
+
+**Report Updated:** 2025-12-05
