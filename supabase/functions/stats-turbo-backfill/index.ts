@@ -27,6 +27,7 @@ interface TurboRequest {
   upcomingDays?: number;
   dryRun?: boolean;
   skipBudgetCheck?: boolean; // Force run even if budget estimate is high
+  runType?: string; // Custom run type for logging (e.g., 'stats-turbo-backfill-top-leagues')
 }
 
 interface CoverageMetrics {
@@ -702,8 +703,9 @@ Deno.serve(async (req: Request) => {
     const upcomingDays = body.upcomingDays ?? 7;
     const dryRun = body.dryRun ?? false;
     const skipBudgetCheck = body.skipBudgetCheck ?? false;
+    const customRunType = body.runType ?? "stats-turbo-backfill";
 
-    console.log(`[turbo] Starting Turbo Backfill Day`);
+    console.log(`[turbo] Starting Turbo Backfill Day (${customRunType})`);
     console.log(`[turbo] Config: maxAPICallsTotal=${maxAPICallsTotal}, targetCoverage=${targetCoveragePct}%, daysLookback=${daysLookback}, upcomingDays=${upcomingDays}, skipBudgetCheck=${skipBudgetCheck}`);
     console.log(`[turbo] Priority leagues: ${priorityLeagues.length}`);
 
@@ -785,13 +787,14 @@ Deno.serve(async (req: Request) => {
 
         // Log to optimizer_run_logs
         await supabase.from("optimizer_run_logs").insert({
-          run_type: "stats-turbo-backfill",
+          run_type: customRunType,
           window_start: new Date(totalStartTime).toISOString(),
           window_end: new Date().toISOString(),
           scope: {
             max_api_calls: maxAPICallsTotal,
             target_coverage_pct: targetCoveragePct,
-            priority_leagues: priorityLeagues.length,
+            priority_leagues: priorityLeagues,
+            priority_leagues_count: priorityLeagues.length,
             days_lookback: daysLookback,
             upcoming_days: upcomingDays,
           },
@@ -811,14 +814,14 @@ Deno.serve(async (req: Request) => {
           }),
         });
 
-        console.log(`[turbo-bg] ✅ Turbo Backfill complete: ${apiCallsUsed} API calls, ${totalDuration}ms`);
+        console.log(`[turbo-bg] ✅ ${customRunType} complete: ${apiCallsUsed} API calls, ${totalDuration}ms`);
         console.log(`[turbo-bg] Coverage improvement: ${beforeMetrics.coverage_pct_gte3}% → ${afterMetrics.coverage_pct_gte3}%`);
 
       } catch (error) {
         console.error("[turbo-bg] Background job error:", error);
         // Log error to optimizer_run_logs
         await supabase.from("optimizer_run_logs").insert({
-          run_type: "stats-turbo-backfill",
+          run_type: customRunType,
           window_start: new Date(totalStartTime).toISOString(),
           window_end: new Date().toISOString(),
           started_at: new Date(totalStartTime).toISOString(),
