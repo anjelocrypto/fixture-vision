@@ -1,5 +1,5 @@
 // Shared stats computation utilities
-// Deployment trigger: 2025-11-23 14:00:00 UTC - Added cup coverage filtering
+// Deployment trigger: 2025-12-05 03:30 UTC - CRITICAL FIX: Use centralized rate limiter
 //
 // API-FOOTBALL ENDPOINT REFERENCE (v3):
 // =====================================
@@ -27,6 +27,7 @@
 //      We use league_stats_coverage table to skip broken competitions per metric
 
 import { API_BASE, apiHeaders } from "./api.ts";
+import { fetchAPIFootball } from "./api_football.ts";
 import { loadLeagueCoverage, shouldSkipFixtureForMetric } from "./league_coverage.ts";
 
 export type Last5Result = {
@@ -55,22 +56,20 @@ export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{
   const year = now.getUTCFullYear(); // P1 FIX: Use UTC year to prevent timezone-dependent season drift
   const season = (month >= 7) ? year : year - 1;
   
-  // Fetch last 20 to have a pool to select from (excluding broken cups)
-  const url = `${API_BASE}/fixtures?team=${teamId}&season=${season}&last=20&status=FT`;
-  console.log(`[stats] 📡 API-Football Request: ${url}`);
   console.log(`[stats] 📅 Season: ${season}, Last: 20, Status Filter: FT`);
   
-  const res = await fetch(url, { headers: apiHeaders() });
+  // Use centralized rate-limited API client
+  const result = await fetchAPIFootball(`/fixtures?team=${teamId}&season=${season}&last=20&status=FT`, {
+    logPrefix: '[stats]'
+  });
   
-  if (!res.ok) {
-    console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: HTTP ${res.status}`);
+  if (!result.ok) {
+    console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: HTTP ${result.status}`);
     return [];
   }
   
-  const json = await res.json();
-  const fixtures = json?.response ?? [];
-  
-  console.log(`[stats] 📥 API-Football returned ${fixtures.length} fixtures for team ${teamId}`);
+  const fixtures = result.data || [];
+  console.log(`[stats] 📥 Got ${fixtures.length} FT fixtures from API to analyze`);
   
   // Extract fixture IDs and league IDs
   const validFixtures = fixtures
@@ -108,17 +107,17 @@ async function fetchFixtureTeamStats(
 }> {
   console.log(`[stats] Fetching stats for team ${teamId} in fixture ${fixtureId}`);
   
-  // First, get the fixture details to determine goals and team side
-  const fixtureUrl = `${API_BASE}/fixtures?id=${fixtureId}`;
-  const fixtureRes = await fetch(fixtureUrl, { headers: apiHeaders() });
+  // First, get the fixture details to determine goals and team side (using centralized client)
+  const fixtureResult = await fetchAPIFootball(`/fixtures?id=${fixtureId}`, {
+    logPrefix: '[stats]'
+  });
   
-  if (!fixtureRes.ok) {
-    console.error(`[stats] ❌ Failed to fetch fixture ${fixtureId}: ${fixtureRes.status}`);
+  if (!fixtureResult.ok) {
+    console.error(`[stats] ❌ Failed to fetch fixture ${fixtureId}: ${fixtureResult.status}`);
     return { goals: 0, corners: null, offsides: null, fouls: null, cards: null };
   }
   
-  const fixtureJson = await fixtureRes.json();
-  const fixture = fixtureJson?.response?.[0];
+  const fixture = fixtureResult.data?.[0];
   
   let goals = 0;
   if (fixture) {
@@ -137,19 +136,18 @@ async function fetchFixtureTeamStats(
     }
   }
   
-  // Now fetch statistics
-  const statsUrl = `${API_BASE}/fixtures/statistics?fixture=${fixtureId}`;
-  const statsRes = await fetch(statsUrl, { headers: apiHeaders() });
+  // Now fetch statistics (using centralized client)
+  const statsResult = await fetchAPIFootball(`/fixtures/statistics?fixture=${fixtureId}`, {
+    logPrefix: '[stats]'
+  });
   
-  if (!statsRes.ok) {
-    console.warn(`[stats] ⚠️ Failed to fetch statistics for fixture ${fixtureId}: ${statsRes.status}`);
+  if (!statsResult.ok) {
+    console.warn(`[stats] ⚠️ Failed to fetch statistics for fixture ${fixtureId}: ${statsResult.status}`);
     return { goals, corners: null, offsides: null, fouls: null, cards: null };
   }
   
-  const statsJson = await statsRes.json();
-  
   // Find the statistics for this specific team
-  const teamStats = (statsJson?.response ?? []).find((r: any) => {
+  const teamStats = (statsResult.data || []).find((r: any) => {
     const responseTeamId = Number(r?.team?.id);
     const targetTeamId = Number(teamId);
     return responseTeamId === targetTeamId;
