@@ -114,6 +114,23 @@ const AdminHealth = () => {
   }, [navigate]);
 
   const [isTurboRunning, setIsTurboRunning] = useState(false);
+  const [isTopLeaguesTurboRunning, setIsTopLeaguesTurboRunning] = useState(false);
+
+  // Top leagues for targeted turbo backfill
+  const TOP_LEAGUES = {
+    ids: [39, 40, 78, 79, 135, 136, 61, 88, 89],
+    names: {
+      39: "Premier League",
+      40: "Championship", 
+      78: "Bundesliga",
+      79: "2. Bundesliga",
+      135: "Serie A",
+      136: "Serie B",
+      61: "Ligue 1",
+      88: "Eredivisie",
+      89: "Eerste Divisie"
+    }
+  };
 
   const { data, isLoading, error, refetch } = useQuery<AdminHealthResponse>({
     queryKey: ["admin-health"],
@@ -188,6 +205,67 @@ const AdminHealth = () => {
       toast.error(`Turbo Backfill error: ${err.message}`);
     } finally {
       setIsTurboRunning(false);
+    }
+  };
+
+  const handleTopLeaguesTurboBackfill = async () => {
+    setIsTopLeaguesTurboRunning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("No session");
+        return;
+      }
+
+      const leagueNames = TOP_LEAGUES.ids.map(id => TOP_LEAGUES.names[id as keyof typeof TOP_LEAGUES.names]).join(", ");
+      toast.info(`Starting Top Leagues Turbo Backfill for: ${leagueNames}`, { duration: 5000 });
+
+      const response = await supabase.functions.invoke("stats-turbo-backfill", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: {
+          maxAPICallsTotal: 15000,
+          targetCoveragePct: 95,
+          upcomingDays: 10,
+          daysLookback: 90,
+          priorityLeagues: TOP_LEAGUES.ids,
+          skipBudgetCheck: true,
+          runType: "stats-turbo-backfill-top-leagues",
+        },
+      });
+
+      if (response.error) {
+        toast.error(`Top Leagues Turbo Backfill failed: ${response.error.message}`);
+        return;
+      }
+
+      const result = response.data;
+      
+      if (result.success === false) {
+        toast.error(result.message || "Top Leagues Turbo Backfill was skipped");
+        return;
+      }
+
+      // Handle background job started response
+      if (result.status === "started") {
+        const beforeCoverage = result.before_metrics?.coverage_pct_gte3 ?? result.before?.coverage_pct_gte3;
+        toast.success(
+          `Top Leagues Turbo Backfill started! Coverage: ${beforeCoverage?.toFixed?.(1) ?? beforeCoverage ?? 'N/A'}%. Budget: ${result.allowed_budget || 0} API calls. Check optimizer_run_logs for progress.`,
+          { duration: 10000 }
+        );
+      } else {
+        toast.success(
+          `Top Leagues Turbo complete! Coverage: ${result.after_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.api_calls_used || 0}`,
+          { duration: 8000 }
+        );
+      }
+      
+      refetch();
+    } catch (err: any) {
+      toast.error(`Top Leagues Turbo error: ${err.message}`);
+    } finally {
+      setIsTopLeaguesTurboRunning(false);
     }
   };
 
@@ -300,15 +378,27 @@ const AdminHealth = () => {
             </p>
           </div>
         </div>
-        <Button 
-          onClick={handleTurboBackfill} 
-          disabled={isTurboRunning}
-          variant="default"
-          className="gap-2"
-        >
-          <Rocket className="w-4 h-4" />
-          {isTurboRunning ? "Running Turbo..." : "Turbo Backfill"}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleTopLeaguesTurboBackfill} 
+            disabled={isTopLeaguesTurboRunning || isTurboRunning}
+            variant="default"
+            className="gap-2"
+            title="Premier League, Championship, Bundesliga, 2. Bundesliga, Serie A, Serie B, Ligue 1, Eredivisie, Eerste Divisie"
+          >
+            <Rocket className="w-4 h-4" />
+            {isTopLeaguesTurboRunning ? "Running..." : "Top Leagues Turbo"}
+          </Button>
+          <Button 
+            onClick={handleTurboBackfill} 
+            disabled={isTurboRunning || isTopLeaguesTurboRunning}
+            variant="outline"
+            className="gap-2"
+          >
+            <Rocket className="w-4 h-4" />
+            {isTurboRunning ? "Running..." : "All Leagues Turbo"}
+          </Button>
+        </div>
       </div>
 
       {/* Tabs for different sections */}
