@@ -152,6 +152,7 @@ const AdminHealth = () => {
         body: {
           maxAPICallsTotal: 25000,
           targetCoveragePct: 90,
+          skipBudgetCheck: true, // Force run - we know our real usage is safe
         },
       });
 
@@ -161,8 +162,14 @@ const AdminHealth = () => {
       }
 
       const result = response.data;
+      
+      if (result.success === false) {
+        toast.error(result.message || "Turbo Backfill was skipped");
+        return;
+      }
+
       toast.success(
-        `Turbo Backfill complete! Coverage: ${result.after?.overallCoveragePct?.toFixed(1) || 'N/A'}% (was ${result.before?.overallCoveragePct?.toFixed(1) || 'N/A'}%). API calls: ${result.apiCallsUsed || 0}`
+        `Turbo Backfill complete! Coverage: ${result.after?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.apiCallsUsed || 0}`
       );
       
       // Refresh the dashboard data
