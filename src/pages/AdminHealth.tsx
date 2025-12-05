@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle, ShieldAlert } from "lucide-react";
+import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle, ShieldAlert, Rocket } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 import { StatsHealthDashboard } from "@/components/StatsHealthDashboard";
 
@@ -112,7 +113,9 @@ const AdminHealth = () => {
     checkAdminStatus();
   }, [navigate]);
 
-  const { data, isLoading, error } = useQuery<AdminHealthResponse>({
+  const [isTurboRunning, setIsTurboRunning] = useState(false);
+
+  const { data, isLoading, error, refetch } = useQuery<AdminHealthResponse>({
     queryKey: ["admin-health"],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -130,6 +133,46 @@ const AdminHealth = () => {
     enabled: isAdmin === true,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
+
+  const handleTurboBackfill = async () => {
+    setIsTurboRunning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("No session");
+        return;
+      }
+
+      toast.info("Starting Turbo Backfill... This may take several minutes.");
+
+      const response = await supabase.functions.invoke("stats-turbo-backfill", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: {
+          maxAPICallsTotal: 25000,
+          targetCoveragePct: 90,
+        },
+      });
+
+      if (response.error) {
+        toast.error(`Turbo Backfill failed: ${response.error.message}`);
+        return;
+      }
+
+      const result = response.data;
+      toast.success(
+        `Turbo Backfill complete! Coverage: ${result.after?.overallCoveragePct?.toFixed(1) || 'N/A'}% (was ${result.before?.overallCoveragePct?.toFixed(1) || 'N/A'}%). API calls: ${result.apiCallsUsed || 0}`
+      );
+      
+      // Refresh the dashboard data
+      refetch();
+    } catch (err: any) {
+      toast.error(`Turbo Backfill error: ${err.message}`);
+    } finally {
+      setIsTurboRunning(false);
+    }
+  };
 
   if (isAdmin === null || isLoading) {
     return (
@@ -240,6 +283,15 @@ const AdminHealth = () => {
             </p>
           </div>
         </div>
+        <Button 
+          onClick={handleTurboBackfill} 
+          disabled={isTurboRunning}
+          variant="default"
+          className="gap-2"
+        >
+          <Rocket className="w-4 h-4" />
+          {isTurboRunning ? "Running Turbo..." : "Turbo Backfill"}
+        </Button>
       </div>
 
       {/* Tabs for different sections */}
