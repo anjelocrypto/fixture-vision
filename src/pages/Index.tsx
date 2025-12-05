@@ -804,7 +804,7 @@ const Index = () => {
             minOdds: lastTicketParams.targetMin || 1.25,
             maxOdds: lastTicketParams.targetMax || 5.0,
             includeMarkets: lastTicketParams.includeMarkets || ["goals", "corners", "cards"],
-            dayRange: lastTicketParams.dayRange || "next_3_days",
+            dayRange: lastTicketParams.dayRange || "next_2_days",
             countryCode: lastTicketParams.countryCode,
             leagueIds: lastTicketParams.leagueIds,
             previousTicketHash: ticketHash,

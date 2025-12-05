@@ -161,8 +161,8 @@ serve(async (req) => {
       return errorResponse("Unauthorized", origin, 401, req);
     }
 
-    // Parse and validate request body
-    let windowHours = 120;
+    // Parse and validate request body (default 48h per UPCOMING_WINDOW_HOURS)
+    let windowHours = 48;
     let leagueWhitelist: number[] | undefined;
     
     try {
