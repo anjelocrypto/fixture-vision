@@ -116,20 +116,139 @@ const AdminHealth = () => {
   const [isTurboRunning, setIsTurboRunning] = useState(false);
   const [isTopLeaguesTurboRunning, setIsTopLeaguesTurboRunning] = useState(false);
 
-  // Top leagues for targeted turbo backfill
-  const TOP_LEAGUES = {
-    ids: [39, 40, 78, 79, 135, 136, 61, 88, 89, 140],
+  // All leagues for turbo backfill (matching ALLOWED_LEAGUE_IDS)
+  const ALL_TURBO_LEAGUES = {
+    ids: [
+      // UEFA Club Competitions
+      2, 3, 848,
+      // Domestic Cups
+      45, 48, 143, 137, 81, 66,
+      // England
+      39, 40, 41, 42, 43, 50, 51, 667,
+      // Spain
+      140, 141, 435, 436, 663,
+      // Italy
+      135, 136, 269,
+      // Germany
+      78, 79, 80,
+      // France
+      61, 62, 556,
+      // Netherlands
+      88, 89,
+      // Portugal
+      94, 95,
+      // Turkey
+      203, 204,
+      // Belgium
+      144, 145,
+      // Scotland
+      179, 180,
+      // Austria
+      218, 219,
+      // Switzerland
+      207, 208,
+      // Greece
+      197, 198,
+      // Denmark
+      119,
+      // Norway
+      103,
+      // Sweden
+      113, 114,
+      // Poland
+      106, 107,
+      // Czech Republic
+      345,
+      // Romania
+      283,
+      // Croatia
+      210,
+      // Serbia
+      286,
+      // Bulgaria
+      172,
+      // Hungary
+      271,
+      // Ukraine
+      333,
+      // Russia
+      235,
+      // USA
+      253, 254,
+      // Mexico
+      262, 263,
+      // Brazil
+      71, 72,
+      // Argentina
+      128, 129,
+      // Colombia
+      239,
+      // Chile
+      265,
+      // Uruguay
+      274,
+      // Paraguay
+      250,
+      // Ecuador
+      242,
+      // Japan
+      98, 99,
+      // South Korea
+      292,
+      // Australia
+      188,
+      // China
+      17,
+      // Saudi Arabia
+      307,
+      // UAE
+      301,
+      // Qatar
+      305,
+      // South Africa
+      288,
+      // Egypt
+      233,
+      // Morocco
+      200,
+      // Algeria
+      185,
+      // Tunisia
+      202,
+      // Israel
+      383,
+      // Iceland
+      165,
+      // Finland
+      244
+    ],
     names: {
-      39: "Premier League",
-      40: "Championship", 
-      78: "Bundesliga",
-      79: "2. Bundesliga",
-      135: "Serie A",
-      136: "Serie B",
-      61: "Ligue 1",
-      88: "Eredivisie",
-      89: "Eerste Divisie",
-      140: "La Liga"
+      2: "Champions League", 3: "Europa League", 848: "Conference League",
+      45: "FA Cup", 48: "EFL Cup", 143: "Copa del Rey", 137: "Coppa Italia", 81: "DFB-Pokal", 66: "Coupe de France",
+      39: "Premier League", 40: "Championship", 41: "League One", 42: "League Two", 43: "National League", 50: "NL North", 51: "NL South", 667: "PL2",
+      140: "La Liga", 141: "La Liga 2", 435: "Primera RFEF G1", 436: "Primera RFEF G2", 663: "Primera Fem",
+      135: "Serie A", 136: "Serie B", 269: "Serie C",
+      78: "Bundesliga", 79: "2. Bundesliga", 80: "3. Liga",
+      61: "Ligue 1", 62: "Ligue 2", 556: "National 1",
+      88: "Eredivisie", 89: "Eerste Divisie",
+      94: "Primeira Liga", 95: "Liga Portugal 2",
+      203: "Super Lig", 204: "1. Lig",
+      144: "Pro League", 145: "Challenger Pro League",
+      179: "Scottish Prem", 180: "Scottish Champ",
+      218: "Austrian BL", 219: "Austrian 2. Liga",
+      207: "Swiss Super League", 208: "Challenge League",
+      197: "Greek Super League", 198: "Greek Super League 2",
+      119: "Danish Superliga", 103: "Eliteserien", 113: "Allsvenskan", 114: "Superettan",
+      106: "Ekstraklasa", 107: "I Liga", 345: "Czech First League", 283: "Liga I",
+      210: "HNL", 286: "Serbian Super Liga", 172: "Bulgarian First League", 271: "NB I",
+      333: "Ukrainian Premier", 235: "Russian Premier",
+      253: "MLS", 254: "USL Championship", 262: "Liga MX", 263: "Liga de Expansion",
+      71: "Brasileirão", 72: "Serie B Brazil", 128: "Liga Profesional", 129: "Primera B",
+      239: "Primera A Colombia", 265: "Primera Chile", 274: "Primera Uruguay", 250: "Division Paraguay", 242: "Serie A Ecuador",
+      98: "J1 League", 99: "J2 League", 292: "K League 1", 188: "A-League", 17: "Chinese Super League",
+      307: "Saudi Pro League", 301: "UAE Pro League", 305: "Qatar Stars League",
+      288: "South African Premier", 233: "Egyptian Premier", 200: "Botola Pro", 185: "Algerian Ligue 1", 202: "Tunisian Ligue 1",
+      383: "Ligat ha'Al", 165: "Icelandic Úrvalsdeild", 244: "Veikkausliiga"
     }
   };
 
@@ -218,33 +337,32 @@ const AdminHealth = () => {
         return;
       }
 
-      const leagueNames = TOP_LEAGUES.ids.map(id => TOP_LEAGUES.names[id as keyof typeof TOP_LEAGUES.names]).join(", ");
-      toast.info(`Starting Top Leagues Turbo Backfill for: ${leagueNames}`, { duration: 5000 });
+      toast.info(`Starting All Leagues Turbo Backfill (${ALL_TURBO_LEAGUES.ids.length} leagues)`, { duration: 5000 });
 
       const response = await supabase.functions.invoke("stats-turbo-backfill", {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: {
-          maxAPICallsTotal: 15000,
+          maxAPICallsTotal: 20000,
           targetCoveragePct: 95,
           upcomingDays: 10,
           daysLookback: 90,
-          priorityLeagues: TOP_LEAGUES.ids,
+          priorityLeagues: ALL_TURBO_LEAGUES.ids,
           skipBudgetCheck: true,
           runType: "stats-turbo-backfill-top-leagues",
         },
       });
 
       if (response.error) {
-        toast.error(`Top Leagues Turbo Backfill failed: ${response.error.message}`);
+        toast.error(`All Leagues Turbo failed: ${response.error.message}`);
         return;
       }
 
       const result = response.data;
       
       if (result.success === false) {
-        toast.error(result.message || "Top Leagues Turbo Backfill was skipped");
+        toast.error(result.message || "All Leagues Turbo was skipped");
         return;
       }
 
@@ -252,19 +370,19 @@ const AdminHealth = () => {
       if (result.status === "started") {
         const beforeCoverage = result.before_metrics?.coverage_pct_gte3 ?? result.before?.coverage_pct_gte3;
         toast.success(
-          `Top Leagues Turbo Backfill started! Coverage: ${beforeCoverage?.toFixed?.(1) ?? beforeCoverage ?? 'N/A'}%. Budget: ${result.allowed_budget || 0} API calls. Check optimizer_run_logs for progress.`,
+          `All Leagues Turbo started! Coverage: ${beforeCoverage?.toFixed?.(1) ?? beforeCoverage ?? 'N/A'}%. Budget: ${result.allowed_budget || 0} API calls.`,
           { duration: 10000 }
         );
       } else {
         toast.success(
-          `Top Leagues Turbo complete! Coverage: ${result.after_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.api_calls_used || 0}`,
+          `All Leagues Turbo complete! Coverage: ${result.after_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}% (was ${result.before_metrics?.coverage_pct_gte3?.toFixed(1) || 'N/A'}%). API calls: ${result.api_calls_used || 0}`,
           { duration: 8000 }
         );
       }
       
       refetch();
     } catch (err: any) {
-      toast.error(`Top Leagues Turbo error: ${err.message}`);
+      toast.error(`All Leagues Turbo error: ${err.message}`);
     } finally {
       setIsTopLeaguesTurboRunning(false);
     }
@@ -385,10 +503,10 @@ const AdminHealth = () => {
             disabled={isTopLeaguesTurboRunning || isTurboRunning}
             variant="default"
             className="gap-2"
-            title="Premier League, Championship, Bundesliga, 2. Bundesliga, Serie A, Serie B, Ligue 1, Eredivisie, Eerste Divisie"
+            title={`All ${ALL_TURBO_LEAGUES.ids.length} supported leagues`}
           >
             <Rocket className="w-4 h-4" />
-            {isTopLeaguesTurboRunning ? "Running..." : "Top Leagues Turbo"}
+            {isTopLeaguesTurboRunning ? "Running..." : "All Leagues Turbo"}
           </Button>
           <Button 
             onClick={handleTurboBackfill} 
