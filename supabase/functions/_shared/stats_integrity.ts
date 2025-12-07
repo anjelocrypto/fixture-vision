@@ -8,7 +8,9 @@
 // 2. Other metrics (corners/cards/fouls/offsides) are NICE-TO-HAVE
 //    - Missing non-goal metrics should NOT block a fixture
 //    - They should be marked as "unavailable" but fixture remains valid
-// 3. CRITICAL violations only for truly corrupted data (impossible values)
+// 3. VALIDATION IS PURELY CACHE-BASED - we do NOT read stats_health_violations
+//    - stats_health_violations is for monitoring/alerting only, not blocking
+//    - Current stats_cache state is the single source of truth
 // ============================================================================
 
 export const MIN_SAMPLE_SIZE = 3;
@@ -22,12 +24,6 @@ interface StatsCache {
   cards: number;
   fouls: number;
   offsides: number;
-}
-
-interface Violation {
-  team_id: number;
-  severity: string;
-  metric: string;
 }
 
 // Per-metric availability info
@@ -46,13 +42,13 @@ export interface StatsValidation {
   homeTeam: {
     hasCache: boolean;
     sampleSize: number;
-    hasCriticalViolation: boolean;
+    hasCriticalViolation: boolean; // Always false now - for backwards compatibility
     metrics?: MetricAvailability;
   };
   awayTeam: {
     hasCache: boolean;
     sampleSize: number;
-    hasCriticalViolation: boolean;
+    hasCriticalViolation: boolean; // Always false now - for backwards compatibility
     metrics?: MetricAvailability;
   };
 }
@@ -102,18 +98,21 @@ function buildMetricAvailability(cache: StatsCache | null): MetricAvailability {
  * - Returns isValid=false ONLY if:
  *   1. No stats_cache entry for either team
  *   2. Goals sample_size < 3 for either team
- *   3. Active CRITICAL violation on GOALS metric
  * 
  * - Does NOT return isValid=false for:
  *   - Missing corners/cards/fouls/offsides (these are nice-to-have)
  *   - Low sample for non-goal metrics
+ *   - Any stats_health_violations (monitoring-only, not blocking)
+ * 
+ * IMPORTANT: This function is PURELY CACHE-BASED. It does NOT query
+ * stats_health_violations table. Violations are for monitoring only.
  */
 export async function validateFixtureStats(
   supabase: any,
   homeTeamId: number,
   awayTeamId: number
 ): Promise<StatsValidation> {
-  // Fetch stats_cache for both teams
+  // Fetch stats_cache for both teams - this is the ONLY data source
   const { data: statsCache } = await supabase
     .from("stats_cache")
     .select("team_id, sample_size, goals, corners, cards, fouls, offsides")
@@ -125,38 +124,26 @@ export async function validateFixtureStats(
   const homeCache = cacheMap.get(homeTeamId);
   const awayCache = cacheMap.get(awayTeamId);
 
-  // Check for active CRITICAL violations on GOALS only
-  const { data: violations } = await supabase
-    .from("stats_health_violations")
-    .select("team_id, severity, metric")
-    .in("team_id", [homeTeamId, awayTeamId])
-    .eq("metric", "goals")
-    .eq("severity", "critical")
-    .is("resolved_at", null);
-
-  const violationMap = new Map<number, Violation>(
-    ((violations || []) as Violation[]).map((v: Violation) => [v.team_id, v])
-  );
-  const homeViolation = violationMap.get(homeTeamId);
-  const awayViolation = violationMap.get(awayTeamId);
+  // NO LONGER CHECK VIOLATIONS - they are for monitoring only, not blocking
+  // The current stats_cache state is the single source of truth
 
   const result: StatsValidation = {
     isValid: true,
     homeTeam: {
       hasCache: !!homeCache,
       sampleSize: homeCache?.sample_size || 0,
-      hasCriticalViolation: !!homeViolation,
+      hasCriticalViolation: false, // Always false - violations don't block anymore
       metrics: buildMetricAvailability(homeCache || null),
     },
     awayTeam: {
       hasCache: !!awayCache,
       sampleSize: awayCache?.sample_size || 0,
-      hasCriticalViolation: !!awayViolation,
+      hasCriticalViolation: false, // Always false - violations don't block anymore
       metrics: buildMetricAvailability(awayCache || null),
     }
   };
 
-  // GOALS-FIRST VALIDATION
+  // GOALS-FIRST VALIDATION - based only on current cache state
   // Home team validation
   if (!homeCache) {
     result.isValid = false;
@@ -164,9 +151,6 @@ export async function validateFixtureStats(
   } else if (homeCache.sample_size < MIN_SAMPLE_SIZE) {
     result.isValid = false;
     result.reason = `Home team (${homeTeamId}) has sample_size=${homeCache.sample_size} (need ${MIN_SAMPLE_SIZE}+ for goals)`;
-  } else if (homeViolation) {
-    result.isValid = false;
-    result.reason = `Home team (${homeTeamId}) has CRITICAL goals violation`;
   }
 
   // Away team validation (only if home passed)
@@ -177,9 +161,6 @@ export async function validateFixtureStats(
     } else if (awayCache.sample_size < MIN_SAMPLE_SIZE) {
       result.isValid = false;
       result.reason = `Away team (${awayTeamId}) has sample_size=${awayCache.sample_size} (need ${MIN_SAMPLE_SIZE}+ for goals)`;
-    } else if (awayViolation) {
-      result.isValid = false;
-      result.reason = `Away team (${awayTeamId}) has CRITICAL goals violation`;
     }
   }
 
@@ -189,6 +170,8 @@ export async function validateFixtureStats(
 /**
  * Batch validates multiple fixtures
  * Returns a map of fixture_id -> validation result
+ * 
+ * IMPORTANT: This is PURELY CACHE-BASED. Violations are for monitoring only.
  */
 export async function validateFixturesBatch(
   supabase: any,
@@ -205,7 +188,7 @@ export async function validateFixturesBatch(
     teamIds.add(f.away_team_id);
   }
 
-  // Fetch all stats_cache entries at once
+  // Fetch all stats_cache entries at once - this is the ONLY data source
   const { data: statsCache } = await supabase
     .from("stats_cache")
     .select("team_id, sample_size, goals, corners, cards, fouls, offsides")
@@ -215,52 +198,36 @@ export async function validateFixturesBatch(
     ((statsCache || []) as StatsCache[]).map((sc: StatsCache) => [sc.team_id, sc])
   );
 
-  // Fetch all active CRITICAL violations on GOALS at once
-  const { data: violations } = await supabase
-    .from("stats_health_violations")
-    .select("team_id, severity, metric")
-    .in("team_id", Array.from(teamIds))
-    .eq("metric", "goals")
-    .eq("severity", "critical")
-    .is("resolved_at", null);
-
-  const violationMap = new Map<number, Violation>(
-    ((violations || []) as Violation[]).map((v: Violation) => [v.team_id, v])
-  );
+  // NO LONGER CHECK VIOLATIONS - they are for monitoring only
 
   // Validate each fixture
   for (const f of fixtures) {
     const homeCache = cacheMap.get(f.home_team_id);
     const awayCache = cacheMap.get(f.away_team_id);
-    const homeViolation = violationMap.get(f.home_team_id);
-    const awayViolation = violationMap.get(f.away_team_id);
 
     const validation: StatsValidation = {
       isValid: true,
       homeTeam: {
         hasCache: !!homeCache,
         sampleSize: homeCache?.sample_size || 0,
-        hasCriticalViolation: !!homeViolation,
+        hasCriticalViolation: false, // Always false - violations don't block
         metrics: buildMetricAvailability(homeCache || null),
       },
       awayTeam: {
         hasCache: !!awayCache,
         sampleSize: awayCache?.sample_size || 0,
-        hasCriticalViolation: !!awayViolation,
+        hasCriticalViolation: false, // Always false - violations don't block
         metrics: buildMetricAvailability(awayCache || null),
       }
     };
 
-    // GOALS-FIRST validation
+    // GOALS-FIRST validation - purely cache-based
     if (!homeCache) {
       validation.isValid = false;
       validation.reason = `Home team missing cache`;
     } else if (homeCache.sample_size < MIN_SAMPLE_SIZE) {
       validation.isValid = false;
       validation.reason = `Home team low sample (${homeCache.sample_size})`;
-    } else if (homeViolation) {
-      validation.isValid = false;
-      validation.reason = `Home team CRITICAL violation`;
     }
 
     if (validation.isValid) {
@@ -270,9 +237,6 @@ export async function validateFixturesBatch(
       } else if (awayCache.sample_size < MIN_SAMPLE_SIZE) {
         validation.isValid = false;
         validation.reason = `Away team low sample (${awayCache.sample_size})`;
-      } else if (awayViolation) {
-        validation.isValid = false;
-        validation.reason = `Away team CRITICAL violation`;
       }
     }
 
