@@ -3,11 +3,13 @@
 // ============================================================================
 // Provides detailed stats analysis for a fixture.
 // 
-// STATS INTEGRITY:
+// STATS INTEGRITY (CACHE-BASED ONLY):
 // - Validates stats_cache exists for both teams
 // - Validates sample_size >= 3
-// - Checks for CRITICAL violations in stats_health_violations
 // - Returns stats_available: false if integrity checks fail
+// 
+// NOTE: stats_health_violations is NOT used as a blocker - it's monitoring-only.
+// The current stats_cache state is the single source of truth.
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -95,13 +97,11 @@ serve(async (req) => {
           home_team_status: {
             has_cache: integrityCheck.homeTeam.hasCache,
             sample_size: integrityCheck.homeTeam.sampleSize,
-            has_critical_violation: integrityCheck.homeTeam.hasCriticalViolation,
             sufficient_data: integrityCheck.homeTeam.sampleSize >= MIN_SAMPLE_SIZE
           },
           away_team_status: {
             has_cache: integrityCheck.awayTeam.hasCache,
             sample_size: integrityCheck.awayTeam.sampleSize,
-            has_critical_violation: integrityCheck.awayTeam.hasCriticalViolation,
             sufficient_data: integrityCheck.awayTeam.sampleSize >= MIN_SAMPLE_SIZE
           },
           message: "Stats not available for this fixture due to insufficient or unreliable data"
