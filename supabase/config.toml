@@ -134,3 +134,7 @@ verify_jwt = false
 # Stats audit: compare cached vs recomputed last-5 averages
 [functions.stats-audit-last-five]
 verify_jwt = false
+
+# Team Totals O1.5 automated refresh (cron every 6 hours)
+[functions.team-totals-refresh]
+verify_jwt = false
