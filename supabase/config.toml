@@ -138,3 +138,7 @@ verify_jwt = false
 # Team Totals O1.5 automated refresh (cron every 6 hours)
 [functions.team-totals-refresh]
 verify_jwt = false
+
+# Who Concedes? - read-only defensive stats ranking (no auth required)
+[functions.who-concedes]
+verify_jwt = false
