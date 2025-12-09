@@ -125,40 +125,39 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
     // Auth check: cron key or admin JWT
-    const cronKey = req.headers.get("x-cron-key");
-    const validCronKey = Deno.env.get("CRON_INTERNAL_KEY");
+    const cronKeyHeader = req.headers.get("x-cron-key");
     const authHeader = req.headers.get("authorization");
 
     let isAuthorized = false;
     let trigger = "unknown";
 
-    if (cronKey && cronKey === validCronKey) {
-      isAuthorized = true;
-      trigger = "cron";
-      console.log("[team-totals-refresh] Authorized via cron key");
-    } else if (authHeader) {
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser(
-          authHeader.replace("Bearer ", "")
-        );
-        if (authError || !user) {
-          return errorResponse("Unauthorized", origin, 401, req);
-        }
-        const { data: roleData } = await supabase.rpc("has_role", {
-          _user_id: user.id,
-          _role: "admin",
-        });
-        if (!roleData) {
-          return errorResponse("Admin access required", origin, 403, req);
-        }
+    // Check X-CRON-KEY first (via RPC to get stored key)
+    if (cronKeyHeader) {
+      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
+      if (!keyError && dbKey && cronKeyHeader === dbKey) {
         isAuthorized = true;
-        trigger = "admin";
-        console.log("[team-totals-refresh] Authorized via admin JWT");
+        trigger = "cron";
+        console.log("[team-totals-refresh] Authorized via cron key");
+      }
+    }
+
+    // If not authorized via cron key, check admin JWT
+    if (!isAuthorized && authHeader && supabaseAnonKey) {
+      try {
+        const userClient = createClient(SUPABASE_URL, supabaseAnonKey, {
+          global: { headers: { Authorization: authHeader } }
+        });
+        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted");
+        if (isWhitelisted) {
+          isAuthorized = true;
+          trigger = "admin";
+          console.log("[team-totals-refresh] Authorized via admin JWT");
+        }
       } catch (authErr) {
         console.error("[team-totals-refresh] Auth error:", authErr);
-        return errorResponse("Authentication error", origin, 401, req);
       }
     }
 
