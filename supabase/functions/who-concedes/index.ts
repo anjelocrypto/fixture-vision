@@ -75,7 +75,8 @@ serve(async (req) => {
 
     console.log(`[who-concedes] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}`);
 
-    // Fetch all finished matches with fixture data
+    // Fetch finished matches - filter by league_id to stay within Supabase's row limits
+    // We get all matches from the requested league (sufficient for ranking that league's teams)
     const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
@@ -92,51 +93,60 @@ serve(async (req) => {
         )
       `)
       .eq("status", "FT")
-      .order("kickoff_at", { ascending: false })
-      .limit(5000);
+      .eq("fixtures.league_id", leagueId)
+      .order("kickoff_at", { ascending: false });
 
     if (matchError) {
       console.error("[who-concedes] Query error:", matchError);
       return errorResponse("Failed to fetch match data", origin, 500, req);
     }
 
-      // Process in JavaScript
-      const teamStats: Map<number, { 
-        name: string; 
-        matches: { conceded: number; kickoff: string; leagueId: number }[] 
-      }> = new Map();
+    // Process in JavaScript
+    const teamStats: Map<number, { 
+      name: string; 
+      matches: { conceded: number; kickoff: string; leagueId: number }[] 
+    }> = new Map();
 
-      for (const match of matchData || []) {
-        const fixture = match.fixtures as any;
-        const homeTeamId = parseInt(fixture.teams_home?.id);
-        const awayTeamId = parseInt(fixture.teams_away?.id);
-        const homeTeamName = fixture.teams_home?.name || `Team ${homeTeamId}`;
-        const awayTeamName = fixture.teams_away?.name || `Team ${awayTeamId}`;
+    console.log(`[who-concedes] Processing ${matchData?.length || 0} matches`);
 
-        // Home team conceded goals_away
-        if (homeTeamId) {
-          if (!teamStats.has(homeTeamId)) {
-            teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
-          }
-          teamStats.get(homeTeamId)!.matches.push({
-            conceded: match.goals_away,
-            kickoff: match.kickoff_at,
-            leagueId: fixture.league_id,
-          });
+    for (const match of matchData || []) {
+      // Handle both array and object formats from Supabase join
+      const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
+      if (!fixture) continue;
+      
+      const homeTeamId = parseInt(String(fixture.teams_home?.id));
+      const awayTeamId = parseInt(String(fixture.teams_away?.id));
+      const homeTeamName = fixture.teams_home?.name || `Team ${homeTeamId}`;
+      const awayTeamName = fixture.teams_away?.name || `Team ${awayTeamId}`;
+
+      if (isNaN(homeTeamId) || isNaN(awayTeamId)) continue;
+
+      // Home team conceded goals_away
+      if (homeTeamId) {
+        if (!teamStats.has(homeTeamId)) {
+          teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
         }
-
-        // Away team conceded goals_home
-        if (awayTeamId) {
-          if (!teamStats.has(awayTeamId)) {
-            teamStats.set(awayTeamId, { name: awayTeamName, matches: [] });
-          }
-          teamStats.get(awayTeamId)!.matches.push({
-            conceded: match.goals_home,
-            kickoff: match.kickoff_at,
-            leagueId: fixture.league_id,
-          });
-        }
+        teamStats.get(homeTeamId)!.matches.push({
+          conceded: match.goals_away,
+          kickoff: match.kickoff_at,
+          leagueId: fixture.league_id,
+        });
       }
+
+      // Away team conceded goals_home
+      if (awayTeamId) {
+        if (!teamStats.has(awayTeamId)) {
+          teamStats.set(awayTeamId, { name: awayTeamName, matches: [] });
+        }
+        teamStats.get(awayTeamId)!.matches.push({
+          conceded: match.goals_home,
+          kickoff: match.kickoff_at,
+          leagueId: fixture.league_id,
+        });
+      }
+    }
+
+    console.log(`[who-concedes] Built stats for ${teamStats.size} unique teams`);
 
       // Calculate rankings
       const rankingResults: Array<{
