@@ -6,6 +6,7 @@ import { RightRail } from "@/components/RightRail";
 import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
 import { WinnerPanel } from "@/components/WinnerPanel";
 import { TeamTotalsPanel } from "@/components/TeamTotalsPanel";
+import { WhoConcedesPanel } from "@/components/WhoConcedesPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -19,7 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
@@ -117,6 +118,7 @@ const Index = () => {
   const [showFilterizer, setShowFilterizer] = useState(false);
   const [showWinner, setShowWinner] = useState(false);
   const [showTeamTotals, setShowTeamTotals] = useState(false);
+  const [showWhoConcedes, setShowWhoConcedes] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -1096,6 +1098,10 @@ const Index = () => {
               </PaywallGate>
             )}
 
+            {showWhoConcedes && (
+              <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -1160,6 +1166,7 @@ const Index = () => {
                     if (!showFilterizer) {
                       setShowWinner(false);
                       setShowTeamTotals(false);
+                      setShowWhoConcedes(false);
                     }
                   }}
                 >
@@ -1174,6 +1181,7 @@ const Index = () => {
                     if (!showWinner) {
                       setShowFilterizer(false);
                       setShowTeamTotals(false);
+                      setShowWhoConcedes(false);
                     }
                   }}
                 >
@@ -1181,18 +1189,34 @@ const Index = () => {
                   {t('common:winner_1x2')}
                 </Button>
                 <Button
-                  className="w-full gap-2"
+                  className="w-full gap-2 mb-2"
                   variant={showTeamTotals ? "default" : "outline"}
                   onClick={() => {
                     setShowTeamTotals(!showTeamTotals);
                     if (!showTeamTotals) {
                       setShowFilterizer(false);
                       setShowWinner(false);
+                      setShowWhoConcedes(false);
                     }
                   }}
                 >
                   <Target className="h-4 w-4" />
                   {t('common:team_totals')}
+                </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant={showWhoConcedes ? "default" : "outline"}
+                  onClick={() => {
+                    setShowWhoConcedes(!showWhoConcedes);
+                    if (!showWhoConcedes) {
+                      setShowFilterizer(false);
+                      setShowWinner(false);
+                      setShowTeamTotals(false);
+                    }
+                  }}
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                  {t('common:who_concedes')}
                 </Button>
               </div>
 
