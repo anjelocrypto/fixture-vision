@@ -535,8 +535,9 @@ export const AdminRefreshButton = () => {
         throw new Error("Not authenticated. Please log in again.");
       }
 
+      // Use the new unified team-totals-refresh function (same as cron uses)
       const { data, error } = await supabase.functions.invoke(
-        "populate-team-totals-candidates",
+        "team-totals-refresh",
         { 
           body: { window_hours: windowHours },
           headers: {
@@ -546,27 +547,20 @@ export const AdminRefreshButton = () => {
       );
 
       if (error) {
-        console.error("Populate team totals error:", error);
+        console.error("Team totals refresh error:", error);
         throw error;
       }
 
-      console.log("Team totals populate result:", data);
+      console.log("Team totals refresh result:", data);
       
-      const summary = `${data.scanned_fixtures}/${data.total_fixtures || data.scanned_fixtures} scanned • ${data.inserted} inserted • ${data.updated} updated • ${data.home_pass} home + ${data.away_pass} away passed`;
+      const summary = `${data.scanned_fixtures}/${data.total_fixtures || data.scanned_fixtures} scanned • ${data.upserted} upserted • ${data.home_pass} home + ${data.away_pass} away passed`;
       
-      if (data.was_limited || data.timed_out) {
-        toast.warning(`Team Totals (Partial): ${summary}`, {
-          description: data.message || "Run again to process remaining fixtures",
-          duration: 8000,
-        });
-      } else {
-        toast.success(`Team Totals: ${summary}`);
-      }
+      toast.success(`Team Totals: ${summary}`);
 
     } catch (error) {
-      console.error("Populate team totals error:", error);
+      console.error("Team totals refresh error:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      toast.error(`Populate failed: ${errorMessage}`);
+      toast.error(`Team Totals failed: ${errorMessage}`);
     } finally {
       setIsPopulatingTeamTotals(false);
     }
