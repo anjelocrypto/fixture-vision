@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, ShieldAlert, X } from "lucide-react";
+import { Loader2, RefreshCw, ShieldAlert, Target, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -20,13 +20,20 @@ interface WhoConcedesPanelProps {
   onClose: () => void;
 }
 
+type Mode = 'concedes' | 'scores';
+
 interface TeamRanking {
   rank: number;
   team_id: number;
   team_name: string;
-  avg_conceded: number;
-  total_conceded: number;
+  avg_value: number;
+  total_value: number;
   matches_used: number;
+  // Backward compatibility
+  avg_conceded?: number;
+  total_conceded?: number;
+  avg_scored?: number;
+  total_scored?: number;
 }
 
 interface LeagueInfo {
@@ -67,6 +74,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
   const { t } = useTranslation(["common"]);
   const { toast } = useToast();
 
+  const [mode, setMode] = useState<Mode>('concedes');
   const [selectedCountry, setSelectedCountry] = useState<string>("England");
   const [selectedLeagueId, setSelectedLeagueId] = useState<number>(39); // Premier League default
   const [results, setResults] = useState<TeamRanking[]>([]);
@@ -75,6 +83,13 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
 
   const availableLeagues = LEAGUES_BY_COUNTRY[selectedCountry] || [];
+
+  const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
+    setResults([]);
+    setLeagueInfo(null);
+    setGeneratedAt(null);
+  };
 
   const handleCountryChange = (country: string) => {
     setSelectedCountry(country);
@@ -96,6 +111,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
         body: { 
           league_id: selectedLeagueId,
           max_matches: 10,
+          mode,
         },
       });
 
@@ -111,19 +127,20 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
 
       if (data.rankings.length === 0) {
         toast({
-          title: "No data available",
+          title: t('common:no_data_available', 'No data available'),
           description: `No historical data found for ${data.league?.name || "this league"}`,
         });
       } else {
+        const modeLabel = data.mode === 'scores' ? 'scoring' : 'conceding';
         toast({
-          title: "Ranking generated",
-          description: `${data.rankings.length} teams ranked for ${data.league?.name}`,
+          title: t('common:ranking_generated', 'Ranking generated'),
+          description: `${data.rankings.length} teams ranked for ${data.league?.name} (${modeLabel})`,
         });
       }
     } catch (error: any) {
-      console.error("Error fetching Who Concedes data:", error);
+      console.error("Error fetching Who Concedes/Scores data:", error);
       toast({
-        title: "Error",
+        title: t('common:error', 'Error'),
         description: error.message || "Failed to generate ranking",
         variant: "destructive",
       });
@@ -140,7 +157,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
 
   // Get color class based on rank
   const getRankBadgeVariant = (rank: number): "destructive" | "secondary" | "outline" => {
-    if (rank <= 3) return "destructive"; // Worst defenses
+    if (rank <= 3) return "destructive"; // Top 3 (worst defense or best attack)
     if (rank <= 6) return "secondary";
     return "outline";
   };
@@ -150,18 +167,44 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 text-destructive" />
-            Who Concedes?
+            {mode === 'concedes' ? (
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+            ) : (
+              <Target className="h-5 w-5 text-primary" />
+            )}
+            {t('common:who_concedes_title', 'Who Concedes / Scores?')}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Teams ranked by average goals conceded (last 10 matches, all competitions)
+          {t('common:who_concedes_subtitle', 'Teams ranked by average goals conceded or scored (last 10 matches, all competitions)')}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Mode Toggle */}
+        <div className="flex gap-2">
+          <Button
+            variant={mode === 'concedes' ? 'default' : 'outline'}
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={() => handleModeChange('concedes')}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            {t('common:who_concedes_mode_concedes', 'Concedes')}
+          </Button>
+          <Button
+            variant={mode === 'scores' ? 'default' : 'outline'}
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={() => handleModeChange('scores')}
+          >
+            <Target className="h-4 w-4" />
+            {t('common:who_concedes_mode_scores', 'Scores')}
+          </Button>
+        </div>
+
         {/* Selectors */}
         <div className="grid grid-cols-2 gap-3">
           {/* Country Selector */}
@@ -213,10 +256,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Generating...
+                {t('common:generating', 'Generating...')}
               </>
             ) : (
-              "Show Ranking"
+              t('common:show_ranking', 'Show Ranking')
             )}
           </Button>
           {results.length > 0 && (
@@ -268,10 +311,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
                         {team.team_name}
                       </TableCell>
                       <TableCell className="text-right font-bold tabular-nums">
-                        {team.avg_conceded.toFixed(2)}
+                        {team.avg_value.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {team.total_conceded}
+                        {team.total_value}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={team.matches_used < 10 ? "text-amber-500" : "text-muted-foreground"}>
@@ -285,7 +328,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             </div>
 
             <p className="text-xs text-muted-foreground text-center">
-              Teams at the top concede the most goals • Based on last 10 matches across all competitions
+              {mode === 'concedes' 
+                ? t('common:who_concedes_footer_concedes', 'Teams at the top concede the most goals • Based on last 10 matches across all competitions')
+                : t('common:who_concedes_footer_scores', 'Teams at the top score the most goals • Based on last 10 matches across all competitions')
+              }
             </p>
           </div>
         )}
@@ -293,7 +339,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
         {/* Empty State */}
         {!loading && results.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            Select a league and click "Show Ranking" to see which teams concede the most goals.
+            {t('common:who_concedes_empty', 'Select a league and click "Show Ranking" to see which teams concede or score the most goals.')}
           </div>
         )}
       </CardContent>
