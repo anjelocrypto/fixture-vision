@@ -3,13 +3,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 /**
- * Who Concedes? Edge Function
+ * Who Concedes / Scores? Edge Function
  * 
- * Returns teams ranked by average goals conceded per match
+ * Returns teams ranked by average goals conceded OR scored per match
  * over their last 10 finished games (all competitions).
+ * 
+ * Supports two modes:
+ * - 'concedes' (default): Teams ranked by goals conceded (worst defense first)
+ * - 'scores': Teams ranked by goals scored (best attack first)
  * 
  * 100% Postgres-based - NO external API calls.
  */
+
+type Mode = 'concedes' | 'scores';
 
 // Supported leagues for v1 (England, Spain, Germany, Italy, Netherlands)
 const SUPPORTED_LEAGUES: Record<number, { name: string; country: string }> = {
@@ -46,7 +52,7 @@ serve(async (req) => {
 
   try {
     // Parse request body
-    let body: { league_id?: number; max_matches?: number } = {};
+    let body: { league_id?: number; max_matches?: number; mode?: Mode } = {};
     try {
       body = await req.json();
     } catch {
@@ -55,6 +61,7 @@ serve(async (req) => {
 
     const leagueId = body.league_id;
     const maxMatches = Math.min(Math.max(body.max_matches || 10, 1), 20); // Clamp 1-20
+    const mode: Mode = body.mode === 'scores' ? 'scores' : 'concedes'; // Default to 'concedes'
 
     // Validate league_id
     if (!leagueId || !SUPPORTED_LEAGUE_IDS.includes(leagueId)) {
@@ -73,7 +80,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[who-concedes] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}`);
+    console.log(`[who-concedes] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}, mode=${mode}`);
 
     // Fetch finished matches - filter by league_id to stay within Supabase's row limits
     // We get all matches from the requested league (sufficient for ranking that league's teams)
@@ -104,10 +111,10 @@ serve(async (req) => {
     // Process in JavaScript
     const teamStats: Map<number, { 
       name: string; 
-      matches: { conceded: number; kickoff: string; leagueId: number }[] 
+      matches: { metricValue: number; kickoff: string; leagueId: number }[] 
     }> = new Map();
 
-    console.log(`[who-concedes] Processing ${matchData?.length || 0} matches`);
+    console.log(`[who-concedes] Processing ${matchData?.length || 0} matches in ${mode} mode`);
 
     for (const match of matchData || []) {
       // Handle both array and object formats from Supabase join
@@ -121,25 +128,31 @@ serve(async (req) => {
 
       if (isNaN(homeTeamId) || isNaN(awayTeamId)) continue;
 
-      // Home team conceded goals_away
+      // Determine metric value based on mode
+      // For 'concedes': home team uses goals_away, away team uses goals_home
+      // For 'scores': home team uses goals_home, away team uses goals_away
+      const homeMetricValue = mode === 'scores' ? match.goals_home : match.goals_away;
+      const awayMetricValue = mode === 'scores' ? match.goals_away : match.goals_home;
+
+      // Home team
       if (homeTeamId) {
         if (!teamStats.has(homeTeamId)) {
           teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
         }
         teamStats.get(homeTeamId)!.matches.push({
-          conceded: match.goals_away,
+          metricValue: homeMetricValue,
           kickoff: match.kickoff_at,
           leagueId: fixture.league_id,
         });
       }
 
-      // Away team conceded goals_home
+      // Away team
       if (awayTeamId) {
         if (!teamStats.has(awayTeamId)) {
           teamStats.set(awayTeamId, { name: awayTeamName, matches: [] });
         }
         teamStats.get(awayTeamId)!.matches.push({
-          conceded: match.goals_home,
+          metricValue: awayMetricValue,
           kickoff: match.kickoff_at,
           leagueId: fixture.league_id,
         });
@@ -148,57 +161,73 @@ serve(async (req) => {
 
     console.log(`[who-concedes] Built stats for ${teamStats.size} unique teams`);
 
-      // Calculate rankings
-      const rankingResults: Array<{
-        rank: number;
-        team_id: number;
-        team_name: string;
-        avg_conceded: number;
-        total_conceded: number;
-        matches_used: number;
-      }> = [];
+    // Calculate rankings
+    const rankingResults: Array<{
+      rank: number;
+      team_id: number;
+      team_name: string;
+      avg_value: number;
+      total_value: number;
+      matches_used: number;
+      // Backward compatibility fields
+      avg_conceded?: number;
+      total_conceded?: number;
+      avg_scored?: number;
+      total_scored?: number;
+    }> = [];
 
-      for (const [teamId, stats] of teamStats) {
-        // Sort matches by date DESC and take last N
-        stats.matches.sort((a, b) => 
-          new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
-        );
-        const lastNMatches = stats.matches.slice(0, maxMatches);
+    for (const [teamId, stats] of teamStats) {
+      // Sort matches by date DESC and take last N
+      stats.matches.sort((a, b) => 
+        new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
+      );
+      const lastNMatches = stats.matches.slice(0, maxMatches);
 
-        // Determine primary league (from most recent match)
-        const primaryLeagueId = lastNMatches[0]?.leagueId;
+      // Determine primary league (from most recent match)
+      const primaryLeagueId = lastNMatches[0]?.leagueId;
 
-        // Only include teams whose primary league matches requested league
-        if (primaryLeagueId !== leagueId) continue;
+      // Only include teams whose primary league matches requested league
+      if (primaryLeagueId !== leagueId) continue;
 
-        const totalConceded = lastNMatches.reduce((sum, m) => sum + m.conceded, 0);
-        const avgConceded = lastNMatches.length > 0 
-          ? Math.round((totalConceded / lastNMatches.length) * 100) / 100 
-          : 0;
+      const totalValue = lastNMatches.reduce((sum, m) => sum + m.metricValue, 0);
+      const avgValue = lastNMatches.length > 0 
+        ? Math.round((totalValue / lastNMatches.length) * 100) / 100 
+        : 0;
 
-        rankingResults.push({
-          rank: 0, // Will be assigned after sorting
-          team_id: teamId,
-          team_name: stats.name,
-          avg_conceded: avgConceded,
-          total_conceded: totalConceded,
-          matches_used: lastNMatches.length,
-        });
+      const result: typeof rankingResults[0] = {
+        rank: 0, // Will be assigned after sorting
+        team_id: teamId,
+        team_name: stats.name,
+        avg_value: avgValue,
+        total_value: totalValue,
+        matches_used: lastNMatches.length,
+      };
+
+      // Add mode-specific backward compatibility fields
+      if (mode === 'concedes') {
+        result.avg_conceded = avgValue;
+        result.total_conceded = totalValue;
+      } else {
+        result.avg_scored = avgValue;
+        result.total_scored = totalValue;
       }
 
-      // Sort by avg_conceded DESC (worst defense first)
-      rankingResults.sort((a, b) => {
-        if (b.avg_conceded !== a.avg_conceded) return b.avg_conceded - a.avg_conceded;
-        return b.total_conceded - a.total_conceded;
-      });
+      rankingResults.push(result);
+    }
 
-      // Assign ranks
-      rankingResults.forEach((r, i) => {
-        r.rank = i + 1;
-      });
+    // Sort by avg_value DESC (highest value first - worst defense or best attack)
+    rankingResults.sort((a, b) => {
+      if (b.avg_value !== a.avg_value) return b.avg_value - a.avg_value;
+      return b.total_value - a.total_value;
+    });
+
+    // Assign ranks
+    rankingResults.forEach((r, i) => {
+      r.rank = i + 1;
+    });
 
     const duration = Date.now() - startTime;
-    console.log(`[who-concedes] Generated ${rankingResults.length} rankings in ${duration}ms`);
+    console.log(`[who-concedes] Generated ${rankingResults.length} rankings in ${duration}ms (mode=${mode})`);
 
     return jsonResponse({
       league: {
@@ -208,6 +237,7 @@ serve(async (req) => {
       },
       rankings: rankingResults,
       max_matches: maxMatches,
+      mode,
       generated_at: new Date().toISOString(),
       duration_ms: duration,
     }, origin);
