@@ -209,10 +209,12 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
         <div className="grid grid-cols-2 gap-3">
           {/* Country Selector */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Country</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              {t('common:who_concedes_country', 'Country')}
+            </label>
             <Select value={selectedCountry} onValueChange={handleCountryChange}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select country" />
+                <SelectValue placeholder={t('common:who_concedes_country', 'Country')} />
               </SelectTrigger>
               <SelectContent>
                 {COUNTRIES.map((country) => (
@@ -226,7 +228,9 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
 
           {/* League Selector */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">League</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              {t('common:who_concedes_league', 'League')}
+            </label>
             <Select 
               value={selectedLeagueId.toString()} 
               onValueChange={(v) => {
@@ -237,7 +241,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select league" />
+                <SelectValue placeholder={t('common:who_concedes_league', 'League')} />
               </SelectTrigger>
               <SelectContent>
                 {availableLeagues.map((league) => (
@@ -279,7 +283,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-muted-foreground">
-                {leagueInfo?.name} • {results.length} teams
+                {leagueInfo?.name} • {t('common:who_concedes_teams_count', '{{count}} teams', { count: results.length })}
               </span>
               {generatedAt && (
                 <span className="text-xs text-muted-foreground">
@@ -293,10 +297,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
                 <TableHeader className="sticky top-0 bg-background">
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
-                    <TableHead>Team</TableHead>
-                    <TableHead className="text-right w-20">Avg</TableHead>
-                    <TableHead className="text-right w-16">Total</TableHead>
-                    <TableHead className="text-right w-16">Used</TableHead>
+                    <TableHead>{t('common:who_concedes_team', 'Team')}</TableHead>
+                    <TableHead className="text-right w-20">{t('common:who_concedes_avg', 'Avg')}</TableHead>
+                    <TableHead className="text-right w-16">{t('common:who_concedes_total', 'Total')}</TableHead>
+                    <TableHead className="text-right w-16">{t('common:who_concedes_used', 'Used')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
