@@ -102,7 +102,7 @@ const MOCK_COUNTRIES = [
 const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation(['fixtures', 'filterizer', 'optimizer']);
+  const { t, i18n } = useTranslation(['common', 'fixtures', 'filterizer', 'optimizer']);
   const queryClient = useQueryClient();
   const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
   const isMobile = useIsMobile();
