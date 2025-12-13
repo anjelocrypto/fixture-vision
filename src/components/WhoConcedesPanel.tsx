@@ -71,7 +71,7 @@ const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
 const COUNTRIES = Object.keys(LEAGUES_BY_COUNTRY);
 
 export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
-  const { t } = useTranslation(["common"]);
+  const { t } = useTranslation("common");
   const { toast } = useToast();
 
   const [mode, setMode] = useState<Mode>('concedes');
@@ -127,20 +127,20 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
 
       if (data.rankings.length === 0) {
         toast({
-          title: t('common:no_data_available', 'No data available'),
+          title: t('no_data_available', 'No data available'),
           description: `No historical data found for ${data.league?.name || "this league"}`,
         });
       } else {
         const modeLabel = data.mode === 'scores' ? 'scoring' : 'conceding';
         toast({
-          title: t('common:ranking_generated', 'Ranking generated'),
+          title: t('ranking_generated', 'Ranking generated'),
           description: `${data.rankings.length} teams ranked for ${data.league?.name} (${modeLabel})`,
         });
       }
     } catch (error: any) {
       console.error("Error fetching Who Concedes/Scores data:", error);
       toast({
-        title: t('common:error', 'Error'),
+        title: t('error', 'Error'),
         description: error.message || "Failed to generate ranking",
         variant: "destructive",
       });
@@ -172,14 +172,14 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             ) : (
               <Target className="h-5 w-5 text-primary" />
             )}
-            {t('common:who_concedes_title', 'Who Concedes / Scores?')}
+            {t('who_concedes_title', 'Who Concedes / Scores?')}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          {t('common:who_concedes_subtitle', 'Teams ranked by average goals conceded or scored (last 10 matches, all competitions)')}
+          {t('who_concedes_subtitle', 'Teams ranked by average goals conceded or scored (last 10 matches, all competitions)')}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -192,7 +192,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             onClick={() => handleModeChange('concedes')}
           >
             <ShieldAlert className="h-4 w-4" />
-            {t('common:who_concedes_mode_concedes', 'Concedes')}
+            {t('who_concedes_mode_concedes', 'Concedes')}
           </Button>
           <Button
             variant={mode === 'scores' ? 'default' : 'outline'}
@@ -201,7 +201,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             onClick={() => handleModeChange('scores')}
           >
             <Target className="h-4 w-4" />
-            {t('common:who_concedes_mode_scores', 'Scores')}
+            {t('who_concedes_mode_scores', 'Scores')}
           </Button>
         </div>
 
@@ -210,11 +210,11 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
           {/* Country Selector */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              {t('common:who_concedes_country', 'Country')}
+              {t('who_concedes_country', 'Country')}
             </label>
             <Select value={selectedCountry} onValueChange={handleCountryChange}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('common:who_concedes_country', 'Country')} />
+                <SelectValue placeholder={t('who_concedes_country', 'Country')} />
               </SelectTrigger>
               <SelectContent>
                 {COUNTRIES.map((country) => (
@@ -229,7 +229,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
           {/* League Selector */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              {t('common:who_concedes_league', 'League')}
+              {t('who_concedes_league', 'League')}
             </label>
             <Select 
               value={selectedLeagueId.toString()} 
@@ -241,7 +241,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('common:who_concedes_league', 'League')} />
+                <SelectValue placeholder={t('who_concedes_league', 'League')} />
               </SelectTrigger>
               <SelectContent>
                 {availableLeagues.map((league) => (
@@ -260,10 +260,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {t('common:generating', 'Generating...')}
+                {t('generating', 'Generating...')}
               </>
             ) : (
-              t('common:show_ranking', 'Show Ranking')
+              t('show_ranking', 'Show Ranking')
             )}
           </Button>
           {results.length > 0 && (
@@ -283,7 +283,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-muted-foreground">
-                {leagueInfo?.name} • {t('common:who_concedes_teams_count', '{{count}} teams', { count: results.length })}
+                {leagueInfo?.name} • {t('who_concedes_teams_count', '{{count}} teams', { count: results.length })}
               </span>
               {generatedAt && (
                 <span className="text-xs text-muted-foreground">
@@ -297,10 +297,10 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
                 <TableHeader className="sticky top-0 bg-background">
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
-                    <TableHead>{t('common:who_concedes_team', 'Team')}</TableHead>
-                    <TableHead className="text-right w-20">{t('common:who_concedes_avg', 'Avg')}</TableHead>
-                    <TableHead className="text-right w-16">{t('common:who_concedes_total', 'Total')}</TableHead>
-                    <TableHead className="text-right w-16">{t('common:who_concedes_used', 'Used')}</TableHead>
+                    <TableHead>{t('who_concedes_team', 'Team')}</TableHead>
+                    <TableHead className="text-right w-20">{t('who_concedes_avg', 'Avg')}</TableHead>
+                    <TableHead className="text-right w-16">{t('who_concedes_total', 'Total')}</TableHead>
+                    <TableHead className="text-right w-16">{t('who_concedes_used', 'Used')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -333,8 +333,8 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
 
             <p className="text-xs text-muted-foreground text-center">
               {mode === 'concedes' 
-                ? t('common:who_concedes_footer_concedes', 'Teams at the top concede the most goals • Based on last 10 matches across all competitions')
-                : t('common:who_concedes_footer_scores', 'Teams at the top score the most goals • Based on last 10 matches across all competitions')
+                ? t('who_concedes_footer_concedes', 'Teams at the top concede the most goals • Based on last 10 matches across all competitions')
+                : t('who_concedes_footer_scores', 'Teams at the top score the most goals • Based on last 10 matches across all competitions')
               }
             </p>
           </div>
@@ -343,7 +343,7 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
         {/* Empty State */}
         {!loading && results.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            {t('common:who_concedes_empty', 'Select a league and click "Show Ranking" to see which teams concede or score the most goals.')}
+            {t('who_concedes_empty', 'Select a league and click "Show Ranking" to see which teams concede or score the most goals.')}
           </div>
         )}
       </CardContent>
