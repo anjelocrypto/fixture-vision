@@ -60,7 +60,9 @@
   "who_concedes_used": "მატჩ.",
   "who_concedes_teams_count": "{{count}} გუნდი",
   "no_data_available": "მონაცემები არ არის ხელმისაწვდომი",
+  "who_concedes_no_data_desc": "ამ ლიგის ისტორიული მონაცემები არ მოიძებნა",
   "ranking_generated": "რეიტინგი შექმნილია",
+  "who_concedes_ranking_desc": "{{count}} გუნდი დარანჟირდა",
   "generating": "გენერირება...",
   "show_ranking": "რეიტინგის ჩვენება",
   "ai_ticket_creator": "AI ბილეთის შემქმნელი",
@@ -120,5 +122,10 @@
   "password_updated_description": "თქვენი პაროლი წარმატებით განახლდა.",
   "reset_link_invalid": "პაროლის აღდგენის ბმული არასწორია ან ვადაგასულია",
   "reset_link_invalid_description": "პაროლის აღდგენის ბმული არასწორია ან ვადაგასულია. სცადეთ თავიდან.",
-  "update_password": "პაროლის განახლება"
+  "update_password": "პაროლის განახლება",
+  "country_england": "ინგლისი",
+  "country_spain": "ესპანეთი",
+  "country_germany": "გერმანია",
+  "country_italy": "იტალია",
+  "country_netherlands": "ჰოლანდია"
 }

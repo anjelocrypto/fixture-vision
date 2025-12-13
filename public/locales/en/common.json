@@ -60,7 +60,9 @@
   "who_concedes_used": "Used",
   "who_concedes_teams_count": "{{count}} teams",
   "no_data_available": "No data available",
+  "who_concedes_no_data_desc": "No historical data found for this league",
   "ranking_generated": "Ranking generated",
+  "who_concedes_ranking_desc": "{{count}} teams ranked",
   "generating": "Generating...",
   "show_ranking": "Show Ranking",
   "ai_ticket_creator": "AI Ticket Creator",
@@ -120,5 +122,10 @@
   "password_updated_description": "Your password has been updated.",
   "reset_link_invalid": "Reset link is invalid or has expired",
   "reset_link_invalid_description": "Reset link is invalid or has expired. Please request a new password reset.",
-  "update_password": "Update password"
+  "update_password": "Update password",
+  "country_england": "England",
+  "country_spain": "Spain",
+  "country_germany": "Germany",
+  "country_italy": "Italy",
+  "country_netherlands": "Netherlands"
 }
