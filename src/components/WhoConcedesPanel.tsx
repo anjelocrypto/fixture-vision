@@ -44,38 +44,38 @@ interface LeagueInfo {
 
 // Supported leagues grouped by country
 const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
-  England: [
+  england: [
     { id: 39, name: "Premier League" },
     { id: 40, name: "Championship" },
     { id: 41, name: "League One" },
     { id: 42, name: "League Two" },
   ],
-  Spain: [
+  spain: [
     { id: 140, name: "La Liga" },
     { id: 141, name: "La Liga 2" },
   ],
-  Germany: [
+  germany: [
     { id: 78, name: "Bundesliga" },
     { id: 79, name: "2. Bundesliga" },
   ],
-  Italy: [
+  italy: [
     { id: 135, name: "Serie A" },
     { id: 136, name: "Serie B" },
   ],
-  Netherlands: [
+  netherlands: [
     { id: 88, name: "Eredivisie" },
     { id: 89, name: "Eerste Divisie" },
   ],
 };
 
-const COUNTRIES = Object.keys(LEAGUES_BY_COUNTRY);
+const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
 
 export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
 
   const [mode, setMode] = useState<Mode>('concedes');
-  const [selectedCountry, setSelectedCountry] = useState<string>("England");
+  const [selectedCountry, setSelectedCountry] = useState<string>("england");
   const [selectedLeagueId, setSelectedLeagueId] = useState<number>(39); // Premier League default
   const [results, setResults] = useState<TeamRanking[]>([]);
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null);
@@ -128,13 +128,12 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
       if (data.rankings.length === 0) {
         toast({
           title: t('no_data_available', 'No data available'),
-          description: `No historical data found for ${data.league?.name || "this league"}`,
+          description: t('who_concedes_no_data_desc', 'No historical data found for this league'),
         });
       } else {
-        const modeLabel = data.mode === 'scores' ? 'scoring' : 'conceding';
         toast({
           title: t('ranking_generated', 'Ranking generated'),
-          description: `${data.rankings.length} teams ranked for ${data.league?.name} (${modeLabel})`,
+          description: t('who_concedes_ranking_desc', '{{count}} teams ranked', { count: data.rankings.length }),
         });
       }
     } catch (error: any) {
@@ -217,9 +216,9 @@ export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
                 <SelectValue placeholder={t('who_concedes_country', 'Country')} />
               </SelectTrigger>
               <SelectContent>
-                {COUNTRIES.map((country) => (
-                  <SelectItem key={country} value={country}>
-                    {country}
+                {COUNTRY_KEYS.map((countryKey) => (
+                  <SelectItem key={countryKey} value={countryKey}>
+                    {t(`country_${countryKey}`, countryKey.charAt(0).toUpperCase() + countryKey.slice(1))}
                   </SelectItem>
                 ))}
               </SelectContent>
