@@ -7,6 +7,7 @@ import { FilterizerPanel, FilterCriteria } from "@/components/FilterizerPanel";
 import { WinnerPanel } from "@/components/WinnerPanel";
 import { TeamTotalsPanel } from "@/components/TeamTotalsPanel";
 import { WhoConcedesPanel } from "@/components/WhoConcedesPanel";
+import { CardWarPanel } from "@/components/CardWarPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -20,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert, Swords } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
@@ -119,6 +120,7 @@ const Index = () => {
   const [showWinner, setShowWinner] = useState(false);
   const [showTeamTotals, setShowTeamTotals] = useState(false);
   const [showWhoConcedes, setShowWhoConcedes] = useState(false);
+  const [showCardWar, setShowCardWar] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -1102,6 +1104,10 @@ const Index = () => {
               <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
             )}
 
+            {showCardWar && (
+              <CardWarPanel onClose={() => setShowCardWar(false)} />
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -1167,6 +1173,7 @@ const Index = () => {
                       setShowWinner(false);
                       setShowTeamTotals(false);
                       setShowWhoConcedes(false);
+                      setShowCardWar(false);
                     }
                   }}
                 >
@@ -1182,6 +1189,7 @@ const Index = () => {
                       setShowFilterizer(false);
                       setShowTeamTotals(false);
                       setShowWhoConcedes(false);
+                      setShowCardWar(false);
                     }
                   }}
                 >
@@ -1197,6 +1205,7 @@ const Index = () => {
                       setShowFilterizer(false);
                       setShowWinner(false);
                       setShowWhoConcedes(false);
+                      setShowCardWar(false);
                     }
                   }}
                 >
@@ -1204,7 +1213,7 @@ const Index = () => {
                   {t('common:team_totals')}
                 </Button>
                 <Button
-                  className="w-full gap-2"
+                  className="w-full gap-2 mb-2"
                   variant={showWhoConcedes ? "default" : "outline"}
                   onClick={() => {
                     setShowWhoConcedes(!showWhoConcedes);
@@ -1212,11 +1221,28 @@ const Index = () => {
                       setShowFilterizer(false);
                       setShowWinner(false);
                       setShowTeamTotals(false);
+                      setShowCardWar(false);
                     }
                   }}
                 >
                   <ShieldAlert className="h-4 w-4" />
                   {t('common:who_concedes')}
+                </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant={showCardWar ? "default" : "outline"}
+                  onClick={() => {
+                    setShowCardWar(!showCardWar);
+                    if (!showCardWar) {
+                      setShowFilterizer(false);
+                      setShowWinner(false);
+                      setShowTeamTotals(false);
+                      setShowWhoConcedes(false);
+                    }
+                  }}
+                >
+                  <Swords className="h-4 w-4" />
+                  {t('common:card_war')}
                 </Button>
               </div>
 
