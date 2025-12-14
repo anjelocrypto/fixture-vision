@@ -142,3 +142,7 @@ verify_jwt = false
 # Who Concedes? - read-only defensive stats ranking (no auth required)
 [functions.who-concedes]
 verify_jwt = false
+
+# Card War - read-only cards/fouls ranking (no auth required)
+[functions.card-war]
+verify_jwt = false
