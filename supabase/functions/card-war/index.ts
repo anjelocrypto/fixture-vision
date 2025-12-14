@@ -3,21 +3,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 /**
- * Card War Edge Function
+ * WARS Edge Function (Cards/Fouls Ranking)
  * 
  * Returns teams ranked by average cards received OR fouls committed per match
- * over their last N finished games (league matches only).
+ * over their last N finished games (all competitions).
  * 
- * Supports two modes:
- * - 'cards' (default): Teams ranked by cards received (most aggressive first)
- * - 'fouls': Teams ranked by fouls committed (most aggressive first)
+ * KEY LOGIC: Teams are assigned to their CURRENT league based on their
+ * most recent domestic league fixture. This ensures:
+ * - Relegated teams (e.g., Leicester, Ipswich) appear in Championship, not EPL
+ * - Promoted teams appear in their new league
+ * - Stats can still include historical matches from previous leagues
  * 
  * 100% Postgres-based - NO external API calls.
  */
 
 type Mode = 'cards' | 'fouls';
 
-// Supported leagues (same as Who Concedes / Scores)
+// Supported domestic leagues (same as Who Concedes / Scores)
 const SUPPORTED_LEAGUES: Record<number, { name: string; country: string }> = {
   // England
   39: { name: "Premier League", country: "England" },
@@ -82,8 +84,78 @@ serve(async (req) => {
 
     console.log(`[card-war] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}, mode=${mode}`);
 
-    // Fetch finished matches with cards and fouls data
-    // Use fixture_results.league_id (authoritative) instead of fixtures.league_id
+    // STEP 1: Determine each team's CURRENT league based on most recent domestic fixture
+    // This is crucial for correct league assignment after promotion/relegation
+    
+    // Fetch all recent domestic league matches to determine current league per team
+    const { data: allDomesticMatches, error: domesticError } = await supabase
+      .from("fixture_results")
+      .select(`
+        fixture_id,
+        league_id,
+        kickoff_at,
+        fixtures!inner(
+          teams_home,
+          teams_away
+        )
+      `)
+      .eq("status", "FT")
+      .in("league_id", SUPPORTED_LEAGUE_IDS)
+      .order("kickoff_at", { ascending: false });
+
+    if (domesticError) {
+      console.error("[card-war] Error fetching domestic matches:", domesticError);
+      return errorResponse("Failed to fetch match data", origin, 500, req);
+    }
+
+    // Build map: team_id -> current_league_id (based on most recent domestic fixture)
+    const teamCurrentLeagues: Map<number, number> = new Map();
+    
+    for (const match of allDomesticMatches || []) {
+      const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
+      if (!fixture) continue;
+
+      const homeTeamId = parseInt(String(fixture.teams_home?.id));
+      const awayTeamId = parseInt(String(fixture.teams_away?.id));
+
+      // Only set if not already set (first occurrence = most recent due to DESC order)
+      if (!isNaN(homeTeamId) && !teamCurrentLeagues.has(homeTeamId)) {
+        teamCurrentLeagues.set(homeTeamId, match.league_id);
+      }
+      if (!isNaN(awayTeamId) && !teamCurrentLeagues.has(awayTeamId)) {
+        teamCurrentLeagues.set(awayTeamId, match.league_id);
+      }
+    }
+
+    console.log(`[card-war] Determined current league for ${teamCurrentLeagues.size} teams`);
+
+    // STEP 2: Get teams that currently belong to the requested league
+    const teamsInRequestedLeague = new Set<number>();
+    for (const [teamId, currentLeague] of teamCurrentLeagues) {
+      if (currentLeague === leagueId) {
+        teamsInRequestedLeague.add(teamId);
+      }
+    }
+
+    console.log(`[card-war] Found ${teamsInRequestedLeague.size} teams currently in league ${leagueId}`);
+
+    if (teamsInRequestedLeague.size === 0) {
+      return jsonResponse({
+        league: {
+          id: leagueId,
+          name: leagueInfo.name,
+          country: leagueInfo.country,
+        },
+        rankings: [],
+        max_matches: maxMatches,
+        mode,
+        generated_at: new Date().toISOString(),
+        duration_ms: Date.now() - startTime,
+      }, origin);
+    }
+
+    // STEP 3: Fetch ALL finished matches (any league/competition) for teams in the requested league
+    // This allows stats to include historical matches from previous leagues
     const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
@@ -97,13 +169,11 @@ serve(async (req) => {
         status,
         fixtures!inner(
           id,
-          league_id,
           teams_home,
           teams_away
         )
       `)
       .eq("status", "FT")
-      .eq("league_id", leagueId) // Use fixture_results.league_id, not fixtures.league_id
       .order("kickoff_at", { ascending: false });
 
     if (matchError) {
@@ -111,17 +181,15 @@ serve(async (req) => {
       return errorResponse("Failed to fetch match data", origin, 500, req);
     }
 
-    // Process in JavaScript - collect team stats from verified league matches
+    // Process matches - only collect stats for teams that CURRENTLY belong to the requested league
     const teamStats: Map<number, { 
       name: string; 
       matches: { metricValue: number; kickoff: string }[];
-      leagueMatchCount: number; // Count of matches in the requested league
     }> = new Map();
 
-    console.log(`[card-war] Processing ${matchData?.length || 0} matches in ${mode} mode`);
+    console.log(`[card-war] Processing ${matchData?.length || 0} total matches in ${mode} mode`);
 
     for (const match of matchData || []) {
-      // Handle both array and object formats from Supabase join
       const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
       if (!fixture) continue;
       
@@ -133,42 +201,35 @@ serve(async (req) => {
       if (isNaN(homeTeamId) || isNaN(awayTeamId)) continue;
 
       // Determine metric value based on mode
-      // For 'cards': home team uses cards_home, away team uses cards_away
-      // For 'fouls': home team uses fouls_home, away team uses fouls_away
       const homeMetricValue = mode === 'cards' ? match.cards_home : match.fouls_home;
       const awayMetricValue = mode === 'cards' ? match.cards_away : match.fouls_away;
 
       // Skip if null/undefined values
       if (homeMetricValue == null || awayMetricValue == null) continue;
 
-      // Home team
-      if (homeTeamId) {
+      // Only process teams that CURRENTLY belong to the requested league
+      if (teamsInRequestedLeague.has(homeTeamId)) {
         if (!teamStats.has(homeTeamId)) {
-          teamStats.set(homeTeamId, { name: homeTeamName, matches: [], leagueMatchCount: 0 });
+          teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
         }
-        const stats = teamStats.get(homeTeamId)!;
-        stats.matches.push({
+        teamStats.get(homeTeamId)!.matches.push({
           metricValue: homeMetricValue,
           kickoff: match.kickoff_at,
         });
-        stats.leagueMatchCount++;
       }
 
-      // Away team
-      if (awayTeamId) {
+      if (teamsInRequestedLeague.has(awayTeamId)) {
         if (!teamStats.has(awayTeamId)) {
-          teamStats.set(awayTeamId, { name: awayTeamName, matches: [], leagueMatchCount: 0 });
+          teamStats.set(awayTeamId, { name: awayTeamName, matches: [] });
         }
-        const stats = teamStats.get(awayTeamId)!;
-        stats.matches.push({
+        teamStats.get(awayTeamId)!.matches.push({
           metricValue: awayMetricValue,
           kickoff: match.kickoff_at,
         });
-        stats.leagueMatchCount++;
       }
     }
 
-    console.log(`[card-war] Built stats for ${teamStats.size} unique teams`);
+    console.log(`[card-war] Built stats for ${teamStats.size} teams in current league`);
 
     // Calculate rankings
     const rankingResults: Array<{
@@ -180,25 +241,21 @@ serve(async (req) => {
       matches_used: number;
     }> = [];
 
-    // Minimum matches required in the league to be included in rankings
-    // Real top-division teams have ~20+ league matches per season
-    // This filters out teams with fake/speculative placeholder data from future seasons
-    // (e.g., Sunderland appearing in EPL with 7 fake 2025-26 matches)
-    const MIN_LEAGUE_MATCHES = 15;
+    // Minimum matches required to be included in rankings
+    const MIN_MATCHES = 5;
 
     for (const [teamId, stats] of teamStats) {
-      // Filter out teams that don't have enough matches in this league
-      // This prevents Championship teams appearing in EPL rankings due to bad data
-      if (stats.leagueMatchCount < MIN_LEAGUE_MATCHES) {
-        console.log(`[card-war] Skipping ${stats.name} (team_id=${teamId}): only ${stats.leagueMatchCount} matches in league ${leagueId}`);
-        continue;
-      }
-
       // Sort matches by date DESC and take last N
       stats.matches.sort((a, b) => 
         new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
       );
       const lastNMatches = stats.matches.slice(0, maxMatches);
+
+      // Skip teams with insufficient match data
+      if (lastNMatches.length < MIN_MATCHES) {
+        console.log(`[card-war] Skipping ${stats.name} (team_id=${teamId}): only ${lastNMatches.length} matches`);
+        continue;
+      }
 
       const totalValue = lastNMatches.reduce((sum, m) => sum + m.metricValue, 0);
       const avgValue = lastNMatches.length > 0 
@@ -206,7 +263,7 @@ serve(async (req) => {
         : 0;
 
       rankingResults.push({
-        rank: 0, // Will be assigned after sorting
+        rank: 0,
         team_id: teamId,
         team_name: stats.name,
         avg_value: avgValue,
