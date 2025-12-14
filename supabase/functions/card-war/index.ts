@@ -9,10 +9,11 @@ import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "..
  * over their last N finished games (all competitions).
  * 
  * KEY LOGIC: Teams are assigned to their CURRENT league based on their
- * most recent domestic league fixture. This ensures:
- * - Relegated teams (e.g., Leicester, Ipswich) appear in Championship, not EPL
- * - Promoted teams appear in their new league
- * - Stats can still include historical matches from previous leagues
+ * most recent domestic league fixture from the CURRENT SEASON (2024-25).
+ * This ensures:
+ * - We ignore speculative/placeholder 2025-26 data from API-Football
+ * - Relegated teams appear in their correct current league
+ * - Stats use real matches from the 2024-25 season only
  * 
  * 100% Postgres-based - NO external API calls.
  */
@@ -41,6 +42,11 @@ const SUPPORTED_LEAGUES: Record<number, { name: string; country: string }> = {
 };
 
 const SUPPORTED_LEAGUE_IDS = Object.keys(SUPPORTED_LEAGUES).map(Number);
+
+// Current season date range - only use fixtures from 2024-25 season
+// This filters out speculative 2025-26 placeholder data
+const CURRENT_SEASON_START = '2024-08-01';
+const CURRENT_SEASON_END = '2025-07-31';
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "*";
@@ -84,34 +90,42 @@ serve(async (req) => {
 
     console.log(`[card-war] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}, mode=${mode}`);
 
-    // STEP 1: Determine each team's CURRENT league based on most recent domestic fixture
-    // This is crucial for correct league assignment after promotion/relegation
-    
-    // Fetch all recent domestic league matches to determine current league per team
-    const { data: allDomesticMatches, error: domesticError } = await supabase
+    // STEP 1: Fetch all 2024-25 season domestic league matches with cards/fouls
+    // This ensures we're using real data, not speculative 2025-26 placeholders
+    const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
         fixture_id,
         league_id,
+        cards_home,
+        cards_away,
+        fouls_home,
+        fouls_away,
         kickoff_at,
+        status,
         fixtures!inner(
+          id,
           teams_home,
           teams_away
         )
       `)
       .eq("status", "FT")
       .in("league_id", SUPPORTED_LEAGUE_IDS)
+      .gte("kickoff_at", CURRENT_SEASON_START)
+      .lte("kickoff_at", CURRENT_SEASON_END)
       .order("kickoff_at", { ascending: false });
 
-    if (domesticError) {
-      console.error("[card-war] Error fetching domestic matches:", domesticError);
+    if (matchError) {
+      console.error("[card-war] Error fetching matches:", matchError);
       return errorResponse("Failed to fetch match data", origin, 500, req);
     }
 
-    // Build map: team_id -> current_league_id (based on most recent domestic fixture)
+    console.log(`[card-war] Fetched ${matchData?.length || 0} matches from 2024-25 season`);
+
+    // Build map: team_id -> current_league_id (based on most recent 2024-25 fixture)
     const teamCurrentLeagues: Map<number, number> = new Map();
     
-    for (const match of allDomesticMatches || []) {
+    for (const match of matchData || []) {
       const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
       if (!fixture) continue;
 
@@ -154,40 +168,11 @@ serve(async (req) => {
       }, origin);
     }
 
-    // STEP 3: Fetch ALL finished matches (any league/competition) for teams in the requested league
-    // This allows stats to include historical matches from previous leagues
-    const { data: matchData, error: matchError } = await supabase
-      .from("fixture_results")
-      .select(`
-        fixture_id,
-        league_id,
-        cards_home,
-        cards_away,
-        fouls_home,
-        fouls_away,
-        kickoff_at,
-        status,
-        fixtures!inner(
-          id,
-          teams_home,
-          teams_away
-        )
-      `)
-      .eq("status", "FT")
-      .order("kickoff_at", { ascending: false });
-
-    if (matchError) {
-      console.error("[card-war] Query error:", matchError);
-      return errorResponse("Failed to fetch match data", origin, 500, req);
-    }
-
-    // Process matches - only collect stats for teams that CURRENTLY belong to the requested league
+    // STEP 3: Build stats for teams currently in the requested league
     const teamStats: Map<number, { 
       name: string; 
       matches: { metricValue: number; kickoff: string }[];
     }> = new Map();
-
-    console.log(`[card-war] Processing ${matchData?.length || 0} total matches in ${mode} mode`);
 
     for (const match of matchData || []) {
       const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
@@ -207,7 +192,7 @@ serve(async (req) => {
       // Skip if null/undefined values
       if (homeMetricValue == null || awayMetricValue == null) continue;
 
-      // Only process teams that CURRENTLY belong to the requested league
+      // Only collect stats for teams that CURRENTLY belong to the requested league
       if (teamsInRequestedLeague.has(homeTeamId)) {
         if (!teamStats.has(homeTeamId)) {
           teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
