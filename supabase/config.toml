@@ -150,3 +150,11 @@ verify_jwt = false
 # Pipeline Health Check - monitors data freshness and job status
 [functions.pipeline-health-check]
 verify_jwt = false
+
+# Auto-backfill missing fixture results (cron every 30 min)
+[functions.auto-backfill-results]
+verify_jwt = false
+
+# Analytics smoke test (cron every 6 hours)
+[functions.smoke-test-analytics]
+verify_jwt = false
