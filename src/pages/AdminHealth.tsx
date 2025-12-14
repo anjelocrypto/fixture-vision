@@ -115,6 +115,7 @@ const AdminHealth = () => {
 
   const [isTurboRunning, setIsTurboRunning] = useState(false);
   const [isTopLeaguesTurboRunning, setIsTopLeaguesTurboRunning] = useState(false);
+  const [isResultsBackfillRunning, setIsResultsBackfillRunning] = useState(false);
 
   // All leagues for turbo backfill (matching ALLOWED_LEAGUE_IDS)
   const ALL_TURBO_LEAGUES = {
@@ -388,6 +389,50 @@ const AdminHealth = () => {
     }
   };
 
+  // Handler for backfilling missing UEFA + cup results
+  const handleResultsBackfill = async () => {
+    setIsResultsBackfillRunning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("No session");
+        return;
+      }
+
+      // UEFA + Cups leagues to backfill
+      const backfillLeagues = [3, 848, 66, 48]; // Europa League, Conference League, Coupe de France, EFL Cup
+      toast.info(`Backfilling results for UEFA & Cup competitions...`, { duration: 5000 });
+
+      const response = await supabase.functions.invoke("results-refresh", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: {
+          backfill_league_ids: backfillLeagues,
+          backfill_since: "2025-07-01",
+          limit: 50,
+        },
+      });
+
+      if (response.error) {
+        toast.error(`Results backfill failed: ${response.error.message}`);
+        return;
+      }
+
+      const result = response.data;
+      toast.success(
+        `Results backfill complete! Inserted: ${result.inserted || 0}, Errors: ${result.errors?.length || 0}, Has more: ${result.has_more || false}`,
+        { duration: 8000 }
+      );
+      
+      refetch();
+    } catch (err: any) {
+      toast.error(`Results backfill error: ${err.message}`);
+    } finally {
+      setIsResultsBackfillRunning(false);
+    }
+  };
+
   if (isAdmin === null || isLoading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
@@ -497,7 +542,17 @@ const AdminHealth = () => {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button 
+            onClick={handleResultsBackfill} 
+            disabled={isResultsBackfillRunning}
+            variant="destructive"
+            className="gap-2"
+            title="Backfill missing UEFA & Cup fixture results"
+          >
+            <Database className="w-4 h-4" />
+            {isResultsBackfillRunning ? "Backfilling..." : "Backfill Results"}
+          </Button>
           <Button 
             onClick={handleTopLeaguesTurboBackfill} 
             disabled={isTopLeaguesTurboRunning || isTurboRunning}
@@ -515,7 +570,7 @@ const AdminHealth = () => {
             className="gap-2"
           >
             <Rocket className="w-4 h-4" />
-            {isTurboRunning ? "Running..." : "All Leagues Turbo"}
+            {isTurboRunning ? "Running..." : "Stats Turbo"}
           </Button>
         </div>
       </div>
