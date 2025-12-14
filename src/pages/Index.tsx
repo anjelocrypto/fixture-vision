@@ -1283,7 +1283,7 @@ const Index = () => {
                   </Button>
                 </div>
 
-                {/* Filterizer, Winner, Team Totals & Who Concedes Toggles */}
+                {/* Filterizer, Winner, Team Totals, Who Concedes & Card War Toggles */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
                   <Button
                     className="w-full gap-2 mb-2"
@@ -1294,6 +1294,7 @@ const Index = () => {
                         setShowWinner(false);
                         setShowTeamTotals(false);
                         setShowWhoConcedes(false);
+                        setShowCardWar(false);
                       }
                       setRightSheetOpen(false);
                     }}
@@ -1310,6 +1311,7 @@ const Index = () => {
                         setShowFilterizer(false);
                         setShowTeamTotals(false);
                         setShowWhoConcedes(false);
+                        setShowCardWar(false);
                       }
                       setRightSheetOpen(false);
                     }}
@@ -1326,6 +1328,7 @@ const Index = () => {
                         setShowFilterizer(false);
                         setShowWinner(false);
                         setShowWhoConcedes(false);
+                        setShowCardWar(false);
                       }
                       setRightSheetOpen(false);
                     }}
@@ -1334,7 +1337,7 @@ const Index = () => {
                     {t('common:team_totals')}
                   </Button>
                   <Button
-                    className="w-full gap-2"
+                    className="w-full gap-2 mb-2"
                     variant={showWhoConcedes ? "default" : "outline"}
                     onClick={() => {
                       setShowWhoConcedes(!showWhoConcedes);
@@ -1342,12 +1345,30 @@ const Index = () => {
                         setShowFilterizer(false);
                         setShowWinner(false);
                         setShowTeamTotals(false);
+                        setShowCardWar(false);
                       }
                       setRightSheetOpen(false);
                     }}
                   >
                     <ShieldAlert className="h-4 w-4" />
                     {t('common:who_concedes')}
+                  </Button>
+                  <Button
+                    className="w-full gap-2"
+                    variant={showCardWar ? "default" : "outline"}
+                    onClick={() => {
+                      setShowCardWar(!showCardWar);
+                      if (!showCardWar) {
+                        setShowFilterizer(false);
+                        setShowWinner(false);
+                        setShowTeamTotals(false);
+                        setShowWhoConcedes(false);
+                      }
+                      setRightSheetOpen(false);
+                    }}
+                  >
+                    <Swords className="h-4 w-4" />
+                    {t('common:card_war')}
                   </Button>
                 </div>
 
