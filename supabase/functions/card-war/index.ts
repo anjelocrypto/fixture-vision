@@ -83,20 +83,21 @@ serve(async (req) => {
     // Calculate date boundaries
     const fullLookbackDate = new Date();
     fullLookbackDate.setMonth(fullLookbackDate.getMonth() - LOOKBACK_MONTHS);
-    const fullLookbackDateStr = fullLookbackDate.toISOString().split('T')[0];
-    
-    const currentSeasonDate = new Date();
-    currentSeasonDate.setMonth(currentSeasonDate.getMonth() - CURRENT_SEASON_MONTHS);
-    const currentSeasonDateStr = currentSeasonDate.toISOString().split('T')[0];
+    const fullLookbackDateStr = fullLookbackDate.toISOString().split("T")[0];
 
-    // STEP 1: Get teams currently in the league (played in last 3 months)
+    // Define CURRENT SEASON as this season (2025-26) starting from Aug 1 of current year
+    const now = new Date();
+    const seasonYear = now.getUTCFullYear();
+    const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug = 7 (0-based)
+    const currentSeasonDateStr = seasonStartDate.toISOString().split("T")[0];
+
+    // STEP 1: Get teams currently in the league based on THIS SEASON fixtures (2025-26)
     const { data: currentTeamsData, error: currentTeamsError } = await supabase
-      .from("fixture_results")
-      .select(`fixtures!inner(teams_home, teams_away)`)
-      .eq("status", "FT")
+      .from("fixtures")
+      .select("teams_home, teams_away")
       .eq("league_id", leagueId)
-      .gte("kickoff_at", currentSeasonDateStr)
-      .limit(500);
+      .gte("date", currentSeasonDateStr)
+      .limit(1000);
 
     if (currentTeamsError) {
       console.error("[card-war] Error fetching current teams:", currentTeamsError);
@@ -104,9 +105,7 @@ serve(async (req) => {
     }
 
     const currentSeasonTeams = new Set<number>();
-    for (const match of currentTeamsData || []) {
-      const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
-      if (!fixture) continue;
+    for (const fixture of currentTeamsData || []) {
       const homeTeamId = parseInt(String(fixture.teams_home?.id));
       const awayTeamId = parseInt(String(fixture.teams_away?.id));
       if (!isNaN(homeTeamId)) currentSeasonTeams.add(homeTeamId);
