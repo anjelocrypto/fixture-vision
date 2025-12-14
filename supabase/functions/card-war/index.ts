@@ -43,10 +43,9 @@ const SUPPORTED_LEAGUES: Record<number, { name: string; country: string }> = {
 
 const SUPPORTED_LEAGUE_IDS = Object.keys(SUPPORTED_LEAGUES).map(Number);
 
-// Current season date range - only use fixtures from 2024-25 season
-// This filters out speculative 2025-26 placeholder data
-const CURRENT_SEASON_START = '2024-08-01';
-const CURRENT_SEASON_END = '2025-07-31';
+// Use fixtures from the last 18 months to ensure we capture full season data
+// This catches teams that played in different leagues last season
+const LOOKBACK_MONTHS = 18;
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "*";
@@ -90,8 +89,13 @@ serve(async (req) => {
 
     console.log(`[card-war] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}, mode=${mode}`);
 
-    // STEP 1: Fetch all 2024-25 season domestic league matches with cards/fouls
-    // This ensures we're using real data, not speculative 2025-26 placeholders
+    // Calculate lookback date (12 months ago)
+    const lookbackDate = new Date();
+    lookbackDate.setMonth(lookbackDate.getMonth() - LOOKBACK_MONTHS);
+    const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
+
+    // STEP 1: Fetch all domestic league matches from last 12 months
+    // NO end-date filter - we always use the truly most recent fixtures
     const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
@@ -111,8 +115,7 @@ serve(async (req) => {
       `)
       .eq("status", "FT")
       .in("league_id", SUPPORTED_LEAGUE_IDS)
-      .gte("kickoff_at", CURRENT_SEASON_START)
-      .lte("kickoff_at", CURRENT_SEASON_END)
+      .gte("kickoff_at", lookbackDateStr)
       .order("kickoff_at", { ascending: false });
 
     if (matchError) {
@@ -120,10 +123,13 @@ serve(async (req) => {
       return errorResponse("Failed to fetch match data", origin, 500, req);
     }
 
-    console.log(`[card-war] Fetched ${matchData?.length || 0} matches from 2024-25 season`);
+    console.log(`[card-war] Fetched ${matchData?.length || 0} matches from last ${LOOKBACK_MONTHS} months`);
 
-    // Build map: team_id -> current_league_id (based on most recent 2024-25 fixture)
-    const teamCurrentLeagues: Map<number, number> = new Map();
+    // Build map: team_id -> current_league_id
+    // Strategy: Use the league where the team has the MOST matches
+    // This filters out fake/speculative data (e.g., Championship teams with 14 fake EPL matches
+    // but 46+ real Championship matches)
+    const teamLeagueCounts: Map<number, Map<number, number>> = new Map();
     
     for (const match of matchData || []) {
       const fixture = Array.isArray(match.fixtures) ? match.fixtures[0] : match.fixtures;
@@ -132,12 +138,30 @@ serve(async (req) => {
       const homeTeamId = parseInt(String(fixture.teams_home?.id));
       const awayTeamId = parseInt(String(fixture.teams_away?.id));
 
-      // Only set if not already set (first occurrence = most recent due to DESC order)
-      if (!isNaN(homeTeamId) && !teamCurrentLeagues.has(homeTeamId)) {
-        teamCurrentLeagues.set(homeTeamId, match.league_id);
+      // Count matches per league for each team
+      for (const teamId of [homeTeamId, awayTeamId]) {
+        if (isNaN(teamId)) continue;
+        if (!teamLeagueCounts.has(teamId)) {
+          teamLeagueCounts.set(teamId, new Map());
+        }
+        const leagueCounts = teamLeagueCounts.get(teamId)!;
+        leagueCounts.set(match.league_id, (leagueCounts.get(match.league_id) || 0) + 1);
       }
-      if (!isNaN(awayTeamId) && !teamCurrentLeagues.has(awayTeamId)) {
-        teamCurrentLeagues.set(awayTeamId, match.league_id);
+    }
+
+    // Determine current league = league with MOST matches
+    const teamCurrentLeagues: Map<number, number> = new Map();
+    for (const [teamId, leagueCounts] of teamLeagueCounts) {
+      let maxLeague = 0;
+      let maxCount = 0;
+      for (const [leagueId, count] of leagueCounts) {
+        if (count > maxCount) {
+          maxCount = count;
+          maxLeague = leagueId;
+        }
+      }
+      if (maxLeague > 0) {
+        teamCurrentLeagues.set(teamId, maxLeague);
       }
     }
 
