@@ -170,12 +170,19 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check
+    // Auth check - service role has full access
     const cronKeyHeader = req.headers.get("x-cron-key");
     const authHeader = req.headers.get("authorization");
     let isAuthorized = false;
 
-    if (cronKeyHeader) {
+    // Check service role key first (highest priority)
+    if (authHeader === `Bearer ${serviceRoleKey}`) {
+      isAuthorized = true;
+      console.log("[results-refresh] Authorized via service role bearer");
+    }
+
+    // Check cron key
+    if (!isAuthorized && cronKeyHeader) {
       const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key").single();
       if (!keyError && dbKey && cronKeyHeader === dbKey) {
         isAuthorized = true;
@@ -183,17 +190,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Check user whitelist
     if (!isAuthorized && authHeader) {
-      if (authHeader === `Bearer ${serviceRoleKey}`) {
-        isAuthorized = true;
-        console.log("[results-refresh] Authorized via service role bearer");
-      } else {
-        const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-        if (!anonKey) {
-          console.error("[results-refresh] Missing SUPABASE_ANON_KEY");
-          return errorResponse("Configuration error", origin, 500, req);
-        }
-
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+      if (anonKey) {
         const userClient = createClient(supabaseUrl, anonKey, {
           global: { headers: { Authorization: authHeader } }
         });
