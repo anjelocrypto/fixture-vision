@@ -117,6 +117,25 @@ const AdminHealth = () => {
   const [isTopLeaguesTurboRunning, setIsTopLeaguesTurboRunning] = useState(false);
   const [isResultsBackfillRunning, setIsResultsBackfillRunning] = useState(false);
 
+  // Pipeline health dashboard query
+  const { data: pipelineHealth } = useQuery({
+    queryKey: ["pipeline-health-dashboard"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pipeline_health_dashboard")
+        .select("*")
+        .single();
+      
+      if (error) {
+        console.error("Pipeline health query error:", error);
+        return null;
+      }
+      return data;
+    },
+    enabled: isAdmin === true,
+    refetchInterval: 30000,
+  });
+
   // All leagues for turbo backfill (matching ALLOWED_LEAGUE_IDS)
   const ALL_TURBO_LEAGUES = {
     ids: [
@@ -575,7 +594,70 @@ const AdminHealth = () => {
         </div>
       </div>
 
-      {/* Tabs for different sections */}
+      {/* Pipeline Health Status Banner */}
+      {pipelineHealth && (() => {
+        const locks = pipelineHealth.locks as { active?: number; stuck?: number } | null;
+        const alerts = pipelineHealth.alerts as { critical?: number; warning?: number } | null;
+        const missingByLeague = pipelineHealth.missing_by_league as Array<{ league_id: number; league_name: string; missing: number }> | null;
+        
+        return (
+          <div className={`rounded-lg border p-4 ${
+            pipelineHealth.overall_status === 'CRITICAL' 
+              ? 'bg-red-500/10 border-red-500/30' 
+              : pipelineHealth.overall_status === 'WARNING'
+              ? 'bg-yellow-500/10 border-yellow-500/30'
+              : 'bg-green-500/10 border-green-500/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {pipelineHealth.overall_status === 'CRITICAL' ? (
+                  <XCircle className="w-6 h-6 text-red-500" />
+                ) : pipelineHealth.overall_status === 'WARNING' ? (
+                  <ShieldAlert className="w-6 h-6 text-yellow-500" />
+                ) : (
+                  <CheckCircle2 className="w-6 h-6 text-green-500" />
+                )}
+                <div>
+                  <h2 className="font-semibold">
+                    Pipeline Status: {pipelineHealth.overall_status}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {(pipelineHealth.total_missing_results ?? 0) > 0 
+                      ? `${pipelineHealth.total_missing_results} fixtures missing results`
+                      : 'All results up to date'
+                    }
+                    {(locks?.stuck ?? 0) > 0 && ` • ${locks?.stuck} stuck locks`}
+                    {(alerts?.critical ?? 0) > 0 && ` • ${alerts?.critical} critical alerts`}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right text-sm text-muted-foreground">
+                <div>Active locks: {locks?.active ?? 0}</div>
+                <div>Warnings: {alerts?.warning ?? 0}</div>
+              </div>
+            </div>
+            
+            {/* Missing by league details */}
+            {missingByLeague && missingByLeague.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-current/10">
+                <p className="text-xs font-medium mb-2">Missing results by league:</p>
+                <div className="flex flex-wrap gap-2">
+                  {missingByLeague.slice(0, 8).map((league) => (
+                    <Badge key={league.league_id} variant="outline" className="text-xs">
+                      {league.league_name}: {league.missing}
+                    </Badge>
+                  ))}
+                  {missingByLeague.length > 8 && (
+                    <Badge variant="secondary" className="text-xs">
+                      +{missingByLeague.length - 8} more
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">
