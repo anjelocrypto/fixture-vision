@@ -75,31 +75,48 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
+    // Auth check - normalize header names (case-insensitive)
+    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
     let isAuthorized = false;
 
+    // Method 1: Direct service role key in Authorization header
     if (authHeader === `Bearer ${serviceRoleKey}`) {
       isAuthorized = true;
-      console.log("[auto-backfill] Authorized via service role");
+      console.log("[auto-backfill] Authorized via service role bearer");
     }
 
+    // Method 2: X-CRON-KEY header matching app_settings value
     if (!isAuthorized && cronKeyHeader) {
-      const { data: dbKey } = await supabase.rpc("get_cron_internal_key").single();
-      if (dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[auto-backfill] Authorized via X-CRON-KEY");
+      // Don't use .single() on scalar RPC - just await the response directly
+      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
+      
+      if (keyError) {
+        console.error("[auto-backfill] get_cron_internal_key error:", keyError);
+        // Don't fail auth entirely, just log and continue to other methods
+      } else {
+        // Ensure both are strings and trimmed for safe comparison
+        const expectedKey = String(dbKey || "").trim();
+        const providedKey = String(cronKeyHeader || "").trim();
+        
+        console.log("[auto-backfill] providedKey:", providedKey ? providedKey.slice(0, 8) + "..." : "null");
+        console.log("[auto-backfill] expectedKey:", expectedKey ? expectedKey.slice(0, 8) + "..." : "null");
+        
+        if (providedKey && expectedKey && providedKey === expectedKey) {
+          isAuthorized = true;
+          console.log("[auto-backfill] Authorized via X-CRON-KEY");
+        }
       }
     }
 
+    // Method 3: Admin user via JWT
     if (!isAuthorized && authHeader) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
       if (anonKey) {
         const userClient = createClient(supabaseUrl, anonKey, {
           global: { headers: { Authorization: authHeader } }
         });
-        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted").single();
+        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted");
         if (isWhitelisted) {
           isAuthorized = true;
           console.log("[auto-backfill] Authorized via user whitelist");
@@ -108,7 +125,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!isAuthorized) {
-      console.error("[auto-backfill] Authorization failed");
+      console.error("[auto-backfill] Authorization failed - no valid auth method matched");
       return errorResponse("Unauthorized", origin, 401, req);
     }
 
