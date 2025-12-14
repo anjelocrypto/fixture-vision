@@ -512,13 +512,14 @@ Deno.serve(async (req) => {
 
   } finally {
     // =========================================================================
-    // SAFE MACHINE MODE v2: ALWAYS log to optimizer_run_logs
+    // SAFE MACHINE MODE v2: ALWAYS log to optimizer_run_logs AND pipeline_run_logs
     // =========================================================================
     if (supabase && windowStart && windowEnd) {
       try {
         const finishedAt = new Date();
         const durationMs = Date.now() - startedAt;
 
+        // Log to optimizer_run_logs (existing behavior)
         const { error: logError } = await supabase.from("optimizer_run_logs").insert({
           id: crypto.randomUUID(),
           run_type: "stats-refresh-batch",
@@ -556,6 +557,28 @@ Deno.serve(async (req) => {
         } else {
           console.log(`[stats-refresh] 📝 Run logged: scanned=${scanned}, upserted=${upserted}, failed=${failed}, duration=${durationMs}ms`);
         }
+
+        // NEW: Also log to pipeline_run_logs for unified monitoring
+        await supabase.from("pipeline_run_logs").insert({
+          job_name: "stats-refresh",
+          run_started: new Date(startedAt).toISOString(),
+          run_finished: finishedAt.toISOString(),
+          success: failed === 0 && !earlyExit,
+          mode: force ? "manual" : "cron",
+          processed: upserted,
+          failed,
+          leagues_covered: [], // Stats refresh is team-based, not league-based
+          details: {
+            scanned,
+            early_exit: earlyExit,
+            early_exit_reason: earlyExitReason || null,
+            window_hours,
+            stats_ttl_hours,
+            duration_ms: durationMs,
+          },
+          error_message: notes.length > 0 ? notes.slice(0, 5).join(" | ") : null,
+        });
+
       } catch (logErr: any) {
         console.error("[stats-refresh] ⚠️ Exception writing log:", logErr.message);
       }

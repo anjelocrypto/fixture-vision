@@ -146,3 +146,7 @@ verify_jwt = false
 # Card War - read-only cards/fouls ranking (no auth required)
 [functions.card-war]
 verify_jwt = false
+
+# Pipeline Health Check - monitors data freshness and job status
+[functions.pipeline-health-check]
+verify_jwt = false
