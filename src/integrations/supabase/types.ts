@@ -662,6 +662,39 @@ export type Database = {
           },
         ]
       }
+      pipeline_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          details: Json | null
+          id: number
+          message: string
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          details?: Json | null
+          id?: number
+          message: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          details?: Json | null
+          id?: number
+          message?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+        }
+        Relationships: []
+      }
       pipeline_run_logs: {
         Row: {
           details: Json | null
@@ -1177,6 +1210,18 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_health_dashboard: {
+        Row: {
+          alerts: Json | null
+          checked_at: string | null
+          job_status: Json | null
+          locks: Json | null
+          missing_by_league: Json | null
+          overall_status: string | null
+          total_missing_results: number | null
+        }
+        Relationships: []
+      }
       v_best_outcome_prices_prematch: {
         Row: {
           bookmaker: string | null
@@ -1353,6 +1398,15 @@ export type Database = {
         Args: { p_duration_minutes?: number; p_job_name: string }
         Returns: boolean
       }
+      auto_release_stuck_locks: {
+        Args: { max_age_minutes?: number }
+        Returns: {
+          released_job_name: string
+          released_locked_at: string
+          released_locked_until: string
+          was_released: boolean
+        }[]
+      }
       backfill_optimized_selections: {
         Args: never
         Returns: {
@@ -1363,6 +1417,21 @@ export type Database = {
       }
       ensure_trial_row: { Args: never; Returns: undefined }
       get_cron_internal_key: { Args: never; Returns: string }
+      get_fixtures_missing_results: {
+        Args: {
+          batch_limit?: number
+          lookback_days?: number
+          supported_leagues?: number[]
+        }
+        Returns: {
+          fixture_id: number
+          fixture_league_id: number
+          fixture_status: string
+          fixture_teams_away: Json
+          fixture_teams_home: Json
+          fixture_timestamp: number
+        }[]
+      }
       get_trial_credits: { Args: never; Returns: number }
       has_role: {
         Args: {
