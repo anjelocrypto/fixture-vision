@@ -37,9 +37,10 @@ const SUPPORTED_LEAGUES: Record<number, { name: string; country: string }> = {
 const SUPPORTED_LEAGUE_IDS = Object.keys(SUPPORTED_LEAGUES).map(Number);
 
 // Use fixtures from the last 18 months for stats calculation
-// But only include teams that have played in the requested league in the LAST 3 MONTHS
+// Get teams from last 8 MONTHS to capture both current season start (Aug 2025)
+// and late 2024-25 season results for teams that may lack 2025-26 fixtures
 const LOOKBACK_MONTHS = 18;
-const CURRENT_SEASON_MONTHS = 3;
+const CURRENT_SEASON_MONTHS = 8;
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "*";
