@@ -1,6 +1,7 @@
 // Fetch final match results and upsert into fixture_results
 // CRITICAL FIX: Also updates fixtures.status from NS to FT for finished matches
 // Uses centralized API-Football rate limiter for safe, automated operation
+// HARDENED: Logs all runs to pipeline_run_logs for observability
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
@@ -10,9 +11,11 @@ interface RequestBody {
   retention_months?: number;
   backfill_mode?: boolean;
   batch_size?: number;
-  // NEW: Targeted EPL backfill mode
+  // Targeted backfill mode (supports multiple leagues)
   epl_backfill?: boolean;
   league_id?: number;
+  backfill_league_ids?: number[];  // NEW: Multiple league backfill
+  backfill_since?: string;         // NEW: Start date for backfill
   // Pagination for large backfills
   offset?: number;
   limit?: number;
@@ -36,6 +39,103 @@ interface FixtureResultRow {
   status: string;
   source: string;
   fetched_at: string;
+}
+
+// Pipeline logging helper - writes to pipeline_run_logs
+async function logPipelineRun(
+  supabase: any,
+  params: {
+    job_name: string;
+    run_started: Date;
+    run_finished?: Date;
+    success: boolean;
+    mode: string;
+    processed: number;
+    failed: number;
+    leagues_covered: number[];
+    details: any;
+    error_message?: string;
+  }
+) {
+  try {
+    await supabase.from("pipeline_run_logs").insert({
+      job_name: params.job_name,
+      run_started: params.run_started.toISOString(),
+      run_finished: params.run_finished?.toISOString() || new Date().toISOString(),
+      success: params.success,
+      mode: params.mode,
+      processed: params.processed,
+      failed: params.failed,
+      leagues_covered: params.leagues_covered,
+      details: params.details,
+      error_message: params.error_message || null,
+    });
+  } catch (e) {
+    console.error("[results-refresh] Failed to log pipeline run:", e);
+  }
+}
+
+// Insert initial pipeline log row
+async function insertPipelineLog(
+  supabase: any,
+  mode: string,
+  leagues: number[]
+): Promise<number | null> {
+  try {
+    const { data, error } = await supabase
+      .from("pipeline_run_logs")
+      .insert({
+        job_name: "results-refresh",
+        run_started: new Date().toISOString(),
+        success: false,
+        mode,
+        processed: 0,
+        failed: 0,
+        leagues_covered: leagues,
+        details: { status: "started" },
+      })
+      .select("id")
+      .single();
+    
+    if (error) {
+      console.error("[results-refresh] Failed to insert pipeline log:", error);
+      return null;
+    }
+    return data?.id || null;
+  } catch (e) {
+    console.error("[results-refresh] Exception inserting pipeline log:", e);
+    return null;
+  }
+}
+
+// Update pipeline log row at end of run
+async function updatePipelineLog(
+  supabase: any,
+  id: number | null,
+  success: boolean,
+  processed: number,
+  failed: number,
+  leagues: number[],
+  details: any,
+  errorMessage?: string
+): Promise<void> {
+  if (!id) return;
+  try {
+    await supabase
+      .from("pipeline_run_logs")
+      .update({
+        run_finished: new Date().toISOString(),
+        success,
+        processed,
+        failed,
+        leagues_covered: leagues,
+        details,
+        error_message: errorMessage || null,
+      })
+      .eq("id", id);
+  } catch (e) {
+    console.error("[results-refresh] Failed to update pipeline log:", e);
+  }
 }
 
 // Fetch fixture by ID using centralized client
@@ -117,12 +217,26 @@ Deno.serve(async (req: Request) => {
     const retentionMonths = body.retention_months;
     const isCleanup = req.headers.get("x-cleanup") === "1";
     const isEplBackfill = body.epl_backfill === true;
+    const isMultiLeagueBackfill = Array.isArray(body.backfill_league_ids) && body.backfill_league_ids.length > 0;
     const targetLeagueId = body.league_id;
-    const batchLimit = body.limit || 15; // Process max 15 fixtures per call to stay within 60s timeout
+    const batchLimit = body.limit || 15;
     const batchOffset = body.offset || 0;
+    const backfillSince = body.backfill_since || "2025-08-01";
 
-    console.log(`[results-refresh] Mode: ${isEplBackfill ? 'EPL_BACKFILL' : isCleanup ? 'CLEANUP' : body.backfill_mode ? 'BACKFILL' : 'NORMAL'}`);
+    // Determine run mode for logging
+    const runMode = isMultiLeagueBackfill ? 'multi_league_backfill' : 
+                    isEplBackfill ? 'epl_backfill' : 
+                    isCleanup ? 'cleanup' : 
+                    body.backfill_mode ? 'backfill' : 'cron';
+
+    console.log(`[results-refresh] Mode: ${runMode.toUpperCase()}`);
     console.log(`[results-refresh] Parameters: window_hours=${windowHours}, batch_size=${body.batch_size}, league_id=${targetLeagueId || 'all'}, limit=${batchLimit}, offset=${batchOffset}`);
+    if (isMultiLeagueBackfill) {
+      console.log(`[results-refresh] Multi-league backfill leagues: ${body.backfill_league_ids!.join(", ")}, since: ${backfillSince}`);
+    }
+
+    // Insert initial pipeline log entry
+    const pipelineLogId = await insertPipelineLog(supabase, runMode, []);
 
     // Handle cleanup mode
     if (isCleanup && retentionMonths) {
@@ -131,6 +245,7 @@ Deno.serve(async (req: Request) => {
       cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
       
       await supabase.from("fixture_results").delete().lt("finished_at", cutoffDate.toISOString());
+      await updatePipelineLog(supabase, pipelineLogId, true, 0, 0, [], { retention_months: retentionMonths });
       return jsonResponse({ success: true, mode: "cleanup", retention_months: retentionMonths }, origin, 200, req);
     }
 
@@ -146,6 +261,235 @@ Deno.serve(async (req: Request) => {
       await supabase.from("optimized_selections").delete().in("fixture_id", pastFixtureIds);
       await supabase.from("outcome_selections").delete().in("fixture_id", pastFixtureIds);
       console.log(`[results-refresh] Cleaned up selections for ${pastFixtureIds.length} past fixtures`);
+    }
+
+    // ======= MULTI-LEAGUE BACKFILL MODE =======
+    if (isMultiLeagueBackfill) {
+      const leagueIds = body.backfill_league_ids!;
+      console.log(`[results-refresh] MULTI-LEAGUE BACKFILL: Finding missing results for leagues [${leagueIds.join(", ")}] since ${backfillSince}`);
+
+      // Find FT fixtures without results for all target leagues
+      const { data: allMissingFixtures, error: missingError } = await supabase
+        .from("fixtures")
+        .select("id, league_id, timestamp, status, teams_home, teams_away")
+        .in("league_id", leagueIds)
+        .eq("status", "FT")
+        .gte("date", backfillSince)
+        .order("date", { ascending: true });
+
+      if (missingError) {
+        console.error("[results-refresh] Error fetching missing fixtures:", missingError);
+        await updatePipelineLog(supabase, pipelineLogId, false, 0, 0, leagueIds, {}, missingError.message);
+        return errorResponse(`Failed to fetch fixtures: ${missingError.message}`, origin, 500, req);
+      }
+
+      if (!allMissingFixtures || allMissingFixtures.length === 0) {
+        console.log("[results-refresh] No FT fixtures found for multi-league backfill");
+        await updatePipelineLog(supabase, pipelineLogId, true, 0, 0, leagueIds, { message: "No FT fixtures found" });
+        return jsonResponse({ success: true, mode: "multi_league_backfill", scanned: 0, inserted: 0, message: "No FT fixtures found" }, origin, 200, req);
+      }
+
+      console.log(`[results-refresh] Found ${allMissingFixtures.length} FT fixtures across ${leagueIds.length} leagues`);
+
+      // Check which already have results
+      const fixtureIds = allMissingFixtures.map((f: any) => f.id);
+      const { data: existingResults } = await supabase
+        .from("fixture_results")
+        .select("fixture_id")
+        .in("fixture_id", fixtureIds);
+
+      const existingIds = new Set((existingResults || []).map((r: any) => r.fixture_id));
+      const missingFixtures = allMissingFixtures.filter((f: any) => !existingIds.has(f.id));
+      
+      // Apply pagination
+      const fixturesToProcess = missingFixtures.slice(batchOffset, batchOffset + batchLimit);
+      const hasMore = batchOffset + batchLimit < missingFixtures.length;
+
+      console.log(`[results-refresh] Already have results for ${existingIds.size} fixtures`);
+      console.log(`[results-refresh] Total missing: ${missingFixtures.length}, Processing batch: offset=${batchOffset}, limit=${batchLimit}, count=${fixturesToProcess.length}`);
+
+      if (fixturesToProcess.length === 0) {
+        await updatePipelineLog(supabase, pipelineLogId, true, 0, 0, leagueIds, { 
+          total_ft_fixtures: allMissingFixtures.length,
+          already_have: existingIds.size,
+          message: "All fixtures already have results"
+        });
+        return jsonResponse({ 
+          success: true, 
+          mode: "multi_league_backfill",
+          leagues: leagueIds,
+          total_fixtures: allMissingFixtures.length,
+          already_have: existingIds.size,
+          total_missing: missingFixtures.length,
+          inserted: 0,
+          has_more: false,
+          message: "All fixtures already have results"
+        }, origin, 200, req);
+      }
+
+      // Count by league for logging
+      const leagueCounts: Record<number, number> = {};
+      for (const f of fixturesToProcess) {
+        leagueCounts[f.league_id] = (leagueCounts[f.league_id] || 0) + 1;
+      }
+      console.log("[results-refresh] Fixtures by league:", JSON.stringify(leagueCounts));
+
+      // Process fixtures
+      const results: FixtureResultRow[] = [];
+      const errors: { fixture_id: number; error: string }[] = [];
+      let processed = 0;
+
+      for (const fixture of fixturesToProcess) {
+        processed++;
+        const homeName = fixture.teams_home?.name || "Unknown";
+        const awayName = fixture.teams_away?.name || "Unknown";
+        
+        console.log(`[results-refresh] Processing ${processed}/${fixturesToProcess.length}: fixture ${fixture.id} (league ${fixture.league_id}) ${homeName} vs ${awayName}`);
+
+        try {
+          const apiFixture = await fetchFixtureById(fixture.id);
+          
+          if (!apiFixture || !apiFixture.teams) {
+            errors.push({ fixture_id: fixture.id, error: "API returned no fixture/teams data" });
+            continue;
+          }
+
+          const apiStatus = apiFixture.fixture?.status?.short || "NS";
+          const isFinished = ["FT", "AET", "PEN", "AWD", "WO"].includes(apiStatus);
+          
+          if (!isFinished) {
+            errors.push({ fixture_id: fixture.id, error: `API status is ${apiStatus}, not finished` });
+            continue;
+          }
+
+          const goalsHome = apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0;
+          const goalsAway = apiFixture.goals?.away ?? apiFixture.score?.fulltime?.away ?? 0;
+
+          // Fetch statistics
+          const statsData = await fetchFixtureStatistics(fixture.id);
+          let cornersHome: number | null = null, cornersAway: number | null = null;
+          let cardsHome: number | null = null, cardsAway: number | null = null;
+          let foulsHome: number | null = null, foulsAway: number | null = null;
+          let offsidesHome: number | null = null, offsidesAway: number | null = null;
+
+          if (statsData && Array.isArray(statsData) && statsData.length === 2) {
+            const homeStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.home?.id);
+            const awayStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.away?.id);
+            
+            if (homeStats?.statistics) {
+              cornersHome = homeStats.statistics.find((st: any) => st.type === "Corner Kicks" || st.type === "Corners")?.value ?? null;
+              const yellowCards = homeStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
+              const redCards = homeStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
+              cardsHome = (yellowCards || 0) + (redCards || 0);
+              foulsHome = homeStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
+              offsidesHome = homeStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
+            }
+            
+            if (awayStats?.statistics) {
+              cornersAway = awayStats.statistics.find((st: any) => st.type === "Corner Kicks" || st.type === "Corners")?.value ?? null;
+              const yellowCards = awayStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
+              const redCards = awayStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
+              cardsAway = (yellowCards || 0) + (redCards || 0);
+              foulsAway = awayStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
+              offsidesAway = awayStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
+            }
+          }
+
+          results.push({
+            fixture_id: fixture.id,
+            league_id: fixture.league_id,
+            kickoff_at: new Date(fixture.timestamp * 1000).toISOString(),
+            finished_at: new Date().toISOString(),
+            goals_home: goalsHome,
+            goals_away: goalsAway,
+            corners_home: cornersHome ?? undefined,
+            corners_away: cornersAway ?? undefined,
+            cards_home: cardsHome ?? undefined,
+            cards_away: cardsAway ?? undefined,
+            fouls_home: foulsHome ?? undefined,
+            fouls_away: foulsAway ?? undefined,
+            offsides_home: offsidesHome ?? undefined,
+            offsides_away: offsidesAway ?? undefined,
+            status: apiStatus,
+            source: "api-football",
+            fetched_at: new Date().toISOString(),
+          });
+
+          console.log(`[results-refresh] Fixture ${fixture.id}: ${goalsHome}-${goalsAway} ✓`);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`[results-refresh] Fixture ${fixture.id}: Exception - ${errMsg}`);
+          errors.push({ fixture_id: fixture.id, error: errMsg });
+        }
+
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      // Batch upsert
+      let inserted = 0;
+      if (results.length > 0) {
+        const { error: upsertError } = await supabase
+          .from("fixture_results")
+          .upsert(results, { onConflict: "fixture_id" });
+
+        if (upsertError) {
+          console.error("[results-refresh] Upsert error:", upsertError);
+          await updatePipelineLog(supabase, pipelineLogId, false, results.length, errors.length, leagueIds, {}, upsertError.message);
+          return errorResponse(`Failed to upsert results: ${upsertError.message}`, origin, 500, req);
+        }
+        inserted = results.length;
+        console.log(`[results-refresh] Successfully upserted ${inserted} results`);
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`[results-refresh] MULTI-LEAGUE BACKFILL COMPLETE: ${inserted} inserted, ${errors.length} errors, ${duration}ms`);
+
+      await updatePipelineLog(supabase, pipelineLogId, true, inserted, errors.length, leagueIds, {
+        leagues: leagueIds,
+        total_ft_fixtures: allMissingFixtures.length,
+        already_have: existingIds.size,
+        total_missing: missingFixtures.length,
+        batch_offset: batchOffset,
+        batch_limit: batchLimit,
+        attempted: fixturesToProcess.length,
+        error_details: errors.slice(0, 10),
+        duration_ms: duration,
+      });
+
+      // Also log to optimizer_run_logs for consistency
+      await supabase.from("optimizer_run_logs").insert({
+        run_type: "results-refresh-multi-league-backfill",
+        window_start: backfillSince,
+        window_end: new Date().toISOString(),
+        scope: { leagues: leagueIds, league_counts: leagueCounts },
+        scanned: fixturesToProcess.length,
+        upserted: inserted,
+        skipped: 0,
+        failed: errors.length,
+        started_at: new Date(startTime).toISOString(),
+        finished_at: new Date().toISOString(),
+        duration_ms: duration,
+        notes: errors.length > 0 ? `Errors: ${JSON.stringify(errors.slice(0, 10))}` : null
+      });
+
+      return jsonResponse({
+        success: true,
+        mode: "multi_league_backfill",
+        leagues: leagueIds,
+        total_ft_fixtures: allMissingFixtures.length,
+        already_have: existingIds.size,
+        total_missing: missingFixtures.length,
+        batch_offset: batchOffset,
+        batch_limit: batchLimit,
+        attempted: fixturesToProcess.length,
+        inserted,
+        errors: errors.length,
+        has_more: hasMore,
+        next_offset: hasMore ? batchOffset + batchLimit : null,
+        error_details: errors.slice(0, 10),
+        duration_ms: duration,
+        rate_limiter: getRateLimiterStats()
+      }, origin, 200, req);
     }
 
     // ======= TARGETED EPL BACKFILL MODE =======

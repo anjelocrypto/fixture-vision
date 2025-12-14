@@ -662,6 +662,48 @@ export type Database = {
           },
         ]
       }
+      pipeline_run_logs: {
+        Row: {
+          details: Json | null
+          error_message: string | null
+          failed: number | null
+          id: number
+          job_name: string
+          leagues_covered: number[] | null
+          mode: string | null
+          processed: number | null
+          run_finished: string | null
+          run_started: string
+          success: boolean | null
+        }
+        Insert: {
+          details?: Json | null
+          error_message?: string | null
+          failed?: number | null
+          id?: number
+          job_name: string
+          leagues_covered?: number[] | null
+          mode?: string | null
+          processed?: number | null
+          run_finished?: string | null
+          run_started?: string
+          success?: boolean | null
+        }
+        Update: {
+          details?: Json | null
+          error_message?: string | null
+          failed?: number | null
+          id?: number
+          job_name?: string
+          leagues_covered?: number[] | null
+          mode?: string | null
+          processed?: number | null
+          run_finished?: string | null
+          run_started?: string
+          success?: boolean | null
+        }
+        Relationships: []
+      }
       player_importance: {
         Row: {
           assists: number | null
