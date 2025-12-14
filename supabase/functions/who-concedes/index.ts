@@ -82,12 +82,13 @@ serve(async (req) => {
 
     console.log(`[who-concedes] Generating ranking for league_id=${leagueId} (${leagueInfo.name}), max_matches=${maxMatches}, mode=${mode}`);
 
-    // Fetch finished matches - filter by league_id to stay within Supabase's row limits
-    // We get all matches from the requested league (sufficient for ranking that league's teams)
+    // Fetch finished matches from fixture_results table
+    // Use fixture_results.league_id (authoritative) instead of relying on fixtures.league_id
     const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
         fixture_id,
+        league_id,
         goals_home,
         goals_away,
         kickoff_at,
@@ -100,7 +101,7 @@ serve(async (req) => {
         )
       `)
       .eq("status", "FT")
-      .eq("fixtures.league_id", leagueId)
+      .eq("league_id", leagueId) // Use fixture_results.league_id, not fixtures.league_id
       .order("kickoff_at", { ascending: false });
 
     if (matchError) {
@@ -108,10 +109,11 @@ serve(async (req) => {
       return errorResponse("Failed to fetch match data", origin, 500, req);
     }
 
-    // Process in JavaScript
+    // Process in JavaScript - collect team stats from verified league matches
     const teamStats: Map<number, { 
       name: string; 
-      matches: { metricValue: number; kickoff: string; leagueId: number }[] 
+      matches: { metricValue: number; kickoff: string }[];
+      leagueMatchCount: number; // Count of matches in the requested league
     }> = new Map();
 
     console.log(`[who-concedes] Processing ${matchData?.length || 0} matches in ${mode} mode`);
@@ -137,25 +139,27 @@ serve(async (req) => {
       // Home team
       if (homeTeamId) {
         if (!teamStats.has(homeTeamId)) {
-          teamStats.set(homeTeamId, { name: homeTeamName, matches: [] });
+          teamStats.set(homeTeamId, { name: homeTeamName, matches: [], leagueMatchCount: 0 });
         }
-        teamStats.get(homeTeamId)!.matches.push({
+        const stats = teamStats.get(homeTeamId)!;
+        stats.matches.push({
           metricValue: homeMetricValue,
           kickoff: match.kickoff_at,
-          leagueId: fixture.league_id,
         });
+        stats.leagueMatchCount++;
       }
 
       // Away team
       if (awayTeamId) {
         if (!teamStats.has(awayTeamId)) {
-          teamStats.set(awayTeamId, { name: awayTeamName, matches: [] });
+          teamStats.set(awayTeamId, { name: awayTeamName, matches: [], leagueMatchCount: 0 });
         }
-        teamStats.get(awayTeamId)!.matches.push({
+        const stats = teamStats.get(awayTeamId)!;
+        stats.matches.push({
           metricValue: awayMetricValue,
           kickoff: match.kickoff_at,
-          leagueId: fixture.league_id,
         });
+        stats.leagueMatchCount++;
       }
     }
 
@@ -176,18 +180,25 @@ serve(async (req) => {
       total_scored?: number;
     }> = [];
 
+    // Minimum matches required in the league to be included in rankings
+    // Real top-division teams have ~20+ league matches per season
+    // This filters out teams with fake/speculative placeholder data from future seasons
+    // (e.g., Sunderland appearing in EPL with 7 fake 2025-26 matches)
+    const MIN_LEAGUE_MATCHES = 15;
+
     for (const [teamId, stats] of teamStats) {
+      // Filter out teams that don't have enough matches in this league
+      // This prevents Championship teams appearing in EPL rankings due to bad data
+      if (stats.leagueMatchCount < MIN_LEAGUE_MATCHES) {
+        console.log(`[who-concedes] Skipping ${stats.name} (team_id=${teamId}): only ${stats.leagueMatchCount} matches in league ${leagueId}`);
+        continue;
+      }
+
       // Sort matches by date DESC and take last N
       stats.matches.sort((a, b) => 
         new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
       );
       const lastNMatches = stats.matches.slice(0, maxMatches);
-
-      // Determine primary league (from most recent match)
-      const primaryLeagueId = lastNMatches[0]?.leagueId;
-
-      // Only include teams whose primary league matches requested league
-      if (primaryLeagueId !== leagueId) continue;
 
       const totalValue = lastNMatches.reduce((sum, m) => sum + m.metricValue, 0);
       const avgValue = lastNMatches.length > 0 
