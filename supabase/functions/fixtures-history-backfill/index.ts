@@ -77,16 +77,22 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
+    // Auth check - NO .single() on scalar RPCs!
+    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
     let isAuthorized = false;
 
     if (cronKeyHeader) {
-      const { data: dbKey } = await supabase.rpc("get_cron_internal_key").single();
-      if (dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[history-backfill] Authorized via X-CRON-KEY");
+      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
+      if (keyError) {
+        console.error("[history-backfill] get_cron_internal_key error:", keyError);
+      } else {
+        const expectedKey = String(dbKey || "").trim();
+        const providedKey = String(cronKeyHeader || "").trim();
+        if (providedKey && expectedKey && providedKey === expectedKey) {
+          isAuthorized = true;
+          console.log("[history-backfill] Authorized via X-CRON-KEY");
+        }
       }
     }
 
@@ -100,8 +106,10 @@ Deno.serve(async (req: Request) => {
           const userClient = createClient(supabaseUrl, anonKey, {
             global: { headers: { Authorization: authHeader } }
           });
-          const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted").single();
-          if (isWhitelisted) {
+          const { data: isWhitelisted, error: wlError } = await userClient.rpc("is_user_whitelisted");
+          if (wlError) {
+            console.error("[history-backfill] is_user_whitelisted error:", wlError);
+          } else if (isWhitelisted === true) {
             isAuthorized = true;
             console.log("[history-backfill] Authorized via admin user");
           }
@@ -110,6 +118,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!isAuthorized) {
+      console.error("[history-backfill] Authorization failed - no valid credentials");
       return errorResponse("Unauthorized", origin, 401, req);
     }
 

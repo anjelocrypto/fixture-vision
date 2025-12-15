@@ -28,25 +28,29 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Standardized auth: X-CRON-KEY or whitelisted user
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
+    // Standardized auth: X-CRON-KEY or whitelisted user - NO .single() on scalar RPCs!
+    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
     
     let isAuthorized = false;
 
-    // Check X-CRON-KEY first
+    // Check X-CRON-KEY first - NO .single()!
     if (cronKeyHeader) {
-      const { data: dbKey, error: keyError } = await supabase
-        .rpc("get_cron_internal_key")
-        .single();
+      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
       
-      if (!keyError && dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[fetch-fixtures] Authorized via X-CRON-KEY");
+      if (keyError) {
+        console.error("[fetch-fixtures] get_cron_internal_key error:", keyError);
+      } else {
+        const expectedKey = String(dbKey || "").trim();
+        const providedKey = String(cronKeyHeader || "").trim();
+        if (providedKey && expectedKey && providedKey === expectedKey) {
+          isAuthorized = true;
+          console.log("[fetch-fixtures] Authorized via X-CRON-KEY");
+        }
       }
     }
 
-    // If not authorized via cron key, check user whitelist
+    // If not authorized via cron key, check user whitelist - NO .single()!
     if (!isAuthorized && authHeader) {
       const userClient = createClient(
         supabaseUrl,
@@ -54,16 +58,14 @@ serve(async (req) => {
         { global: { headers: { Authorization: authHeader } } }
       );
 
-      const { data: isWhitelisted, error: whitelistError } = await userClient
-        .rpc("is_user_whitelisted")
-        .single();
+      const { data: isWhitelisted, error: whitelistError } = await userClient.rpc("is_user_whitelisted");
 
       if (whitelistError) {
         console.error("[fetch-fixtures] Whitelist check failed:", whitelistError);
         return errorResponse("Auth check failed", origin, 401, req);
       }
 
-      if (!isWhitelisted) {
+      if (isWhitelisted !== true) {
         console.warn("[fetch-fixtures] User not whitelisted");
         return errorResponse("Forbidden: Admin access required", origin, 403, req);
       }
@@ -73,6 +75,7 @@ serve(async (req) => {
     }
 
     if (!isAuthorized) {
+      console.error("[fetch-fixtures] Authorization failed - no valid credentials");
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
