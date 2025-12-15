@@ -407,8 +407,8 @@ export default function Landing() {
 
         {/* Stats Bar */}
         <section className="py-12 border-y border-border bg-card/30">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="max-w-4xl mx-auto px-6">
+            <div className="grid grid-cols-3 gap-8">
               {stats.map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -597,9 +597,7 @@ export default function Landing() {
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-primary-foreground" />
-                </div>
+                <img src={ticketLogo} alt="Ticket" className="h-8 w-8 object-contain" />
                 <span className="font-bold text-foreground">TICKET 1.0 BETA</span>
               </div>
 
