@@ -13,7 +13,7 @@ import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { AdminRefreshButton } from "@/components/AdminRefreshButton";
 import { PaywallGate } from "@/components/PaywallGate";
-import { TrialBadge } from "@/components/TrialBadge";
+
 import { useAccess } from "@/hooks/useAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -313,11 +313,11 @@ const Index = () => {
   );
 
   const handleAnalyze = async (fixture: any) => {
-    // Check access: paid, whitelisted, or has trial credits
-    if (!hasAccess && !isWhitelisted && (trialCredits === null || trialCredits <= 0)) {
+    // Check access: paid or whitelisted
+    if (!hasAccess && !isWhitelisted) {
       toast({
-        title: "No Trial Credits",
-        description: "You've used all your free analyses. Subscribe to continue.",
+        title: "Premium Feature",
+        description: "Subscribe to access match analysis.",
         action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
       });
       setRightSheetOpen(true);
@@ -360,13 +360,10 @@ const Index = () => {
           const errorData = (analysisError as any).context?.body;
           if (errorData?.code === 'PAYWALL') {
             toast({
-              title: "Trial Expired",
-              description: errorData.reason === 'no_trial_credits' 
-                ? "You've used all 5 free analyses. Subscribe to continue."
-                : "This feature requires a subscription.",
+              title: "Premium Feature",
+              description: "This feature requires a subscription.",
               action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
             });
-            await refreshAccess(); // Refresh to update trial credits display
             setLoadingAnalysis(false);
             return;
           }
@@ -385,9 +382,6 @@ const Index = () => {
         setLoadingAnalysis(false);
         return;
       }
-
-      // Refresh access to update trial credits count
-      await refreshAccess();
 
       // Check if odds are available
       const { data: oddsData } = await supabase
@@ -476,21 +470,16 @@ const Index = () => {
           const errorData = (error as any).context?.body;
           if (errorData?.code === 'PAYWALL') {
             toast({
-              title: "Trial Expired",
-              description: errorData.reason === 'no_trial_credits' 
-                ? "You've used all 5 free generations. Subscribe to continue."
-                : "This feature requires a subscription.",
+              title: "Premium Feature",
+              description: "This feature requires a subscription.",
               action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
             });
-            await refreshAccess();
             setGeneratingTicket(false);
             return;
           }
         }
         throw error;
       }
-
-      await refreshAccess(); // Refresh trial credits
 
       setCurrentTicket(data);
       setTicketDrawerOpen(true);
@@ -582,13 +571,10 @@ const Index = () => {
         if (status === 402) {
           if (errorBody?.code === 'PAYWALL') {
             toast({
-              title: "Trial Expired",
-              description: errorBody.reason === 'no_trial_credits' 
-                ? "You've used all 5 free generations. Subscribe to continue."
-                : "This feature requires a subscription.",
+              title: "Premium Feature",
+              description: "This feature requires a subscription.",
               action: <Button onClick={() => navigate("/pricing")} size="sm">View Plans</Button>,
             });
-            await refreshAccess();
             setGeneratingTicket(false);
             return;
           }
@@ -628,8 +614,6 @@ const Index = () => {
         });
         return;
       }
-
-      await refreshAccess(); // Refresh trial credits
 
       // Business outcome without ticket
       if (data.code) {
@@ -1068,11 +1052,6 @@ const Index = () => {
             </h2>
             
             <div className="flex gap-2 shrink-0 items-center max-w-full flex-wrap justify-end">
-              <TrialBadge 
-                creditsRemaining={trialCredits} 
-                isWhitelisted={isWhitelisted}
-                hasAccess={hasAccess}
-              />
               {isAdmin && <AdminRefreshButton />}
             </div>
           </div>

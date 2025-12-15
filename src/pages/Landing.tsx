@@ -196,7 +196,6 @@ export default function Landing() {
   const stats = [
     { value: "100+", label: "Leagues Covered" },
     { value: "48h", label: "Prediction Window" },
-    { value: "5", label: "Free Analyses" },
     { value: "24/7", label: "Live Updates" },
   ];
 
@@ -309,12 +308,8 @@ export default function Landing() {
 
                 <div className="flex flex-wrap gap-3">
                   <span className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-primary" />
-                    5 Free Analyses
-                  </span>
-                  <span className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
-                    No Credit Card
+                    No Credit Card Required
                   </span>
                 </div>
               </motion.div>
@@ -567,7 +562,7 @@ export default function Landing() {
 
             <div className="grid md:grid-cols-3 gap-8">
               {[
-                { step: "01", title: "Create Account", desc: "Sign up for free and get 5 complimentary match analyses to explore our tools." },
+                { step: "01", title: "Create Account", desc: "Sign up and start exploring our powerful betting analysis tools." },
                 { step: "02", title: "Analyze Matches", desc: "Use our AI tools to analyze fixtures, filter value bets, and generate optimal tickets." },
                 { step: "03", title: "Place Smart Bets", desc: "Make informed decisions backed by statistical analysis and real-time data." },
               ].map((item, index) => (
@@ -603,7 +598,7 @@ export default function Landing() {
                 Ready to Start <span className="text-primary">Winning?</span>
               </h2>
               <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-                Join thousands of users who are making smarter betting decisions with Ticket AI. Get started with 5 free analyses today.
+                Join thousands of users who are making smarter betting decisions with Ticket AI.
               </p>
               <Button 
                 size="lg" 
