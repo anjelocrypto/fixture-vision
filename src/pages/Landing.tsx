@@ -225,24 +225,28 @@ export default function Landing() {
 
       <div className="min-h-screen bg-background overflow-hidden">
         {/* Navigation */}
-        <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 bg-background/80 backdrop-blur-lg border-b border-border/50">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <nav className="fixed top-0 left-0 right-0 z-50 px-4 lg:px-8 py-3 bg-background/60 backdrop-blur-xl border-b border-border/30">
+          <div className="flex items-center justify-between w-full">
+            {/* Logo - Far Left */}
             <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-primary-foreground" />
+              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">TICKET 1.0</span>
+              <span className="text-lg font-bold text-foreground tracking-tight">TICKET 1.0</span>
             </div>
             
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
-              <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
-              <a href="#tools" className="text-muted-foreground hover:text-foreground transition-colors">Tools</a>
+            {/* Center Navigation */}
+            <div className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
+              <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
+              <Link to="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
+              <a href="#tools" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Tools</a>
             </div>
 
+            {/* Sign In - Far Right */}
             <Button 
               variant="outline" 
-              className="rounded-full border-primary/30 hover:bg-primary/10"
+              size="sm"
+              className="rounded-full border-foreground/30 bg-foreground text-background hover:bg-foreground/90 px-5"
               onClick={() => {
                 setIsSignUp(false);
                 document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' });
