@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
+import heroBackground from "@/assets/hero-background.png";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -254,9 +255,14 @@ export default function Landing() {
 
         {/* Hero Section */}
         <section className="relative min-h-screen flex items-center pt-24 pb-12">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
-          <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
+          {/* Background Image */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${heroBackground})` }}
+          />
+          {/* Dark Overlay for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/80 to-background/60" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/50" />
           
           <div className="relative max-w-7xl mx-auto px-6 w-full">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
