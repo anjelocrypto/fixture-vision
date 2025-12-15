@@ -170,6 +170,18 @@ serve(async (req) => {
 
     console.log(`[generate-ticket] Access granted: ${accessResult.reason}, remaining: ${accessResult.remaining_uses ?? 'unlimited'}`);
 
+    // P0: Per-user rate limiting (5 requests/minute for Ticket Creator)
+    const rateLimitResult = await checkUserRateLimit({
+      supabase,
+      userId: user.id,
+      feature: "ticket_creator",
+      maxPerMinute: 5,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return buildRateLimitResponse("ticket_creator", rateLimitResult.retryAfterSeconds || 60, corsHeaders);
+    }
+
     // Parse and validate request body
     const bodyRaw = await req.json().catch(() => null);
     if (!bodyRaw) {
