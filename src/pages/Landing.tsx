@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import heroBackground from "@/assets/hero-background.png";
+import ticketLogo from "@/assets/ticket-logo.png";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -229,8 +230,8 @@ export default function Landing() {
           <div className="flex items-center justify-between w-full">
             {/* Logo - Far Left */}
             <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
+              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center p-1.5">
+                <img src={ticketLogo} alt="Ticket" className="h-full w-full object-contain" />
               </div>
               <span className="text-lg font-bold text-foreground tracking-tight">TICKET 1.0</span>
             </div>
