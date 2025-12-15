@@ -35,6 +35,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
+import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

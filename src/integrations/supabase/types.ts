@@ -155,6 +155,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fixture_results_fixture_id_fk"
+            columns: ["fixture_id"]
+            isOneToOne: true
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "fixture_results_fixture_id_fkey"
             columns: ["fixture_id"]
             isOneToOne: true
@@ -1057,6 +1064,27 @@ export type Database = {
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_rate_limits: {
+        Row: {
+          count: number
+          feature: string
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          feature: string
+          user_id: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          feature?: string
+          user_id?: string
+          window_start?: string
         }
         Relationships: []
       }

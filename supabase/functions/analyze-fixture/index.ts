@@ -19,6 +19,7 @@ import { computeLastFiveAverages, computeCombinedMetrics } from "../_shared/stat
 import { fetchHeadToHeadStats } from "../_shared/h2h.ts";
 import { getKeyAttackingInjuries } from "../_shared/injuries.ts";
 import { validateFixtureStats, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
+import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,18 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
+    }
+
+    // P0: Per-user rate limiting (15 requests/minute for Analyzer)
+    const rateLimitResult = await checkUserRateLimit({
+      supabase: supabaseClient,
+      userId: user.id,
+      feature: "analyzer",
+      maxPerMinute: 15,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return buildRateLimitResponse("analyzer", rateLimitResult.retryAfterSeconds || 60, corsHeaders);
     }
 
     // Validate input
