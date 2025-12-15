@@ -254,52 +254,51 @@ export default function Landing() {
         </nav>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-end pt-24 pb-8">
+        <section className="relative min-h-screen flex items-end pt-24 pb-12">
           {/* Background Image */}
           <div 
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: `url(${heroBackground})` }}
           />
-          {/* Minimal Overlay - just enough for text readability */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-background/30" />
+          {/* Minimal Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
           
-          <div className="relative max-w-7xl mx-auto px-6 w-full">
-            <div className="grid lg:grid-cols-2 gap-8 items-end">
-              {/* Left Content - Bottom Left Corner */}
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="space-y-6"
-              >
-                <h1 className="text-5xl md:text-7xl font-black text-foreground leading-none tracking-tight drop-shadow-2xl">
-                  WHERE YOUR
-                  <br />
-                  <span className="text-primary animate-glow">WINNING</span>
-                  <br />
-                  STARTS
-                </h1>
+          <div className="relative w-full px-8 lg:px-16">
+            {/* Text Content - Absolute Bottom Left */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="absolute bottom-12 left-8 lg:left-16 space-y-5 z-10"
+            >
+              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.9] tracking-tight drop-shadow-2xl">
+                WHERE YOUR
+                <br />
+                <span className="text-primary animate-glow">WINNING</span>
+                <br />
+                STARTS
+              </h1>
 
-                <Button 
-                  size="lg" 
-                  className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg font-semibold group shadow-lg shadow-primary/30"
-                  onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
-                >
-                  Get Started Free
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </motion.div>
-
-              {/* Right Content - Auth Form */}
-              <motion.div 
-                id="auth-section"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="relative z-10 flex justify-end"
+              <Button 
+                size="lg" 
+                className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg font-semibold group shadow-xl shadow-primary/40"
+                onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
               >
-                {/* Enhanced Auth Card */}
-                <div className="bg-background/50 backdrop-blur-xl border border-primary/20 rounded-3xl p-8 shadow-2xl shadow-primary/10 relative z-20 max-w-sm w-full">
+                Get Started Free
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </motion.div>
+
+            {/* Auth Form - Absolute Bottom Right */}
+            <motion.div 
+              id="auth-section"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="absolute bottom-12 right-8 lg:right-16 z-10"
+            >
+              {/* Enhanced Auth Card */}
+              <div className="bg-background/60 backdrop-blur-xl border border-border/30 rounded-2xl p-6 lg:p-8 shadow-2xl w-[340px] lg:w-[380px]">
                   <div className="space-y-6">
                     <div className="text-center">
                       <h2 className="text-2xl font-bold text-foreground mb-2">
@@ -400,7 +399,6 @@ export default function Landing() {
                 <div className="absolute -top-6 -left-6 w-24 h-24 bg-primary/20 rounded-2xl blur-xl z-0" />
                 <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-primary/10 rounded-2xl blur-xl z-0" />
               </motion.div>
-            </div>
           </div>
         </section>
 
