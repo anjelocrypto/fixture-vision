@@ -60,7 +60,7 @@ export function AppHeader() {
       title: t('common:sign_out'),
       description: t('common:success_signed_out'),
     });
-    navigate("/auth");
+    navigate("/landing", { replace: true });
   };
 
   return (
