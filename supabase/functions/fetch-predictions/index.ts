@@ -1,7 +1,14 @@
+// ============================================================================
+// Fetch Predictions Edge Function
+// ============================================================================
+// Uses shared auth helper for consistent cron/admin authentication
+// ============================================================================
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -24,35 +31,10 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify cron key or admin JWT
-    const cronKey = req.headers.get("x-cron-key");
-    const validCronKey = Deno.env.get("CRON_INTERNAL_KEY");
-    const authHeader = req.headers.get("authorization");
-
-    let isAuthorized = false;
-    if (cronKey && cronKey === validCronKey) {
-      isAuthorized = true;
-      console.log("[fetch-predictions] Authorized via cron key");
-    } else if (authHeader) {
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-        if (authError || !user) {
-          console.error("[fetch-predictions] Auth failed:", authError?.message);
-          return errorResponse("Unauthorized", origin, 401, req);
-        }
-        const { data: roleData } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
-        if (!roleData) {
-          return errorResponse("Admin access required", origin, 403, req);
-        }
-        isAuthorized = true;
-        console.log("[fetch-predictions] Authorized via admin JWT");
-      } catch (authErr) {
-        console.error("[fetch-predictions] Auth error:", authErr);
-        return errorResponse("Authentication error", origin, 401, req);
-      }
-    }
-
-    if (!isAuthorized) {
+    // Use shared auth helper (NO .single() on scalar RPCs, case-insensitive headers)
+    const authResult = await checkCronOrAdminAuth(req, supabase, SUPABASE_SERVICE_ROLE_KEY, "[fetch-predictions]");
+    
+    if (!authResult.authorized) {
       return errorResponse("Unauthorized", origin, 401, req);
     }
 

@@ -1,58 +1,36 @@
+// ============================================================================
+// Warmup Odds Edge Function
+// ============================================================================
+// Uses shared auth helper for consistent cron/admin authentication
+// Triggers stats-refresh, backfill-odds, and optimize-selections-refresh
+// ============================================================================
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
-
-// Helper to call edge functions with internal auth
-async function callEdgeFunction(name: string, body: unknown) {
-  const baseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
-  
-  if (!baseUrl || !serviceRoleKey || !cronKey) {
-    throw new Error("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or CRON_INTERNAL_KEY");
-  }
-
-  console.log(`[warmup-odds] Calling ${name} with internal auth`);
-  
-  const url = `${baseUrl}/functions/v1/${name}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${serviceRoleKey}`,
-      "x-cron-key": cronKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body ?? {}),
-  });
-
-  const text = await res.text();
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text.substring(0, 200) };
-  }
-
-  console.log(`[warmup-odds] ${name} responded with status ${res.status}`);
-  
-  if (!res.ok) {
-    console.error(`[warmup-odds] ${name} error body:`, JSON.stringify(json).substring(0, 200));
-    return { ok: false, status: res.status, data: json };
-  }
-
-  return { ok: true, status: res.status, data: json };
-}
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 // Fire-and-forget trigger for long-running Edge Functions to avoid browser timeouts
-function triggerEdgeFunction(name: string, body: unknown) {
+async function triggerEdgeFunction(name: string, body: unknown) {
   const baseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const cronKey = Deno.env.get("CRON_INTERNAL_KEY");
-  if (!baseUrl || !serviceRoleKey || !cronKey) {
-    throw new Error("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or CRON_INTERNAL_KEY");
+  
+  if (!baseUrl || !serviceRoleKey) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
+
+  // Get cron key from database (NOT from env var!)
+  const supabase = createClient(baseUrl, serviceRoleKey);
+  const { data: cronKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
+  
+  if (keyError || !cronKey) {
+    console.error(`[warmup-odds] Failed to get cron key:`, keyError);
+    throw new Error("Failed to get cron internal key from database");
+  }
+
   const url = `${baseUrl}/functions/v1/${name}`;
+  
   // Intentionally do not await – let the platform execute independently
   fetch(url, {
     method: "POST",
@@ -85,57 +63,17 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       return errorResponse("Missing environment variables", origin, 500, req);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Standardized auth: X-CRON-KEY or whitelisted user
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
+    // Use shared auth helper (NO .single() on scalar RPCs, case-insensitive headers)
+    const authResult = await checkCronOrAdminAuth(req, supabase, supabaseServiceKey, "[warmup-odds]");
     
-    let isAuthorized = false;
-
-    // Check X-CRON-KEY first
-    if (cronKeyHeader) {
-      const { data: dbKey, error: keyError } = await supabase
-        .rpc("get_cron_internal_key");
-      
-      if (!keyError && dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[warmup-odds] Authorized via X-CRON-KEY");
-      }
-    }
-
-    // If not authorized via cron key, check user whitelist
-    if (!isAuthorized && authHeader) {
-      const userClient = createClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-
-      const { data: isWhitelisted, error: whitelistError } = await userClient
-        .rpc("is_user_whitelisted");
-
-      if (whitelistError) {
-        console.error("[warmup-odds] Whitelist check failed:", whitelistError);
-        return errorResponse("Auth check failed", origin, 401, req);
-      }
-
-      if (!isWhitelisted) {
-        console.warn("[warmup-odds] User not whitelisted");
-        return errorResponse("Forbidden: Admin access required", origin, 403, req);
-      }
-
-      console.log("[warmup-odds] Authorized via whitelisted user");
-      isAuthorized = true;
-    }
-
-    if (!isAuthorized) {
+    if (!authResult.authorized) {
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
@@ -146,7 +84,7 @@ serve(async (req) => {
     // Execute pipeline in proper sequence - all fire-and-forget to avoid browser timeout
     // Step 1: Refresh stats first (teams need stats for selections)
     console.log(`[warmup-odds] Step 1: Triggering stats-refresh (${window_hours}h, force=${force})`);
-    triggerEdgeFunction("stats-refresh", { 
+    await triggerEdgeFunction("stats-refresh", { 
       window_hours, 
       stats_ttl_hours: 24,
       force 
@@ -154,11 +92,11 @@ serve(async (req) => {
 
     // Step 2: Backfill odds (can run after stats start)
     console.log(`[warmup-odds] Step 2: Triggering backfill-odds (${window_hours}h)`);
-    triggerEdgeFunction("backfill-odds", { window_hours });
+    await triggerEdgeFunction("backfill-odds", { window_hours });
 
     // Step 3: Generate optimized selections (needs both stats and odds)
     console.log(`[warmup-odds] Step 3: Triggering optimize-selections-refresh (${window_hours}h)`);
-    triggerEdgeFunction("optimize-selections-refresh", { window_hours });
+    await triggerEdgeFunction("optimize-selections-refresh", { window_hours });
 
     // Respond immediately – all steps running in background
     return jsonResponse(
