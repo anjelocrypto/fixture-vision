@@ -5,6 +5,7 @@ import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { ODDS_MIN, ODDS_MAX, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { RULES, RULES_VERSION, pickFromCombined, type StatMarket } from "../_shared/rules.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
+import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +57,18 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
+    }
+
+    // P0: Per-user rate limiting (10 requests/minute for Filterizer)
+    const rateLimitResult = await checkUserRateLimit({
+      supabase: supabaseClient,
+      userId: user.id,
+      feature: "filterizer",
+      maxPerMinute: 10,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return buildRateLimitResponse("filterizer", rateLimitResult.retryAfterSeconds || 60, corsHeaders);
     }
 
     // Validate input
