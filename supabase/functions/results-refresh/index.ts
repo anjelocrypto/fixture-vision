@@ -170,9 +170,9 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check - service role has full access
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
+    // Auth check using shared helper (NO .single() on scalar RPCs!)
+    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
     let isAuthorized = false;
 
     // Check service role key first (highest priority)
@@ -181,16 +181,22 @@ Deno.serve(async (req: Request) => {
       console.log("[results-refresh] Authorized via service role bearer");
     }
 
-    // Check cron key
+    // Check cron key - NO .single() on scalar RPC!
     if (!isAuthorized && cronKeyHeader) {
-      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key").single();
-      if (!keyError && dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[results-refresh] Authorized via X-CRON-KEY");
+      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
+      if (keyError) {
+        console.error("[results-refresh] get_cron_internal_key error:", keyError);
+      } else {
+        const expectedKey = String(dbKey || "").trim();
+        const providedKey = String(cronKeyHeader || "").trim();
+        if (providedKey && expectedKey && providedKey === expectedKey) {
+          isAuthorized = true;
+          console.log("[results-refresh] Authorized via X-CRON-KEY");
+        }
       }
     }
 
-    // Check user whitelist
+    // Check user whitelist - NO .single() on scalar RPC!
     if (!isAuthorized && authHeader) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
       if (anonKey) {
@@ -198,8 +204,10 @@ Deno.serve(async (req: Request) => {
           global: { headers: { Authorization: authHeader } }
         });
         
-        const { data: isWhitelisted, error: wlError } = await userClient.rpc("is_user_whitelisted").single();
-        if (!wlError && isWhitelisted) {
+        const { data: isWhitelisted, error: wlError } = await userClient.rpc("is_user_whitelisted");
+        if (wlError) {
+          console.error("[results-refresh] is_user_whitelisted error:", wlError);
+        } else if (isWhitelisted === true) {
           isAuthorized = true;
           console.log("[results-refresh] Authorized via user whitelist");
         }
