@@ -270,52 +270,24 @@ export default function Landing() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
-                className="space-y-4"
+                className="space-y-6"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex -space-x-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div 
-                        key={i} 
-                        className="h-8 w-8 rounded-full bg-primary/30 backdrop-blur-sm border border-primary/50 flex items-center justify-center text-xs font-medium text-primary"
-                      >
-                        {String.fromCharCode(64 + i)}
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                    <p className="font-bold text-foreground text-sm">2,500+</p>
-                    <p className="text-xs text-muted-foreground">active users</p>
-                  </div>
-                </div>
+                <h1 className="text-5xl md:text-7xl font-black text-foreground leading-none tracking-tight drop-shadow-2xl">
+                  WHERE YOUR
+                  <br />
+                  <span className="text-primary animate-glow">WINNING</span>
+                  <br />
+                  STARTS
+                </h1>
 
-                <div className="space-y-2">
-                  <h1 className="text-4xl md:text-6xl font-black text-foreground leading-none tracking-tight drop-shadow-lg">
-                    WHERE YOUR
-                    <br />
-                    <span className="text-primary animate-glow">WINNING</span>
-                    <br />
-                    STARTS
-                  </h1>
-                  <p className="text-sm text-muted-foreground max-w-md drop-shadow-md">
-                    AI-powered betting ticket creator. Generate optimized multi-leg tickets with statistical edge based on real-time data analysis.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <Button 
-                    size="lg" 
-                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-5 text-base group"
-                    onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
-                  >
-                    Get Started Free
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                  <span className="px-3 py-1.5 rounded-full bg-background/30 backdrop-blur-sm text-foreground/80 text-xs flex items-center gap-1.5 border border-border/30">
-                    <Shield className="h-3 w-3 text-primary" />
-                    No Credit Card Required
-                  </span>
-                </div>
+                <Button 
+                  size="lg" 
+                  className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg font-semibold group shadow-lg shadow-primary/30"
+                  onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
+                >
+                  Get Started Free
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Button>
               </motion.div>
 
               {/* Right Content - Auth Form */}
@@ -326,8 +298,8 @@ export default function Landing() {
                 transition={{ duration: 0.6, delay: 0.2 }}
                 className="relative z-10 flex justify-end"
               >
-                {/* Auth Card - More Transparent */}
-                <div className="bg-background/40 backdrop-blur-md border border-border/40 rounded-2xl p-6 shadow-xl relative z-20 max-w-sm w-full">
+                {/* Enhanced Auth Card */}
+                <div className="bg-background/50 backdrop-blur-xl border border-primary/20 rounded-3xl p-8 shadow-2xl shadow-primary/10 relative z-20 max-w-sm w-full">
                   <div className="space-y-6">
                     <div className="text-center">
                       <h2 className="text-2xl font-bold text-foreground mb-2">
