@@ -260,9 +260,9 @@ export default function Landing() {
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: `url(${heroBackground})` }}
           />
-          {/* Dark Overlay for text readability */}
-          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/80 to-background/60" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/50" />
+          {/* Subtle Overlay for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-background/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
           
           <div className="relative max-w-7xl mx-auto px-6 w-full">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
