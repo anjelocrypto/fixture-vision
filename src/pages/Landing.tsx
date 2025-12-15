@@ -254,67 +254,65 @@ export default function Landing() {
         </nav>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center pt-24 pb-12">
+        <section className="relative min-h-screen flex items-end pt-24 pb-8">
           {/* Background Image */}
           <div 
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: `url(${heroBackground})` }}
           />
-          {/* Subtle Overlay for text readability */}
-          <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-background/40 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          {/* Minimal Overlay - just enough for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-background/30" />
           
           <div className="relative max-w-7xl mx-auto px-6 w-full">
-            <div className="grid lg:grid-cols-2 gap-16 items-center">
-              {/* Left Content */}
+            <div className="grid lg:grid-cols-2 gap-8 items-end">
+              {/* Left Content - Bottom Left Corner */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
-                className="space-y-8"
+                className="space-y-4"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">
                     {[1, 2, 3, 4].map((i) => (
                       <div 
                         key={i} 
-                        className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 border-2 border-background flex items-center justify-center text-xs font-medium text-primary"
+                        className="h-8 w-8 rounded-full bg-primary/30 backdrop-blur-sm border border-primary/50 flex items-center justify-center text-xs font-medium text-primary"
                       >
                         {String.fromCharCode(64 + i)}
                       </div>
                     ))}
                   </div>
                   <div>
-                    <p className="font-bold text-foreground">2,500+</p>
-                    <p className="text-sm text-muted-foreground">active users</p>
+                    <p className="font-bold text-foreground text-sm">2,500+</p>
+                    <p className="text-xs text-muted-foreground">active users</p>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <h1 className="text-5xl md:text-7xl font-black text-foreground leading-none tracking-tight">
+                <div className="space-y-2">
+                  <h1 className="text-4xl md:text-6xl font-black text-foreground leading-none tracking-tight drop-shadow-lg">
                     WHERE YOUR
                     <br />
                     <span className="text-primary animate-glow">WINNING</span>
                     <br />
                     STARTS
                   </h1>
-                  <p className="text-lg text-muted-foreground max-w-lg">
+                  <p className="text-sm text-muted-foreground max-w-md drop-shadow-md">
                     AI-powered betting ticket creator. Generate optimized multi-leg tickets with statistical edge based on real-time data analysis.
                   </p>
                 </div>
 
-                <Button 
-                  size="lg" 
-                  className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg group"
-                  onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
-                >
-                  Get Started Free
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </Button>
-
-                <div className="flex flex-wrap gap-3">
-                  <span className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-primary" />
+                <div className="flex items-center gap-4">
+                  <Button 
+                    size="lg" 
+                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-5 text-base group"
+                    onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  >
+                    Get Started Free
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                  <span className="px-3 py-1.5 rounded-full bg-background/30 backdrop-blur-sm text-foreground/80 text-xs flex items-center gap-1.5 border border-border/30">
+                    <Shield className="h-3 w-3 text-primary" />
                     No Credit Card Required
                   </span>
                 </div>
@@ -326,10 +324,10 @@ export default function Landing() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
-                className="relative z-10"
+                className="relative z-10 flex justify-end"
               >
-                {/* Auth Card */}
-                <div className="bg-card/90 backdrop-blur-xl border border-border rounded-3xl p-8 shadow-2xl relative z-20">
+                {/* Auth Card - More Transparent */}
+                <div className="bg-background/40 backdrop-blur-md border border-border/40 rounded-2xl p-6 shadow-xl relative z-20 max-w-sm w-full">
                   <div className="space-y-6">
                     <div className="text-center">
                       <h2 className="text-2xl font-bold text-foreground mb-2">
