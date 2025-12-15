@@ -32,11 +32,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Validate cron key from DB
-    const cronKey = req.headers.get('X-CRON-KEY');
+    // 2. Validate cron key from DB (case-insensitive header, NO .single() on scalar RPC)
+    const cronKey = req.headers.get('x-cron-key') ?? req.headers.get('X-CRON-KEY');
     const { data: expectedKey, error: keyError } = await supabase.rpc('get_cron_internal_key');
     
-    if (keyError || !expectedKey || !cronKey || cronKey !== expectedKey) {
+    // Safe string comparison with trim
+    const expectedKeyStr = String(expectedKey || "").trim();
+    const providedKeyStr = String(cronKey || "").trim();
+    
+    if (keyError || !expectedKeyStr || !providedKeyStr || providedKeyStr !== expectedKeyStr) {
       console.error('[cron-warmup-odds] Unauthorized: Invalid or missing X-CRON-KEY');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
