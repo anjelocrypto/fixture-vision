@@ -230,9 +230,7 @@ export default function Landing() {
           <div className="flex items-center justify-between w-full">
             {/* Logo - Far Left */}
             <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center p-1.5">
-                <img src={ticketLogo} alt="Ticket" className="h-full w-full object-contain" />
-              </div>
+              <img src={ticketLogo} alt="Ticket" className="h-10 w-10 object-contain" />
               <span className="text-lg font-bold text-foreground tracking-tight">TICKET 1.0</span>
             </div>
             
