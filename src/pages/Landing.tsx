@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Mail, ArrowRight, Zap, Target, TrendingUp, Shield, ChevronRight, BarChart3, Sparkles } from "lucide-react";
+import { 
+  Loader2, Mail, ArrowRight, Zap, Target, TrendingUp, Shield, ChevronRight, 
+  BarChart3, Sparkles, Filter, Ticket, Trophy, Swords, Users, Brain, 
+  LineChart, Clock, Globe, CheckCircle2
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import {
@@ -32,7 +36,6 @@ export default function Landing() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -127,22 +130,74 @@ export default function Landing() {
     }
   };
 
-  const features = [
+  const mainFeatures = [
+    {
+      icon: Ticket,
+      title: "AI Ticket Creator",
+      description: "Generate optimized multi-leg betting tickets automatically. Our AI analyzes thousands of fixtures to find the best combinations within your target odds range.",
+      highlights: ["Auto-generate 5-15 leg tickets", "Custom odds targeting", "Statistical edge detection"],
+      color: "from-primary/20 to-primary/5",
+    },
+    {
+      icon: Filter,
+      title: "Filterizer",
+      description: "Advanced filtering system to find value bets across all markets. Filter by corners, goals, cards, and more with precision controls.",
+      highlights: ["Multi-market filtering", "Real-time odds updates", "Value detection algorithm"],
+      color: "from-emerald-500/20 to-emerald-500/5",
+    },
     {
       icon: BarChart3,
-      title: "AI-Powered Analysis",
-      description: "Advanced algorithms analyze thousands of data points to generate optimal betting selections.",
+      title: "Fixture Analyzer",
+      description: "Deep statistical analysis for any match. Get comprehensive insights including head-to-head history, team form, and combined metrics.",
+      highlights: ["Last 5 match stats", "H2H analysis", "Injury impact scoring"],
+      color: "from-blue-500/20 to-blue-500/5",
+    },
+  ];
+
+  const additionalFeatures = [
+    {
+      icon: Trophy,
+      title: "Team Totals O1.5",
+      description: "Find teams likely to score 2+ goals based on seasonal form and opponent weakness.",
+      badge: "Premium",
     },
     {
       icon: Target,
-      title: "Smart Ticket Builder",
-      description: "Create optimized multi-leg tickets with statistical edge across all major leagues.",
+      title: "Who Concedes/Scores",
+      description: "League rankings showing which teams concede or score the most goals.",
+      badge: "Analytics",
     },
     {
-      icon: TrendingUp,
-      title: "Real-Time Odds",
-      description: "Live odds integration ensures you always get the best available prices.",
+      icon: Swords,
+      title: "Card Wars",
+      description: "Track teams with highest card and foul counts for disciplinary markets.",
+      badge: "Analytics",
     },
+    {
+      icon: Globe,
+      title: "100+ Leagues",
+      description: "Coverage across Premier League, La Liga, Bundesliga, Serie A, UEFA competitions, and more.",
+      badge: "Global",
+    },
+    {
+      icon: Clock,
+      title: "48h Window",
+      description: "Focus on upcoming fixtures within the next 48 hours for maximum accuracy.",
+      badge: "Real-time",
+    },
+    {
+      icon: Brain,
+      title: "AI Analysis",
+      description: "Gemini-powered match summaries with intelligent betting insights.",
+      badge: "AI",
+    },
+  ];
+
+  const stats = [
+    { value: "100+", label: "Leagues Covered" },
+    { value: "48h", label: "Prediction Window" },
+    { value: "5", label: "Free Analyses" },
+    { value: "24/7", label: "Live Updates" },
   ];
 
   return (
@@ -156,7 +211,7 @@ export default function Landing() {
               </div>
             </div>
             <AlertDialogTitle className="text-center text-2xl">
-              📧 Verify Your Email
+              Verify Your Email
             </AlertDialogTitle>
             <AlertDialogDescription className="text-center text-base">
               Please check your inbox and click the verification link we sent you to activate your account.
@@ -170,7 +225,7 @@ export default function Landing() {
 
       <div className="min-h-screen bg-background overflow-hidden">
         {/* Navigation */}
-        <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+        <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 bg-background/80 backdrop-blur-lg border-b border-border/50">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
@@ -180,9 +235,9 @@ export default function Landing() {
             </div>
             
             <div className="hidden md:flex items-center gap-8">
-              <Link to="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</Link>
+              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
               <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
-              <Link to="#about" className="text-muted-foreground hover:text-foreground transition-colors">About</Link>
+              <a href="#tools" className="text-muted-foreground hover:text-foreground transition-colors">Tools</a>
             </div>
 
             <Button 
@@ -200,15 +255,12 @@ export default function Landing() {
 
         {/* Hero Section */}
         <section className="relative min-h-screen flex items-center pt-24 pb-12">
-          {/* Background gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
-          
-          {/* Floating decorative elements */}
           <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
           <div className="absolute bottom-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
           
           <div className="relative max-w-7xl mx-auto px-6 w-full">
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
               {/* Left Content */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
@@ -216,7 +268,6 @@ export default function Landing() {
                 transition={{ duration: 0.6 }}
                 className="space-y-8"
               >
-                {/* Social Proof */}
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">
                     {[1, 2, 3, 4].map((i) => (
@@ -234,7 +285,6 @@ export default function Landing() {
                   </div>
                 </div>
 
-                {/* Main Headline */}
                 <div className="space-y-4">
                   <h1 className="text-5xl md:text-7xl font-black text-foreground leading-none tracking-tight">
                     WHERE YOUR
@@ -248,7 +298,6 @@ export default function Landing() {
                   </p>
                 </div>
 
-                {/* CTA Button */}
                 <Button 
                   size="lg" 
                   className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg group"
@@ -258,7 +307,6 @@ export default function Landing() {
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
-                {/* Feature Pills */}
                 <div className="flex flex-wrap gap-3">
                   <span className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm flex items-center gap-2">
                     <Zap className="h-4 w-4 text-primary" />
@@ -277,35 +325,10 @@ export default function Landing() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
-                className="relative"
+                className="relative z-10"
               >
-                {/* Feature Cards - Floating */}
-                <div className="absolute -top-8 -left-8 hidden lg:block">
-                  <div className="bg-card/80 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl max-w-[200px]">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                        <BarChart3 className="h-4 w-4 text-primary" />
-                      </div>
-                      <span className="font-semibold text-sm">Live Stats</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Real-time match analysis</p>
-                  </div>
-                </div>
-
-                <div className="absolute -bottom-4 -right-4 hidden lg:block">
-                  <div className="bg-card/80 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl max-w-[200px]">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                        <Target className="h-4 w-4 text-primary" />
-                      </div>
-                      <span className="font-semibold text-sm">Smart Picks</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">AI-optimized selections</p>
-                  </div>
-                </div>
-
                 {/* Auth Card */}
-                <div className="bg-card/50 backdrop-blur-xl border border-border rounded-3xl p-8 shadow-2xl">
+                <div className="bg-card/90 backdrop-blur-xl border border-border rounded-3xl p-8 shadow-2xl relative z-20">
                   <div className="space-y-6">
                     <div className="text-center">
                       <h2 className="text-2xl font-bold text-foreground mb-2">
@@ -401,12 +424,37 @@ export default function Landing() {
                     </div>
                   </div>
                 </div>
+
+                {/* Decorative elements behind auth card */}
+                <div className="absolute -top-6 -left-6 w-24 h-24 bg-primary/20 rounded-2xl blur-xl z-0" />
+                <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-primary/10 rounded-2xl blur-xl z-0" />
               </motion.div>
             </div>
           </div>
         </section>
 
-        {/* Features Section */}
+        {/* Stats Bar */}
+        <section className="py-12 border-y border-border bg-card/30">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {stats.map((stat, index) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  className="text-center"
+                >
+                  <p className="text-3xl md:text-4xl font-bold text-primary">{stat.value}</p>
+                  <p className="text-muted-foreground text-sm mt-1">{stat.label}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Main Features Section */}
         <section id="features" className="py-24 relative">
           <div className="max-w-7xl mx-auto px-6">
             <motion.div 
@@ -416,32 +464,159 @@ export default function Landing() {
               transition={{ duration: 0.6 }}
               className="text-center mb-16"
             >
-              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-                Why Choose <span className="text-primary">Ticket AI?</span>
+              <span className="text-primary text-sm font-semibold tracking-wider uppercase">Powerful Tools</span>
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4 mt-2">
+                Everything You Need to <span className="text-primary">Win</span>
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Powered by advanced algorithms and real-time data to give you the edge.
+                Our suite of AI-powered tools gives you the analytical edge you need to make smarter betting decisions.
               </p>
             </motion.div>
 
-            <div className="grid md:grid-cols-3 gap-8">
-              {features.map((feature, index) => (
+            <div className="grid lg:grid-cols-3 gap-8">
+              {mainFeatures.map((feature, index) => (
                 <motion.div
                   key={feature.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  className="bg-card/50 backdrop-blur border border-border rounded-2xl p-8 hover:border-primary/30 transition-colors group"
+                  transition={{ duration: 0.6, delay: index * 0.15 }}
+                  className="group"
                 >
-                  <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
-                    <feature.icon className="h-7 w-7 text-primary" />
+                  <div className={`bg-gradient-to-br ${feature.color} border border-border rounded-3xl p-8 h-full hover:border-primary/30 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5`}>
+                    <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
+                      <feature.icon className="h-7 w-7 text-primary" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-foreground mb-3">{feature.title}</h3>
+                    <p className="text-muted-foreground mb-6">{feature.description}</p>
+                    <ul className="space-y-2">
+                      {feature.highlights.map((highlight) => (
+                        <li key={highlight} className="flex items-center gap-2 text-sm text-foreground">
+                          <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                          {highlight}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <h3 className="text-xl font-bold text-foreground mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground">{feature.description}</p>
                 </motion.div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Additional Tools Section */}
+        <section id="tools" className="py-24 bg-card/30 border-y border-border">
+          <div className="max-w-7xl mx-auto px-6">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
+            >
+              <span className="text-primary text-sm font-semibold tracking-wider uppercase">More Features</span>
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4 mt-2">
+                Complete Analytics <span className="text-primary">Suite</span>
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Beyond our core tools, access a full range of analytics features designed for serious bettors.
+              </p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {additionalFeatures.map((feature, index) => (
+                <motion.div
+                  key={feature.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  className="bg-card border border-border rounded-2xl p-6 hover:border-primary/30 transition-colors group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <feature.icon className="h-6 w-6 text-primary" />
+                    </div>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-primary/10 text-primary">
+                      {feature.badge}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground mb-2">{feature.title}</h3>
+                  <p className="text-sm text-muted-foreground">{feature.description}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section className="py-24">
+          <div className="max-w-7xl mx-auto px-6">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
+            >
+              <span className="text-primary text-sm font-semibold tracking-wider uppercase">Simple Process</span>
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4 mt-2">
+                How It <span className="text-primary">Works</span>
+              </h2>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              {[
+                { step: "01", title: "Create Account", desc: "Sign up for free and get 5 complimentary match analyses to explore our tools." },
+                { step: "02", title: "Analyze Matches", desc: "Use our AI tools to analyze fixtures, filter value bets, and generate optimal tickets." },
+                { step: "03", title: "Place Smart Bets", desc: "Make informed decisions backed by statistical analysis and real-time data." },
+              ].map((item, index) => (
+                <motion.div
+                  key={item.step}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.15 }}
+                  className="relative"
+                >
+                  <div className="text-7xl font-black text-primary/10 absolute -top-4 -left-2">{item.step}</div>
+                  <div className="relative pt-8">
+                    <h3 className="text-xl font-bold text-foreground mb-2">{item.title}</h3>
+                    <p className="text-muted-foreground">{item.desc}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <section className="py-24 bg-gradient-to-br from-primary/10 via-background to-primary/5">
+          <div className="max-w-4xl mx-auto px-6 text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+                Ready to Start <span className="text-primary">Winning?</span>
+              </h2>
+              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+                Join thousands of users who are making smarter betting decisions with Ticket AI. Get started with 5 free analyses today.
+              </p>
+              <Button 
+                size="lg" 
+                className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-10 py-6 text-lg group"
+                onClick={() => {
+                  setIsSignUp(true);
+                  document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                Create Free Account
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </motion.div>
           </div>
         </section>
 
