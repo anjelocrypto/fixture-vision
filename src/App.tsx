@@ -36,7 +36,7 @@ const App = () => {
           <BrowserRouter>
             <Routes>
               <Route path="/landing" element={<Landing />} />
-              <Route path="/auth" element={<Auth />} />
+              <Route path="/auth" element={<Navigate to="/landing" replace />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/pricing" element={<Pricing />} />
