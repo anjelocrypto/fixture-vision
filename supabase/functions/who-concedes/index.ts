@@ -142,6 +142,7 @@ serve(async (req) => {
     }
 
     // STEP 2: Fetch all matches from last 18 months for stats calculation
+    // Use explicit FK reference to avoid ambiguity with multiple FKs
     const { data: matchData, error: matchError } = await supabase
       .from("fixture_results")
       .select(`
@@ -151,7 +152,7 @@ serve(async (req) => {
         goals_away,
         kickoff_at,
         status,
-        fixtures!inner(
+        fixtures!fixture_results_fixture_id_fkey(
           id,
           teams_home,
           teams_away
