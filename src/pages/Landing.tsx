@@ -285,9 +285,9 @@ export default function Landing() {
               <Button 
                 size="lg" 
                 className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-lg font-semibold group shadow-xl shadow-primary/40"
-                onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => document.getElementById('register-email')?.focus()}
               >
-                Get Started Free
+                Register Now
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </motion.div>
@@ -314,9 +314,9 @@ export default function Landing() {
 
                     <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="email" className="text-foreground">Email</Label>
+                        <Label htmlFor="register-email" className="text-foreground">Email</Label>
                         <Input
-                          id="email"
+                          id="register-email"
                           type="email"
                           placeholder="you@example.com"
                           value={email}
