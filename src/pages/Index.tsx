@@ -8,6 +8,7 @@ import { WinnerPanel } from "@/components/WinnerPanel";
 import { TeamTotalsPanel } from "@/components/TeamTotalsPanel";
 import { WhoConcedesPanel } from "@/components/WhoConcedesPanel";
 import { CardWarPanel } from "@/components/CardWarPanel";
+import { BTTSIndexPanel } from "@/components/BTTSIndexPanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -21,7 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert, Swords } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert, Swords, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
@@ -121,6 +122,7 @@ const Index = () => {
   const [showTeamTotals, setShowTeamTotals] = useState(false);
   const [showWhoConcedes, setShowWhoConcedes] = useState(false);
   const [showCardWar, setShowCardWar] = useState(false);
+  const [showBTTSIndex, setShowBTTSIndex] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -1087,6 +1089,10 @@ const Index = () => {
               <CardWarPanel onClose={() => setShowCardWar(false)} />
             )}
 
+            {showBTTSIndex && (
+              <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -1223,6 +1229,23 @@ const Index = () => {
                   <Swords className="h-4 w-4" />
                   {t('common:card_war')}
                 </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant={showBTTSIndex ? "default" : "outline"}
+                  onClick={() => {
+                    setShowBTTSIndex(!showBTTSIndex);
+                    if (!showBTTSIndex) {
+                      setShowFilterizer(false);
+                      setShowWinner(false);
+                      setShowTeamTotals(false);
+                      setShowWhoConcedes(false);
+                      setShowCardWar(false);
+                    }
+                  }}
+                >
+                  <Users className="h-4 w-4" />
+                  {t('common:btts_index')}
+                </Button>
               </div>
 
               <div className="flex-1 overflow-y-auto">
@@ -1342,12 +1365,31 @@ const Index = () => {
                         setShowWinner(false);
                         setShowTeamTotals(false);
                         setShowWhoConcedes(false);
+                        setShowBTTSIndex(false);
                       }
                       setRightSheetOpen(false);
                     }}
                   >
                     <Swords className="h-4 w-4" />
                     {t('common:card_war')}
+                  </Button>
+                  <Button
+                    className="w-full gap-2"
+                    variant={showBTTSIndex ? "default" : "outline"}
+                    onClick={() => {
+                      setShowBTTSIndex(!showBTTSIndex);
+                      if (!showBTTSIndex) {
+                        setShowFilterizer(false);
+                        setShowWinner(false);
+                        setShowTeamTotals(false);
+                        setShowWhoConcedes(false);
+                        setShowCardWar(false);
+                      }
+                      setRightSheetOpen(false);
+                    }}
+                  >
+                    <Users className="h-4 w-4" />
+                    {t('common:btts_index')}
                   </Button>
                 </div>
 

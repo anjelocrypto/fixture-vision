@@ -159,6 +159,14 @@ verify_jwt = false
 [functions.smoke-test-analytics]
 verify_jwt = false
 
+# BTTS Index - read-only team BTTS rankings
+[functions.btts-index]
+verify_jwt = true
+
+# BTTS Refresh - cron job to refresh BTTS metrics
+[functions.btts-refresh]
+verify_jwt = false
+
 # One-time admin function to extend November 2025 subscribers
 [functions.extend-subscriptions]
 verify_jwt = false
