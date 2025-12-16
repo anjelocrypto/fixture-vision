@@ -145,5 +145,22 @@
   "card_war_ranking_desc": "{{count}} teams ranked by {{mode}}",
   "card_war_footer_cards": "Teams at the top receive the most cards • Based on last {{count}} matches",
   "card_war_footer_fouls": "Teams at the top commit the most fouls • Based on last {{count}} matches",
-  "card_war_empty": "Select a league and click \"Show ranking\" to see which teams get the most cards and fouls."
+  "card_war_empty": "Select a league and click \"Show ranking\" to see which teams get the most cards and fouls.",
+  "btts_index": "BTTS Index",
+  "btts_title": "BTTS Index",
+  "btts_subtitle": "Teams ranked by Both Teams To Score percentage",
+  "btts_country": "Country",
+  "btts_league": "League",
+  "btts_team": "Team",
+  "btts_rate": "BTTS %",
+  "btts_count": "BTTS",
+  "btts_matches": "Games",
+  "btts_last_n": "Last {{n}}",
+  "btts_teams_count": "{{count}} teams",
+  "btts_no_data_desc": "No historical data found for this league",
+  "btts_ranking_desc": "{{count}} teams ranked by BTTS rate",
+  "btts_low_sample": "Low sample size",
+  "btts_footer": "Teams at the top have the highest Both Teams To Score rate in their last {{n}} matches",
+  "btts_empty": "Select a league and click \"Show Ranking\" to see BTTS rates for each team.",
+  "country_france": "France"
 }

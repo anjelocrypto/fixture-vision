@@ -983,6 +983,54 @@ export type Database = {
         }
         Relationships: []
       }
+      team_btts_metrics: {
+        Row: {
+          btts_10: number
+          btts_10_rate: number
+          btts_15: number
+          btts_15_rate: number
+          btts_5: number
+          btts_5_rate: number
+          computed_at: string
+          league_id: number
+          sample_10: number
+          sample_15: number
+          sample_5: number
+          team_id: number
+          team_name: string
+        }
+        Insert: {
+          btts_10?: number
+          btts_10_rate?: number
+          btts_15?: number
+          btts_15_rate?: number
+          btts_5?: number
+          btts_5_rate?: number
+          computed_at?: string
+          league_id: number
+          sample_10?: number
+          sample_15?: number
+          sample_5?: number
+          team_id: number
+          team_name: string
+        }
+        Update: {
+          btts_10?: number
+          btts_10_rate?: number
+          btts_15?: number
+          btts_15_rate?: number
+          btts_5?: number
+          btts_5_rate?: number
+          computed_at?: string
+          league_id?: number
+          sample_10?: number
+          sample_15?: number
+          sample_5?: number
+          team_id?: number
+          team_name?: string
+        }
+        Relationships: []
+      }
       team_totals_candidates: {
         Row: {
           computed_at: string
