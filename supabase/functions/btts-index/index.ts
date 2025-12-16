@@ -191,17 +191,19 @@ async function handleFixtureMode(
   // Check if league is supported
   const leagueInfo = SUPPORTED_LEAGUES[leagueId] || { name: "Unknown League", country: "Unknown" };
 
-  // Get BTTS metrics for both teams
+  // Get BTTS metrics for both teams (filter by league_id to avoid wrong data for promoted/relegated teams)
   const { data: homeMetrics } = await supabase
     .from("team_btts_metrics")
     .select("*")
     .eq("team_id", homeTeamId)
+    .eq("league_id", leagueId)
     .single();
 
   const { data: awayMetrics } = await supabase
     .from("team_btts_metrics")
     .select("*")
     .eq("team_id", awayTeamId)
+    .eq("league_id", leagueId)
     .single();
 
   // Format team data

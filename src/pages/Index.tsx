@@ -1191,6 +1191,7 @@ const Index = () => {
                       setShowWinner(false);
                       setShowWhoConcedes(false);
                       setShowCardWar(false);
+                      setShowBTTSIndex(false);
                     }
                   }}
                 >
@@ -1207,6 +1208,7 @@ const Index = () => {
                       setShowWinner(false);
                       setShowTeamTotals(false);
                       setShowCardWar(false);
+                      setShowBTTSIndex(false);
                     }
                   }}
                 >
@@ -1223,6 +1225,7 @@ const Index = () => {
                       setShowWinner(false);
                       setShowTeamTotals(false);
                       setShowWhoConcedes(false);
+                      setShowBTTSIndex(false);
                     }
                   }}
                 >
@@ -1331,6 +1334,7 @@ const Index = () => {
                         setShowWinner(false);
                         setShowWhoConcedes(false);
                         setShowCardWar(false);
+                        setShowBTTSIndex(false);
                       }
                       setRightSheetOpen(false);
                     }}
@@ -1348,6 +1352,7 @@ const Index = () => {
                         setShowWinner(false);
                         setShowTeamTotals(false);
                         setShowCardWar(false);
+                        setShowBTTSIndex(false);
                       }
                       setRightSheetOpen(false);
                     }}
