@@ -59,9 +59,9 @@ export function DemoTicketCreatorDialog({ open, onOpenChange, onGenerate }: Demo
   };
 
   const generateDemoTicket = () => {
-    // Filter selections by chosen markets
+    // Filter selections by chosen markets - ONLY winning selections
     const availableSelections = DEMO_SELECTIONS.filter(
-      s => includeMarkets.includes(s.market)
+      s => includeMarkets.includes(s.market) && s.result.hit
     );
 
     // Shuffle and pick unique fixtures
@@ -72,7 +72,6 @@ export function DemoTicketCreatorDialog({ open, onOpenChange, onGenerate }: Demo
     let currentOdds = 1;
     const usedFixtures = new Set<number>();
     
-    const targetOdds = (targetMin + targetMax) / 2;
     const targetLegs = Math.floor((minLegs + maxLegs) / 2);
 
     for (const selection of shuffled) {
@@ -89,19 +88,16 @@ export function DemoTicketCreatorDialog({ open, onOpenChange, onGenerate }: Demo
       if (currentOdds >= targetMin && legs.length >= minLegs) break;
     }
 
-    // Calculate result
-    const hitsCount = legs.filter(l => l.result.hit).length;
-    const won = hitsCount === legs.length;
     const totalOdds = legs.reduce((acc, l) => acc * l.odds, 1);
 
     const ticket: DemoTicket = {
       legs,
       totalOdds: Math.round(totalOdds * 100) / 100,
       result: {
-        hitsCount,
+        hitsCount: legs.length,
         totalLegs: legs.length,
-        won,
-        potentialReturn: won ? Math.round(10 * totalOdds * 100) / 100 : 0, // Assuming $10 stake
+        won: true, // Always show winning tickets
+        potentialReturn: Math.round(10 * totalOdds * 100) / 100, // Assuming $10 stake
       }
     };
 
