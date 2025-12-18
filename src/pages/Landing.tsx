@@ -290,6 +290,14 @@ export default function Landing() {
                 Register Now
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="rounded-full px-8 py-6 text-lg font-semibold border-foreground/30 hover:bg-foreground/10"
+                onClick={() => navigate('/demo')}
+              >
+                Try Demo
+              </Button>
             </motion.div>
 
             {/* Auth Form - Absolute Bottom Right */}

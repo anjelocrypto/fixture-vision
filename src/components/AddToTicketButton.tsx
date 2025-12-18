@@ -4,6 +4,8 @@ import { TicketPlus, TicketCheck } from "lucide-react";
 import { useTicket, TicketLeg } from "@/stores/useTicket";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { useNavigate } from "react-router-dom";
 
 interface AddToTicketButtonProps {
   leg: TicketLeg;
@@ -15,10 +17,22 @@ export function AddToTicketButton({ leg, size = "icon", variant = "ghost" }: Add
   const { addLeg, removeLeg, hasLeg } = useTicket();
   const { toast } = useToast();
   const { t } = useTranslation('common');
+  const { isDemo } = useDemoMode();
+  const navigate = useNavigate();
   const isAdded = hasLeg(leg.fixtureId, leg.market);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    // Demo mode: show CTA instead of adding to ticket
+    if (isDemo) {
+      toast({
+        title: "Demo Mode",
+        description: "Create an account to save real betting tickets!",
+        action: <Button size="sm" onClick={() => navigate('/landing')}>Sign Up</Button>,
+      });
+      return;
+    }
 
     if (isAdded) {
       removeLeg(leg.id);

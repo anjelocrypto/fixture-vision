@@ -123,50 +123,41 @@ verify_jwt = false
 [functions.admin-remediate-stats-gaps]
 verify_jwt = false
 
-# Weekly automated remediation cron target (every Monday 03:00 UTC)
 [functions.admin-remediate-stats-gaps-weekly]
 verify_jwt = false
 
-# One-time aggressive backfill function (Turbo Backfill Day)
 [functions.stats-turbo-backfill]
 verify_jwt = false
 
-# Stats audit: compare cached vs recomputed last-5 averages
 [functions.stats-audit-last-five]
 verify_jwt = false
 
-# Team Totals O1.5 automated refresh (cron every 6 hours)
 [functions.team-totals-refresh]
 verify_jwt = false
 
-# Who Concedes? - read-only defensive stats ranking (no auth required)
 [functions.who-concedes]
 verify_jwt = false
 
-# Card War - read-only cards/fouls ranking (no auth required)
 [functions.card-war]
 verify_jwt = false
 
-# Pipeline Health Check - monitors data freshness and job status
 [functions.pipeline-health-check]
 verify_jwt = false
 
-# Auto-backfill missing fixture results (cron every 30 min)
 [functions.auto-backfill-results]
 verify_jwt = false
 
-# Analytics smoke test (cron every 6 hours)
 [functions.smoke-test-analytics]
 verify_jwt = false
 
-# BTTS Index - read-only team BTTS rankings
 [functions.btts-index]
 verify_jwt = true
 
-# BTTS Refresh - cron job to refresh BTTS metrics
 [functions.btts-refresh]
 verify_jwt = false
 
-# One-time admin function to extend November 2025 subscribers
 [functions.extend-subscriptions]
+verify_jwt = false
+
+[functions.demo-fixtures]
 verify_jwt = false
