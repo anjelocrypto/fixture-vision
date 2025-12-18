@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, X, AlertTriangle, Shield, TrendingUp, Goal } from "lucide-react";
+import { Loader2, RefreshCw, X, AlertTriangle, Shield, TrendingUp, Goal, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -27,8 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 interface SafeZonePanelProps {
   onClose: () => void;
@@ -65,90 +63,86 @@ interface SafeZoneFixture {
   league_avg_goals: number;
 }
 
-// Supported leagues grouped by country
+// Supported leagues grouped by country - matching BTTS Index / Card War style
 const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
-  England: [
+  england: [
     { id: 39, name: "Premier League" },
     { id: 40, name: "Championship" },
   ],
-  Spain: [
+  spain: [
     { id: 140, name: "La Liga" },
     { id: 141, name: "La Liga 2" },
   ],
-  Germany: [
+  germany: [
     { id: 78, name: "Bundesliga" },
     { id: 79, name: "2. Bundesliga" },
   ],
-  Italy: [
+  italy: [
     { id: 135, name: "Serie A" },
     { id: 136, name: "Serie B" },
   ],
-  France: [
+  france: [
     { id: 61, name: "Ligue 1" },
     { id: 62, name: "Ligue 2" },
   ],
-  Other: [
-    { id: 94, name: "Primeira Liga (PT)" },
-    { id: 88, name: "Eredivisie (NL)" },
-    { id: 144, name: "Pro League (BE)" },
-    { id: 203, name: "Super Lig (TR)" },
+  netherlands: [
+    { id: 88, name: "Eredivisie" },
+    { id: 89, name: "Eerste Divisie" },
   ],
-  UEFA: [
+  portugal: [
+    { id: 94, name: "Primeira Liga" },
+  ],
+  belgium: [
+    { id: 144, name: "Pro League" },
+  ],
+  turkey: [
+    { id: 203, name: "Super Lig" },
+  ],
+  uefa: [
     { id: 2, name: "Champions League" },
     { id: 3, name: "Europa League" },
     { id: 848, name: "Conference League" },
   ],
 };
 
+const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
+
 export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
 
   const [mode, setMode] = useState<Mode>("O25");
-  const [selectedLeagues, setSelectedLeagues] = useState<number[]>([39]); // Default: Premier League
+  const [selectedCountry, setSelectedCountry] = useState<string>("england");
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number>(39);
   const [results, setResults] = useState<SafeZoneFixture[]>([]);
   const [loading, setLoading] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
 
-  const toggleLeague = (leagueId: number) => {
-    setSelectedLeagues(prev => 
-      prev.includes(leagueId)
-        ? prev.filter(id => id !== leagueId)
-        : [...prev, leagueId]
-    );
+  const availableLeagues = LEAGUES_BY_COUNTRY[selectedCountry] || [];
+
+  const handleCountryChange = (country: string) => {
+    setSelectedCountry(country);
+    const leagues = LEAGUES_BY_COUNTRY[country];
+    if (leagues && leagues.length > 0) {
+      setSelectedLeagueId(leagues[0].id);
+    }
     setResults([]);
     setGeneratedAt(null);
   };
 
-  const selectAllInCountry = (country: string) => {
-    const leagueIds = LEAGUES_BY_COUNTRY[country].map(l => l.id);
-    const allSelected = leagueIds.every(id => selectedLeagues.includes(id));
-    
-    if (allSelected) {
-      setSelectedLeagues(prev => prev.filter(id => !leagueIds.includes(id)));
-    } else {
-      setSelectedLeagues(prev => [...new Set([...prev, ...leagueIds])]);
-    }
+  const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
     setResults([]);
     setGeneratedAt(null);
   };
 
   const handleGenerate = async () => {
-    if (selectedLeagues.length === 0) {
-      toast({
-        title: "Select Leagues",
-        description: "Please select at least one league",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("safe-zone", {
         body: {
           mode,
-          league_ids: selectedLeagues,
+          league_ids: [selectedLeagueId],
           matchday: "next",
           limit: 50,
         },
@@ -165,24 +159,30 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
 
       if (data.fixtures.length === 0) {
         toast({
-          title: "No Fixtures",
-          description: "No upcoming fixtures found for selected leagues",
+          title: t('no_data_available', 'No Fixtures'),
+          description: t('safe_zone_no_fixtures', 'No upcoming fixtures found for this league'),
         });
       } else {
         toast({
-          title: "Rankings Generated",
+          title: t('ranking_generated', 'Rankings Generated'),
           description: `${data.fixtures.length} fixtures ranked by ${mode === "O25" ? "O2.5 goals" : "BTTS"} probability`,
         });
       }
     } catch (error: any) {
       console.error("Error fetching Safe Zone data:", error);
       toast({
-        title: "Error",
+        title: t('error', 'Error'),
         description: error.message || "Failed to generate rankings",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    if (selectedLeagueId) {
+      handleGenerate();
     }
   };
 
@@ -206,20 +206,36 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
     });
   };
 
+  const getDataQualityIcon = (quality: string) => {
+    if (quality === "low") {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <AlertTriangle className="h-3 w-3 text-amber-500" />
+            </TooltipTrigger>
+            <TooltipContent>Low sample size - less reliable</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+    return null;
+  };
+
   return (
     <Card className="w-full shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            Safe Zone
+            {t('safe_zone_title', 'Safe Zone')}
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Fixtures ranked by O2.5 goals or BTTS probability
+          {t('safe_zone_subtitle', 'Fixtures ranked by Over 2.5 or BTTS probability')}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -229,56 +245,67 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
             variant={mode === "O25" ? "default" : "outline"}
             size="sm"
             className="flex-1 gap-2"
-            onClick={() => { setMode("O25"); setResults([]); }}
+            onClick={() => handleModeChange("O25")}
           >
             <Goal className="h-4 w-4" />
-            Over 2.5 Goals
+            {t('safe_zone_over_25', 'Over 2.5 Goals')}
           </Button>
           <Button
             variant={mode === "BTTS" ? "default" : "outline"}
             size="sm"
             className="flex-1 gap-2"
-            onClick={() => { setMode("BTTS"); setResults([]); }}
+            onClick={() => handleModeChange("BTTS")}
           >
             <TrendingUp className="h-4 w-4" />
-            BTTS
+            {t('safe_zone_btts', 'BTTS')}
           </Button>
         </div>
 
-        {/* League Selection */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Select Leagues</Label>
-          <div className="max-h-[200px] overflow-y-auto space-y-3 border rounded-md p-3">
-            {Object.entries(LEAGUES_BY_COUNTRY).map(([country, leagues]) => (
-              <div key={country} className="space-y-1">
-                <div 
-                  className="text-xs font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground"
-                  onClick={() => selectAllInCountry(country)}
-                >
-                  {country}
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {leagues.map(league => (
-                    <div key={league.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`league-${league.id}`}
-                        checked={selectedLeagues.includes(league.id)}
-                        onCheckedChange={() => toggleLeague(league.id)}
-                      />
-                      <label
-                        htmlFor={`league-${league.id}`}
-                        className="text-xs cursor-pointer truncate"
-                      >
-                        {league.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+        {/* Selectors - same style as BTTS Index */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Country Selector */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              {t('btts_country', 'Country')}
+            </label>
+            <Select value={selectedCountry} onValueChange={handleCountryChange}>
+              <SelectTrigger className="w-full bg-background">
+                <SelectValue placeholder={t('btts_country', 'Country')} />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border border-border z-50">
+                {COUNTRY_KEYS.map((countryKey) => (
+                  <SelectItem key={countryKey} value={countryKey}>
+                    {countryKey.charAt(0).toUpperCase() + countryKey.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {selectedLeagues.length} league(s) selected
+
+          {/* League Selector */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              {t('btts_league', 'League')}
+            </label>
+            <Select
+              value={selectedLeagueId.toString()}
+              onValueChange={(v) => {
+                setSelectedLeagueId(parseInt(v));
+                setResults([]);
+                setGeneratedAt(null);
+              }}
+            >
+              <SelectTrigger className="w-full bg-background">
+                <SelectValue placeholder={t('btts_league', 'League')} />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border border-border z-50">
+                {availableLeagues.map((league) => (
+                  <SelectItem key={league.id} value={league.id.toString()}>
+                    {league.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -286,24 +313,21 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
         <div className="flex gap-2">
           <Button 
             onClick={handleGenerate} 
-            disabled={loading || selectedLeagues.length === 0} 
+            disabled={loading} 
             className="flex-1 gap-2"
           >
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Generating...
+                {t('generating', 'Generating...')}
               </>
             ) : (
-              <>
-                <Shield className="h-4 w-4" />
-                Generate Rankings
-              </>
+              t('show_ranking', 'Show Ranking')
             )}
           </Button>
           {results.length > 0 && (
             <Button
-              onClick={handleGenerate}
+              onClick={handleRefresh}
               disabled={loading}
               variant="outline"
               size="icon"
@@ -318,7 +342,7 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-muted-foreground">
-                {results.length} fixtures • {mode === "O25" ? "Over 2.5 Goals" : "BTTS"}
+                {results[0]?.league_name} • {results.length} fixtures • {mode === "O25" ? "Over 2.5" : "BTTS"}
               </span>
               {generatedAt && (
                 <span className="text-xs text-muted-foreground">
@@ -333,10 +357,13 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
                     <TableHead>Fixture</TableHead>
-                    <TableHead className="text-right w-20">
+                    <TableHead className="text-right w-16">
                       {mode === "O25" ? "P(>2.5)" : "P(BTTS)"}
                     </TableHead>
-                    <TableHead className="text-right w-20">μH / μA</TableHead>
+                    <TableHead className="text-right w-20">xG</TableHead>
+                    <TableHead className="text-right w-24">
+                      {mode === "O25" ? "O2.5%" : "BTTS%"}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -349,37 +376,37 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
                       </TableCell>
                       <TableCell>
                         <div className="space-y-0.5">
-                          <div className="font-medium text-xs truncate max-w-[160px] flex items-center gap-1">
-                            {fixture.home_team} vs {fixture.away_team}
-                            {fixture.data_quality === "low" && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>Low sample size</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
+                          <div className="font-medium text-sm flex items-center gap-1">
+                            {fixture.home_team}
+                            <span className="text-muted-foreground mx-1">vs</span>
+                            {fixture.away_team}
+                            {getDataQualityIcon(fixture.data_quality)}
                           </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {fixture.league_name} • {formatTime(fixture.kickoff_at)}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {mode === "O25" 
-                              ? `O2.5: H ${Math.round((fixture.o25_home_10 || 0) * 100)}% / A ${Math.round((fixture.o25_away_10 || 0) * 100)}%`
-                              : `BTTS: H ${Math.round((fixture.btts_home_10 || 0) * 100)}% / A ${Math.round((fixture.btts_away_10 || 0) * 100)}%`
-                            }
+                          <div className="text-xs text-muted-foreground">
+                            {formatTime(fixture.kickoff_at)}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className="font-bold tabular-nums text-sm">
+                        <span className="font-bold tabular-nums text-base">
                           {formatProbability(fixture.probability)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
-                        {fixture.mu_home.toFixed(1)} / {fixture.mu_away.toFixed(1)}
+                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                        {fixture.mu_home.toFixed(1)} - {fixture.mu_away.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="text-xs tabular-nums">
+                          {mode === "O25" ? (
+                            <span>
+                              H:{Math.round((fixture.o25_home_10 || 0) * 100)}% / A:{Math.round((fixture.o25_away_10 || 0) * 100)}%
+                            </span>
+                          ) : (
+                            <span>
+                              H:{Math.round((fixture.btts_home_10 || 0) * 100)}% / A:{Math.round((fixture.btts_away_10 || 0) * 100)}%
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -388,10 +415,12 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
             </div>
 
             {/* Disclaimer */}
-            <p className="text-[10px] text-muted-foreground text-center px-2">
-              Probabilities are model-based estimates using team scoring/conceding averages and league stats. 
-              Not guarantees—always bet responsibly.
-            </p>
+            <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                {t('safe_zone_disclaimer', 'Probabilities are model-based estimates using team scoring/conceding averages and league stats. Not guarantees—always bet responsibly.')}
+              </p>
+            </div>
           </div>
         )}
 
@@ -399,7 +428,7 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
         {!loading && results.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm space-y-2">
             <Shield className="h-8 w-8 mx-auto opacity-50" />
-            <p>Select leagues and click "Generate Rankings" to see fixtures ranked by probability.</p>
+            <p>{t('safe_zone_empty', 'Select a league and click "Show Ranking" to see fixtures ranked by probability.')}</p>
           </div>
         )}
       </CardContent>

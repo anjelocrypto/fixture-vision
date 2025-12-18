@@ -1095,6 +1095,10 @@ const Index = () => {
               <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
             )}
 
+            {showSafeZone && (
+              <SafeZonePanel onClose={() => setShowSafeZone(false)} />
+            )}
+
             {filterCriteria ? (
               <>
                 <SelectionsDisplay 
@@ -1273,11 +1277,7 @@ const Index = () => {
               </div>
 
               {/* Tool Panels */}
-              {showSafeZone && (
-                <div className="p-4 border-b">
-                  <SafeZonePanel onClose={() => setShowSafeZone(false)} />
-                </div>
-              )}
+              {/* Safe Zone panel is now in center rail */}
 
               <div className="flex-1 overflow-y-auto">
                 <RightRail
@@ -1407,7 +1407,7 @@ const Index = () => {
                     {t('common:card_war')}
                   </Button>
                   <Button
-                    className="w-full gap-2"
+                    className="w-full gap-2 mb-2"
                     variant={showBTTSIndex ? "default" : "outline"}
                     onClick={() => {
                       setShowBTTSIndex(!showBTTSIndex);
@@ -1417,12 +1417,32 @@ const Index = () => {
                         setShowTeamTotals(false);
                         setShowWhoConcedes(false);
                         setShowCardWar(false);
+                        setShowSafeZone(false);
                       }
                       setRightSheetOpen(false);
                     }}
                   >
                     <Users className="h-4 w-4" />
                     {t('common:btts_index')}
+                  </Button>
+                  <Button
+                    className="w-full gap-2"
+                    variant={showSafeZone ? "default" : "outline"}
+                    onClick={() => {
+                      setShowSafeZone(!showSafeZone);
+                      if (!showSafeZone) {
+                        setShowFilterizer(false);
+                        setShowWinner(false);
+                        setShowTeamTotals(false);
+                        setShowWhoConcedes(false);
+                        setShowCardWar(false);
+                        setShowBTTSIndex(false);
+                      }
+                      setRightSheetOpen(false);
+                    }}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {t('common:safe_zone', 'Safe Zone')}
                   </Button>
                 </div>
 
