@@ -5,8 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
-  ChevronRight, Trophy, Sparkles, ArrowRight, Play, 
-  Filter, Ticket, Users, Target, BarChart3, Eye
+  ChevronRight, Trophy, ArrowRight, Play
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DemoProvider } from "@/contexts/DemoContext";
@@ -27,41 +26,26 @@ const DEMO_FEATURES = [
     id: 'ticket' as const,
     title: 'AI Ticket Creator',
     description: 'Generate optimized betting tickets with AI',
-    icon: Sparkles,
-    color: 'text-yellow-500',
-    bgColor: 'bg-yellow-500/10',
   },
   {
     id: 'filterizer' as const,
     title: 'Filterizer',
     description: 'Filter picks by market, odds, and line',
-    icon: Filter,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-500/10',
   },
   {
     id: 'btts' as const,
     title: 'BTTS Index',
     description: 'Both Teams To Score rankings',
-    icon: Users,
-    color: 'text-green-500',
-    bgColor: 'bg-green-500/10',
   },
   {
     id: 'whoscores' as const,
-    title: 'Who Scores/Concedes',
-    description: 'Team goal scoring & conceding stats',
-    icon: Target,
-    color: 'text-red-500',
-    bgColor: 'bg-red-500/10',
+    title: 'Cards & Fouls',
+    description: 'Team cards and fouls stats',
   },
   {
     id: 'fixtures' as const,
     title: 'Match Analysis',
     description: 'Detailed fixture stats & form',
-    icon: BarChart3,
-    color: 'text-purple-500',
-    bgColor: 'bg-purple-500/10',
   },
 ];
 
@@ -181,15 +165,12 @@ function DemoContent() {
             {DEMO_FEATURES.map((feature) => (
               <Card
                 key={feature.id}
-                className="p-6 cursor-pointer transition-all hover:border-primary/50 hover:shadow-lg"
+                className="p-5 cursor-pointer transition-all hover:border-primary/50 hover:bg-muted/30"
                 onClick={() => handleFeatureClick(feature.id)}
               >
-                <div className={`w-12 h-12 rounded-lg ${feature.bgColor} flex items-center justify-center mb-4`}>
-                  <feature.icon className={`h-6 w-6 ${feature.color}`} />
-                </div>
                 <h3 className="font-semibold mb-1">{feature.title}</h3>
-                <p className="text-sm text-muted-foreground">{feature.description}</p>
-                <div className="mt-4 flex items-center text-sm text-primary">
+                <p className="text-sm text-muted-foreground mb-3">{feature.description}</p>
+                <div className="flex items-center text-sm text-primary font-medium">
                   Try Demo
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </div>
@@ -255,15 +236,12 @@ function DemoContent() {
               ← Back to Features
             </Button>
             <Card className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                  <BarChart3 className="h-6 w-6 text-purple-500" />
-                </div>
+              <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-semibold">Match Analysis</h3>
                   <p className="text-sm text-muted-foreground">Detailed stats for each fixture</p>
                 </div>
-                <Badge variant="secondary" className="ml-auto">Demo</Badge>
+                <Badge variant="secondary">Demo</Badge>
               </div>
               
               <div className="space-y-3">
