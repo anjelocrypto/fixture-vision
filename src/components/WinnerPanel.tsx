@@ -31,9 +31,9 @@ export function WinnerPanel({ onClose }: WinnerPanelProps) {
           <div className="p-4 rounded-full bg-muted">
             <Lock className="h-10 w-10 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-semibold">{t('winner:locked_title')}</h3>
+          <h3 className="text-lg font-semibold">Coming Soon</h3>
           <p className="text-sm text-muted-foreground max-w-xs">
-            {t('winner:locked_description')}
+            We're currently improving this feature to provide more accurate winner predictions with better algorithms. It will be available in a future update.
           </p>
         </div>
       </CardContent>
