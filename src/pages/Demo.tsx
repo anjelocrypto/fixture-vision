@@ -1,26 +1,38 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { 
   ChevronRight, Trophy, Target, BarChart3, Sparkles, 
-  ArrowRight, Info, Lock, Play, Eye
+  ArrowRight, Info, Play, Eye, Filter, Ticket
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { DemoProvider, useDemoContext } from "@/contexts/DemoContext";
 import { DEMO_FIXTURES, DEMO_METADATA, DemoFixture } from "@/config/demoFixtures";
+import { DEMO_SELECTIONS, DemoSelection } from "@/config/demoSelections";
+import { DemoFilterizerPanel, DemoFilterCriteria } from "@/components/DemoFilterizerPanel";
+import { DemoFilterizerResults } from "@/components/DemoFilterizerResults";
+import { DemoTicketCreatorDialog, DemoTicket } from "@/components/DemoTicketCreatorDialog";
+import { DemoTicketDisplay } from "@/components/DemoTicketDisplay";
 import ticketLogo from "@/assets/ticket-logo.png";
 
 function DemoContent() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isDemo, demoFixtures } = useDemoContext();
+  const { demoFixtures } = useDemoContext();
   const [selectedFixture, setSelectedFixture] = useState<DemoFixture | null>(null);
   const [fixtureDetails, setFixtureDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  // Filterizer state
+  const [filterizerActive, setFilterizerActive] = useState(false);
+  const [filteredSelections, setFilteredSelections] = useState<DemoSelection[]>([]);
+  
+  // Ticket Creator state
+  const [ticketDialogOpen, setTicketDialogOpen] = useState(false);
+  const [generatedTicket, setGeneratedTicket] = useState<DemoTicket | null>(null);
 
   // Group fixtures by league
   const fixturesByLeague = demoFixtures.reduce((acc, fixture) => {
@@ -60,6 +72,28 @@ function DemoContent() {
       description: "Create an account to access live tips on today's matches!",
     });
     navigate('/landing');
+  };
+
+  // Filterizer handlers
+  const handleApplyFilters = (filters: DemoFilterCriteria) => {
+    const filtered = DEMO_SELECTIONS.filter(s => 
+      s.market === filters.market &&
+      s.side === filters.side &&
+      s.line === filters.line &&
+      s.odds >= filters.minOdds
+    );
+    setFilteredSelections(filtered);
+    setFilterizerActive(true);
+  };
+
+  const handleClearFilters = () => {
+    setFilteredSelections([]);
+    setFilterizerActive(false);
+  };
+
+  // Ticket Creator handlers
+  const handleGenerateTicket = (ticket: DemoTicket) => {
+    setGeneratedTicket(ticket);
   };
 
   return (
@@ -108,10 +142,70 @@ function DemoContent() {
           <h1 className="text-3xl font-bold mb-2">Explore TicketAI</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             This is a demo using historical matches from {DEMO_METADATA.matchday}. 
-            Explore the interface and see how our tools analyze fixtures with real statistics.
+            Try our Filterizer and AI Ticket Creator with real past data!
           </p>
         </div>
 
+        {/* Demo Tools Section */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          {/* Demo Filterizer */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Filter className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Try Filterizer</h2>
+              <Badge variant="outline">Demo</Badge>
+            </div>
+            <DemoFilterizerPanel
+              onApplyFilters={handleApplyFilters}
+              onClearFilters={handleClearFilters}
+              isActive={filterizerActive}
+            />
+            {filterizerActive && (
+              <DemoFilterizerResults
+                selections={filteredSelections}
+                onSignUpClick={handleSignUpClick}
+              />
+            )}
+          </div>
+
+          {/* Demo Ticket Creator */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Ticket className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Try AI Ticket Creator</h2>
+              <Badge variant="outline">Demo</Badge>
+            </div>
+            
+            {!generatedTicket ? (
+              <Card className="p-6 text-center bg-card/50 backdrop-blur-sm border-primary/20">
+                <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary opacity-70" />
+                <h3 className="text-lg font-medium mb-2">AI Ticket Generator</h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Generate a demo ticket using historical match data. 
+                  See how our AI builds optimized betting tickets!
+                </p>
+                <Button onClick={() => setTicketDialogOpen(true)} className="gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Create Demo Ticket
+                </Button>
+              </Card>
+            ) : (
+              <DemoTicketDisplay
+                ticket={generatedTicket}
+                onSignUpClick={handleSignUpClick}
+                onGenerateAnother={() => setTicketDialogOpen(true)}
+              />
+            )}
+
+            <DemoTicketCreatorDialog
+              open={ticketDialogOpen}
+              onOpenChange={setTicketDialogOpen}
+              onGenerate={handleGenerateTicket}
+            />
+          </div>
+        </div>
+
+        {/* Fixtures Section */}
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Fixture List */}
           <div className="lg:col-span-1 space-y-4">
@@ -245,7 +339,7 @@ function DemoContent() {
                   </div>
                 </Card>
 
-                {/* Team Form (from stats cache) */}
+                {/* Team Form */}
                 {(fixtureDetails.team_stats?.home || fixtureDetails.team_stats?.away) && (
                   <Card className="p-6">
                     <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -359,31 +453,6 @@ function DemoContent() {
                 </Card>
               </div>
             ) : null}
-
-            {/* Disabled Features */}
-            <Card className="p-6 border-dashed border-muted-foreground/30">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-muted-foreground" />
-                Premium Features (Requires Account)
-              </h3>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {[
-                  { name: 'AI Ticket Creator', desc: 'Auto-generate optimized betting tickets' },
-                  { name: 'Filterizer', desc: 'Filter fixtures by statistical criteria' },
-                  { name: 'Live Odds', desc: 'Real-time odds from multiple bookmakers' },
-                  { name: 'Save Tickets', desc: 'Build and save your own betting tickets' },
-                ].map((feature) => (
-                  <div key={feature.name} className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                    <div className="font-medium text-sm">{feature.name}</div>
-                    <div className="text-xs text-muted-foreground">{feature.desc}</div>
-                  </div>
-                ))}
-              </div>
-              <Button className="w-full mt-4" onClick={handleSignUpClick}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Unlock All Features – Start Free Trial
-              </Button>
-            </Card>
           </div>
         </div>
       </main>
