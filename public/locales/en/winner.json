@@ -1,5 +1,7 @@
 {
   "title": "Winner Predictions (1X2)",
+  "locked_title": "Coming Soon",
+  "locked_description": "We're currently improving this feature to provide more accurate winner predictions. It will be available in a future update.",
   "outcome": "Outcome",
   "home_win": "1 (Home Win)",
   "away_win": "2 (Away Win)",
