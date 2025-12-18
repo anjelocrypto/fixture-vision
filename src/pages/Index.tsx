@@ -9,6 +9,7 @@ import { TeamTotalsPanel } from "@/components/TeamTotalsPanel";
 import { WhoConcedesPanel } from "@/components/WhoConcedesPanel";
 import { CardWarPanel } from "@/components/CardWarPanel";
 import { BTTSIndexPanel } from "@/components/BTTSIndexPanel";
+import { SafeZonePanel } from "@/components/SafeZonePanel";
 import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
@@ -22,7 +23,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert, Swords, Users } from "lucide-react";
+import { Filter, Sparkles, Shield, Zap, Ticket, Menu, BarChart3, Trophy, Target, ShieldAlert, Swords, Users, ShieldCheck } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
@@ -123,6 +124,7 @@ const Index = () => {
   const [showWhoConcedes, setShowWhoConcedes] = useState(false);
   const [showCardWar, setShowCardWar] = useState(false);
   const [showBTTSIndex, setShowBTTSIndex] = useState(false);
+  const [showSafeZone, setShowSafeZone] = useState(false);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria | null>(null);
   const [filteredFixtures, setFilteredFixtures] = useState<any[]>([]);
   const [filterizerOffset, setFilterizerOffset] = useState(0);
@@ -1233,7 +1235,7 @@ const Index = () => {
                   {t('common:card_war')}
                 </Button>
                 <Button
-                  className="w-full gap-2"
+                  className="w-full gap-2 mb-2"
                   variant={showBTTSIndex ? "default" : "outline"}
                   onClick={() => {
                     setShowBTTSIndex(!showBTTSIndex);
@@ -1243,13 +1245,39 @@ const Index = () => {
                       setShowTeamTotals(false);
                       setShowWhoConcedes(false);
                       setShowCardWar(false);
+                      setShowSafeZone(false);
                     }
                   }}
                 >
                   <Users className="h-4 w-4" />
                   {t('common:btts_index')}
                 </Button>
+                <Button
+                  className="w-full gap-2"
+                  variant={showSafeZone ? "default" : "outline"}
+                  onClick={() => {
+                    setShowSafeZone(!showSafeZone);
+                    if (!showSafeZone) {
+                      setShowFilterizer(false);
+                      setShowWinner(false);
+                      setShowTeamTotals(false);
+                      setShowWhoConcedes(false);
+                      setShowCardWar(false);
+                      setShowBTTSIndex(false);
+                    }
+                  }}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Safe Zone
+                </Button>
               </div>
+
+              {/* Tool Panels */}
+              {showSafeZone && (
+                <div className="p-4 border-b">
+                  <SafeZonePanel onClose={() => setShowSafeZone(false)} />
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto">
                 <RightRail
