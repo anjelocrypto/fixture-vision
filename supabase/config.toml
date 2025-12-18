@@ -161,3 +161,6 @@ verify_jwt = false
 
 [functions.demo-fixtures]
 verify_jwt = false
+
+[functions.safe-zone]
+verify_jwt = false
