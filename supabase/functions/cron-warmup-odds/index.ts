@@ -150,10 +150,12 @@ serve(async (req) => {
     // 7. Log comprehensive run details with metrics from both steps
     const durationMs = Date.now() - startTime;
     const totalFailed = (backfillOk ? 0 : 1) + (optimizeOk ? 0 : 1);
+    const overallSuccess = backfillOk && optimizeOk;
     
     console.log(`[cron-warmup-odds] Complete in ${durationMs}ms (backfill: ${backfillOk ? 'OK' : 'FAIL'}, optimize: ${optimizeOk ? 'OK' : 'FAIL'})`);
     console.log(`[cron-warmup-odds] Metrics: backfill=${backfillScanned} scanned/${backfillFetched} fetched, optimize=${optimizeScanned} scanned/${optimizeUpserted} upserted`);
     
+    // Log to optimizer_run_logs (existing behavior)
     const { error: logError } = await supabase.from('optimizer_run_logs').insert({
       id: crypto.randomUUID(),
       run_type: 'cron-warmup-odds',
@@ -177,6 +179,65 @@ serve(async (req) => {
       finished_at: new Date().toISOString(),
       duration_ms: durationMs
     });
+
+    if (logError) {
+      console.error('[cron-warmup-odds] Failed to log to optimizer_run_logs:', logError.message);
+    }
+
+    // NEW: Also log to pipeline_run_logs for unified monitoring dashboard
+    const { error: pipelineLogError } = await supabase.from('pipeline_run_logs').insert({
+      job_name: 'cron-warmup-odds',
+      run_started: new Date(startTime).toISOString(),
+      run_finished: new Date().toISOString(),
+      success: overallSuccess,
+      mode: 'cron',
+      processed: optimizeUpserted + backfillFetched,
+      failed: totalFailed,
+      leagues_covered: [],
+      details: {
+        backfill_ok: backfillOk,
+        backfill_scanned: backfillScanned,
+        backfill_fetched: backfillFetched,
+        backfill_error: backfillError,
+        optimize_ok: optimizeOk,
+        optimize_scanned: optimizeScanned,
+        optimize_upserted: optimizeUpserted,
+        optimize_error: optimizeError,
+        window_hours,
+        duration_ms: durationMs
+      },
+      error_message: !overallSuccess ? [backfillError, optimizeError].filter(Boolean).join(' | ') : null
+    });
+
+    if (pipelineLogError) {
+      console.error('[cron-warmup-odds] Failed to log to pipeline_run_logs:', pipelineLogError.message);
+    } else {
+      console.log('[cron-warmup-odds] ✅ Logged to pipeline_run_logs');
+    }
+
+    // 7b. Clean up stale results-refresh entries older than 1 hour
+    try {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: staleRuns, error: staleError } = await supabase
+        .from('pipeline_run_logs')
+        .update({
+          run_finished: new Date().toISOString(),
+          success: false,
+          error_message: 'stale_run_cleanup: job exceeded 1 hour without completion'
+        })
+        .eq('job_name', 'results-refresh')
+        .is('run_finished', null)
+        .lt('run_started', oneHourAgo)
+        .select('id');
+      
+      if (staleError) {
+        console.warn('[cron-warmup-odds] Failed to cleanup stale results-refresh runs:', staleError.message);
+      } else if (staleRuns && staleRuns.length > 0) {
+        console.log(`[cron-warmup-odds] 🧹 Cleaned up ${staleRuns.length} stale results-refresh entries`);
+      }
+    } catch (cleanupErr: any) {
+      console.warn('[cron-warmup-odds] Exception during stale run cleanup:', cleanupErr.message);
+    }
 
     // 8. Always return HTTP 200 for pg_cron stability (even if steps failed)
     return new Response(

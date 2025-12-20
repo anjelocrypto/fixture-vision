@@ -27,11 +27,14 @@ import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 // - Total per team: ~15-25 API calls × 30-50ms = 5-10 seconds per team
 // =============================================================================
 
-/** Maximum teams per run - REDUCED because each team takes 5-10 seconds */
-const MAX_TEAMS_PER_RUN = 8;
+/** Maximum teams per run - REDUCED to 6 for more reliable batch completion */
+const MAX_TEAMS_PER_RUN = 6;
 
 /** Stop processing new teams after 50s (gives 10s buffer before 60s timeout) */
 const SOFT_TIME_LIMIT_MS = 50_000;
+
+/** Minimum time remaining to start a new team (gives buffer to complete + log) */
+const MIN_TIME_FOR_NEW_TEAM_MS = 8_000;
 
 /** Delay between teams in ms for rate limiting */
 const INTER_TEAM_DELAY_MS = 100;
@@ -387,13 +390,17 @@ Deno.serve(async (req) => {
       console.log(`[stats-refresh] 🏃 Team ${i + 1}/${teamsToProcess.length}: ${teamId}`);
       console.log(`[stats-refresh]    Elapsed: ${elapsedMs}ms, Remaining: ${remainingMs}ms`);
 
-      // SOFT TIME LIMIT CHECK: Stop gracefully if running long
-      if (loopStartMs > softDeadline) {
+      // SOFT TIME LIMIT CHECK: Stop gracefully if not enough time for another team
+      // Check if we've exceeded the soft deadline OR if remaining time is too short
+      if (loopStartMs > softDeadline || remainingMs < MIN_TIME_FOR_NEW_TEAM_MS) {
         earlyExit = true;
-        earlyExitReason = `soft_time_limit_at_team_${i}_of_${teamsToProcess.length}`;
-        notes.push(`early_exit: hit ${SOFT_TIME_LIMIT_MS}ms limit at team ${i}/${teamsToProcess.length}`);
-        console.warn(`[stats-refresh] ⏱️ SOFT EXIT: Time limit reached at team ${i}/${teamsToProcess.length}`);
-        console.warn(`[stats-refresh]    Elapsed: ${elapsedMs}ms, Limit: ${SOFT_TIME_LIMIT_MS}ms`);
+        earlyExitReason = remainingMs < MIN_TIME_FOR_NEW_TEAM_MS 
+          ? `insufficient_time_at_team_${i}_of_${teamsToProcess.length}_remaining_${remainingMs}ms`
+          : `soft_time_limit_at_team_${i}_of_${teamsToProcess.length}`;
+        notes.push(`graceful_exit: stopped at team ${i}/${teamsToProcess.length} (remaining=${remainingMs}ms)`);
+        console.warn(`[stats-refresh] ⏱️ GRACEFUL EXIT: Stopping to ensure clean finish`);
+        console.warn(`[stats-refresh]    Teams processed: ${upserted}, Remaining time: ${remainingMs}ms`);
+        console.warn(`[stats-refresh]    Reason: ${earlyExitReason}`);
         break;
       }
 
