@@ -966,6 +966,20 @@ Deno.serve(async (req: Request) => {
     const duration = Date.now() - startTime;
     console.log(`[results-refresh] COMPLETE: ${inserted} inserted, ${skipped} skipped, ${errors} errors, ${statusUpdateCount} status updates, ${duration}ms`);
 
+    // Collect leagues covered for logging
+    const leaguesCovered = [...new Set(fixtures.map((f: any) => f.league_id))];
+
+    // Update pipeline_run_logs with success status
+    await updatePipelineLog(supabase, pipelineLogId, true, inserted, errors, leaguesCovered, {
+      window_hours: windowHours,
+      batch_size: batchSize,
+      backfill_mode: body.backfill_mode ?? false,
+      scanned: fixtures.length,
+      skipped,
+      status_updates: statusUpdateCount,
+      duration_ms: duration,
+    });
+
     // Log to optimizer_run_logs
     await supabase.from("optimizer_run_logs").insert({
       run_type: "results-refresh",
