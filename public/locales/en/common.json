@@ -162,5 +162,17 @@
   "btts_low_sample": "Low sample size",
   "btts_footer": "Teams at the top have the highest Both Teams To Score rate in their last {{n}} matches",
   "btts_empty": "Select a league and click \"Show Ranking\" to see BTTS rates for each team.",
-  "country_france": "France"
+  "country_france": "France",
+  "holiday_christmas_eve_title": "⚽ Matches Resume Tomorrow!",
+  "holiday_christmas_eve_desc": "It's Christmas Eve – most leagues are taking a break. Boxing Day fixtures coming soon!",
+  "holiday_christmas_title": "🎄 Merry Christmas!",
+  "holiday_christmas_desc": "Limited matches today. Boxing Day brings the action back!",
+  "holiday_new_year_eve_title": "🎆 Happy New Year's Eve!",
+  "holiday_new_year_eve_desc": "Limited matches today. New Year fixtures coming soon!",
+  "holiday_new_year_title": "🎉 Happy New Year!",
+  "holiday_new_year_desc": "Limited matches today. Regular league action resumes soon!",
+  "no_matches_title": "📅 No Matches Scheduled",
+  "no_matches_desc": "No fixtures available for the selected date. Try tomorrow!",
+  "best_match_found": "📊 Best Match Found",
+  "above_target": "📈 Above Target"
 }

@@ -188,7 +188,7 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
           <div className="mt-6 space-y-6">
             {/* Target vs Result (if target specified) */}
             {ticket.target_min !== undefined && ticket.target_max !== undefined && (
-              <div className={`rounded-lg border p-4 ${ticket.within_band === false ? 'bg-destructive/5 border-destructive/30' : 'bg-primary/5 border-primary/30'}`}>
+              <div className={`rounded-lg border p-4 ${ticket.within_band === false ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/5 border-primary/30'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium">Target Range</div>
                   <div className="text-sm font-bold">{ticket.target_min}–{ticket.target_max}x</div>
@@ -198,7 +198,7 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-bold">{ticket.total_odds.toFixed(2)}x</div>
                     {ticket.within_band === false ? (
-                      <Badge variant="destructive" className="text-xs">❌ Outside</Badge>
+                      <Badge className="text-xs bg-amber-500 text-white hover:bg-amber-600">📈 Above Target</Badge>
                     ) : (
                       <Badge variant="default" className="text-xs bg-green-600">✅ Within</Badge>
                     )}
@@ -235,7 +235,7 @@ export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, c
               </div>
               <div className="bg-card border rounded-lg p-3">
                 <div className="text-xs text-muted-foreground">Total Odds</div>
-                <div className={`text-lg font-bold ${ticket.within_band === false ? 'text-destructive' : 'text-primary'}`}>
+                <div className={`text-lg font-bold ${ticket.within_band === false ? 'text-amber-500' : 'text-primary'}`}>
                   {ticket.total_odds.toFixed(2)}
                 </div>
               </div>

@@ -28,6 +28,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getEmptyStateMessage } from "@/lib/holidayMessages";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
@@ -650,18 +651,17 @@ const Index = () => {
             setTicketCreatorOpen(false);
             
             toast({
-              title: "No exact match found",
-              description: `Best nearby: ${data.best_nearby.total_odds.toFixed(2)}x (target: ${params.targetMin}–${params.targetMax}x). Check suggestions.`,
-              variant: "destructive",
+              title: "📊 Best Match Found",
+              description: `Generated ${data.best_nearby.total_odds.toFixed(2)}x (target was ${params.targetMin}–${params.targetMax}x). See suggestions below.`,
             });
             return;
           }
         } else if (data.code === "NO_FIXTURES_AVAILABLE") {
-          // Special handling for no fixtures - show very clear instructions
+          // Special handling for no fixtures - friendly holiday-aware message
+          const holidayMsg = getEmptyStateMessage(new Date(), i18n.language as 'en' | 'ka');
           toast({ 
-            title: "No Fixtures Available", 
-            description: "Click 'Fetch Fixtures' in the top bar to load upcoming matches first.",
-            variant: "destructive",
+            title: holidayMsg.title, 
+            description: holidayMsg.description,
             duration: 6000,
           });
           return;
