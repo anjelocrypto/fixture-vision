@@ -479,7 +479,7 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
               <SelectContent className="bg-popover border border-border z-50">
                 {COUNTRY_KEYS.map((countryKey) => (
                   <SelectItem key={countryKey} value={countryKey}>
-                    {countryKey.charAt(0).toUpperCase() + countryKey.slice(1)}
+                    {t(`country_${countryKey}`, countryKey.charAt(0).toUpperCase() + countryKey.slice(1))}
                   </SelectItem>
                 ))}
               </SelectContent>
