@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, X, AlertTriangle, Shield, TrendingUp, Goal, Info } from "lucide-react";
+import { Loader2, RefreshCw, X, AlertTriangle, Shield, TrendingUp, Goal, Info, Flag, Swords } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -32,7 +32,7 @@ interface SafeZonePanelProps {
   onClose: () => void;
 }
 
-type Mode = "O25" | "BTTS";
+type Mode = "O25" | "BTTS" | "CORNERS" | "FOULS";
 
 interface SafeZoneFixture {
   fixture_id: number;
@@ -54,12 +54,38 @@ interface SafeZoneFixture {
   sample_home: number;
   sample_away: number;
   data_quality: "high" | "medium" | "low";
+  // O25 fields
   o25_home_10?: number;
   o25_away_10?: number;
   league_o25?: number;
+  // BTTS fields
   btts_home_10?: number;
   btts_away_10?: number;
   league_btts?: number;
+  // Corners fields
+  mu_corners_home?: number;
+  mu_corners_away?: number;
+  mu_corners_total?: number;
+  corners_for_home?: number;
+  corners_against_home?: number;
+  corners_for_away?: number;
+  corners_against_away?: number;
+  over_corners_rate_home?: number;
+  over_corners_rate_away?: number;
+  league_avg_corners?: number;
+  corners_line?: number;
+  // Fouls fields
+  mu_fouls_home?: number;
+  mu_fouls_away?: number;
+  mu_fouls_total?: number;
+  fouls_committed_home?: number;
+  fouls_suffered_home?: number;
+  fouls_committed_away?: number;
+  fouls_suffered_away?: number;
+  over_fouls_rate_home?: number;
+  over_fouls_rate_away?: number;
+  league_avg_fouls?: number;
+  fouls_line?: number;
   league_avg_goals: number;
 }
 
@@ -106,6 +132,14 @@ const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
 };
 
 const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
+
+// Mode configurations
+const MODE_CONFIG: Record<Mode, { icon: any; label: string; description: string }> = {
+  O25: { icon: Goal, label: "safe_zone_over_25", description: "Over 2.5 Goals" },
+  BTTS: { icon: TrendingUp, label: "safe_zone_btts", description: "BTTS" },
+  CORNERS: { icon: Flag, label: "safe_zone_corners", description: "High Corners" },
+  FOULS: { icon: Swords, label: "safe_zone_fouls", description: "High Fouls" },
+};
 
 export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
   const { t } = useTranslation("common");
@@ -163,9 +197,15 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
           description: t('safe_zone_no_fixtures', 'No upcoming fixtures found for this league'),
         });
       } else {
+        const modeLabels: Record<Mode, string> = {
+          O25: "O2.5 goals",
+          BTTS: "BTTS",
+          CORNERS: "high corners",
+          FOULS: "high fouls",
+        };
         toast({
           title: t('ranking_generated', 'Rankings Generated'),
-          description: `${data.fixtures.length} fixtures ranked by ${mode === "O25" ? "O2.5 goals" : "BTTS"} probability`,
+          description: `${data.fixtures.length} fixtures ranked by ${modeLabels[mode]} probability`,
         });
       }
     } catch (error: any) {
@@ -214,12 +254,178 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
             <TooltipTrigger>
               <AlertTriangle className="h-3 w-3 text-amber-500" />
             </TooltipTrigger>
-            <TooltipContent>Low sample size - less reliable</TooltipContent>
+            <TooltipContent>{t('safe_zone_low_sample', 'Low sample size - less reliable')}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       );
     }
     return null;
+  };
+
+  const getModeDescription = () => {
+    switch (mode) {
+      case "O25": return t('safe_zone_subtitle', 'Fixtures ranked by Over 2.5 or BTTS probability');
+      case "BTTS": return t('safe_zone_subtitle', 'Fixtures ranked by Over 2.5 or BTTS probability');
+      case "CORNERS": return t('safe_zone_corners_desc', 'Fixtures ranked by high corners probability');
+      case "FOULS": return t('safe_zone_fouls_desc', 'Fixtures ranked by high fouls probability');
+      default: return '';
+    }
+  };
+
+  const getResultsHeader = () => {
+    if (results.length === 0) return '';
+    const fixture = results[0];
+    switch (mode) {
+      case "O25": return `Over 2.5`;
+      case "BTTS": return `BTTS`;
+      case "CORNERS": return `O${fixture.corners_line || 9.5} Corners`;
+      case "FOULS": return `O${fixture.fouls_line || 25.5} Fouls`;
+      default: return '';
+    }
+  };
+
+  const renderTableHeaders = () => {
+    switch (mode) {
+      case "O25":
+        return (
+          <>
+            <TableHead className="text-right w-16">P(&gt;2.5)</TableHead>
+            <TableHead className="text-right w-20">xG</TableHead>
+            <TableHead className="text-right w-24">O2.5%</TableHead>
+          </>
+        );
+      case "BTTS":
+        return (
+          <>
+            <TableHead className="text-right w-16">P(BTTS)</TableHead>
+            <TableHead className="text-right w-20">xG</TableHead>
+            <TableHead className="text-right w-24">BTTS%</TableHead>
+          </>
+        );
+      case "CORNERS":
+        return (
+          <>
+            <TableHead className="text-right w-16">{t('safe_zone_prob', 'Prob')}</TableHead>
+            <TableHead className="text-right w-20">{t('safe_zone_xc', 'xCorners')}</TableHead>
+            <TableHead className="text-right w-24">{t('safe_zone_over_rate', 'Over%')}</TableHead>
+          </>
+        );
+      case "FOULS":
+        return (
+          <>
+            <TableHead className="text-right w-16">{t('safe_zone_prob', 'Prob')}</TableHead>
+            <TableHead className="text-right w-20">{t('safe_zone_xf', 'xFouls')}</TableHead>
+            <TableHead className="text-right w-24">{t('safe_zone_over_rate', 'Over%')}</TableHead>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderTableCells = (fixture: SafeZoneFixture) => {
+    switch (mode) {
+      case "O25":
+        return (
+          <>
+            <TableCell className="text-right">
+              <span className="font-bold tabular-nums text-base">
+                {formatProbability(fixture.probability)}
+              </span>
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+              {fixture.mu_home.toFixed(1)} - {fixture.mu_away.toFixed(1)}
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="text-xs tabular-nums">
+                <span>
+                  H:{Math.round((fixture.o25_home_10 || 0) * 100)}% / A:{Math.round((fixture.o25_away_10 || 0) * 100)}%
+                </span>
+              </div>
+            </TableCell>
+          </>
+        );
+      case "BTTS":
+        return (
+          <>
+            <TableCell className="text-right">
+              <span className="font-bold tabular-nums text-base">
+                {formatProbability(fixture.probability)}
+              </span>
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+              {fixture.mu_home.toFixed(1)} - {fixture.mu_away.toFixed(1)}
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="text-xs tabular-nums">
+                <span>
+                  H:{Math.round((fixture.btts_home_10 || 0) * 100)}% / A:{Math.round((fixture.btts_away_10 || 0) * 100)}%
+                </span>
+              </div>
+            </TableCell>
+          </>
+        );
+      case "CORNERS":
+        return (
+          <>
+            <TableCell className="text-right">
+              <span className="font-bold tabular-nums text-base">
+                {formatProbability(fixture.probability)}
+              </span>
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    {(fixture.mu_corners_total || 0).toFixed(1)}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    H: {(fixture.mu_corners_home || 0).toFixed(1)} / A: {(fixture.mu_corners_away || 0).toFixed(1)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="text-xs tabular-nums">
+                <span>
+                  H:{Math.round((fixture.over_corners_rate_home || 0) * 100)}% / A:{Math.round((fixture.over_corners_rate_away || 0) * 100)}%
+                </span>
+              </div>
+            </TableCell>
+          </>
+        );
+      case "FOULS":
+        return (
+          <>
+            <TableCell className="text-right">
+              <span className="font-bold tabular-nums text-base">
+                {formatProbability(fixture.probability)}
+              </span>
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    {(fixture.mu_fouls_total || 0).toFixed(1)}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    H: {(fixture.mu_fouls_home || 0).toFixed(1)} / A: {(fixture.mu_fouls_away || 0).toFixed(1)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="text-xs tabular-nums">
+                <span>
+                  H:{Math.round((fixture.over_fouls_rate_home || 0) * 100)}% / A:{Math.round((fixture.over_fouls_rate_away || 0) * 100)}%
+                </span>
+              </div>
+            </TableCell>
+          </>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -235,30 +441,28 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          {t('safe_zone_subtitle', 'Fixtures ranked by Over 2.5 or BTTS probability')}
+          {getModeDescription()}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Mode Toggle */}
-        <div className="flex gap-2">
-          <Button
-            variant={mode === "O25" ? "default" : "outline"}
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => handleModeChange("O25")}
-          >
-            <Goal className="h-4 w-4" />
-            {t('safe_zone_over_25', 'Over 2.5 Goals')}
-          </Button>
-          <Button
-            variant={mode === "BTTS" ? "default" : "outline"}
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => handleModeChange("BTTS")}
-          >
-            <TrendingUp className="h-4 w-4" />
-            {t('safe_zone_btts', 'BTTS')}
-          </Button>
+        {/* Mode Toggle - 4 modes in 2x2 grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(MODE_CONFIG) as Mode[]).map((m) => {
+            const config = MODE_CONFIG[m];
+            const IconComponent = config.icon;
+            return (
+              <Button
+                key={m}
+                variant={mode === m ? "default" : "outline"}
+                size="sm"
+                className="gap-2"
+                onClick={() => handleModeChange(m)}
+              >
+                <IconComponent className="h-4 w-4" />
+                {t(config.label, config.description)}
+              </Button>
+            );
+          })}
         </div>
 
         {/* Selectors - same style as BTTS Index */}
@@ -342,7 +546,7 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-muted-foreground">
-                {results[0]?.league_name} • {results.length} fixtures • {mode === "O25" ? "Over 2.5" : "BTTS"}
+                {results[0]?.league_name} • {results.length} fixtures • {getResultsHeader()}
               </span>
               {generatedAt && (
                 <span className="text-xs text-muted-foreground">
@@ -356,14 +560,8 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
                 <TableHeader className="sticky top-0 bg-background">
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
-                    <TableHead>Fixture</TableHead>
-                    <TableHead className="text-right w-16">
-                      {mode === "O25" ? "P(>2.5)" : "P(BTTS)"}
-                    </TableHead>
-                    <TableHead className="text-right w-20">xG</TableHead>
-                    <TableHead className="text-right w-24">
-                      {mode === "O25" ? "O2.5%" : "BTTS%"}
-                    </TableHead>
+                    <TableHead>{t('safe_zone_fixture', 'Fixture')}</TableHead>
+                    {renderTableHeaders()}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -387,27 +585,7 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-bold tabular-nums text-base">
-                          {formatProbability(fixture.probability)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                        {fixture.mu_home.toFixed(1)} - {fixture.mu_away.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="text-xs tabular-nums">
-                          {mode === "O25" ? (
-                            <span>
-                              H:{Math.round((fixture.o25_home_10 || 0) * 100)}% / A:{Math.round((fixture.o25_away_10 || 0) * 100)}%
-                            </span>
-                          ) : (
-                            <span>
-                              H:{Math.round((fixture.btts_home_10 || 0) * 100)}% / A:{Math.round((fixture.btts_away_10 || 0) * 100)}%
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
+                      {renderTableCells(fixture)}
                     </TableRow>
                   ))}
                 </TableBody>

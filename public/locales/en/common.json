@@ -174,5 +174,22 @@
   "no_matches_title": "📅 No Matches Scheduled",
   "no_matches_desc": "No fixtures available for the selected date. Try tomorrow!",
   "best_match_found": "📊 Best Match Found",
-  "above_target": "📈 Above Target"
+  "above_target": "📈 Above Target",
+  "safe_zone_title": "Safe Zone",
+  "safe_zone_subtitle": "Fixtures ranked by Over 2.5 or BTTS probability",
+  "safe_zone_over_25": "Over 2.5 Goals",
+  "safe_zone_btts": "BTTS",
+  "safe_zone_corners": "High Corners",
+  "safe_zone_fouls": "High Fouls",
+  "safe_zone_corners_desc": "Fixtures ranked by high corners probability",
+  "safe_zone_fouls_desc": "Fixtures ranked by high fouls probability",
+  "safe_zone_no_fixtures": "No upcoming fixtures found for this league",
+  "safe_zone_low_sample": "Low sample size - less reliable",
+  "safe_zone_disclaimer": "Probabilities are model-based estimates using team stats and league averages. Not guarantees—always bet responsibly.",
+  "safe_zone_empty": "Select a league and click \"Show Ranking\" to see fixtures ranked by probability.",
+  "safe_zone_fixture": "Fixture",
+  "safe_zone_prob": "Prob",
+  "safe_zone_xc": "xCorners",
+  "safe_zone_xf": "xFouls",
+  "safe_zone_over_rate": "Over%"
 }
