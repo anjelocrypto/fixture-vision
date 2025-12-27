@@ -205,9 +205,18 @@ Deno.serve(async (req: Request) => {
         const apiStatus = apiFixture.fixture?.status?.short || "NS";
         const isFinished = ["FT", "AET", "PEN", "AWD", "WO"].includes(apiStatus);
         
-        // Update fixture status if different
+        // Skip postponed, cancelled, or abandoned matches - these are expected, not failures
+        const isSkippable = ["PST", "CANC", "ABD", "TBD", "SUSP", "INT"].includes(apiStatus);
+        
+        // Update fixture status if different (important for PST matches so DB reflects reality)
         if (fixture.fixture_status !== apiStatus) {
           statusUpdates.push({ id: fixture.fixture_id, status: apiStatus });
+        }
+
+        if (isSkippable) {
+          // Log as info, not error - these are expected scenarios
+          console.log(`[auto-backfill] Fixture ${fixture.fixture_id}: Skipping (${apiStatus}) - ${apiStatus === 'PST' ? 'Postponed' : apiStatus === 'CANC' ? 'Cancelled' : 'Not playable'}`);
+          continue; // Don't count as failure, just skip
         }
 
         if (!isFinished) {
