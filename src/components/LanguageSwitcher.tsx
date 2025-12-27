@@ -22,8 +22,18 @@ export function LanguageSwitcher() {
 
   // Sync language from profile on mount
   useEffect(() => {
-    syncLanguageFromProfile();
-    
+    // Ensure namespaces are loaded whenever language changes (fixes cases where new keys stay in EN)
+    const ensureLoaded = async (lng: string) => {
+      const namespaces = (i18n.options.ns || ['common']) as string[];
+      await i18n.loadLanguages(lng);
+      await i18n.loadNamespaces(namespaces);
+      await i18n.reloadResources([lng], namespaces);
+    };
+
+    syncLanguageFromProfile().finally(() => {
+      void ensureLoaded(i18n.language);
+    });
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id || null);
     });
@@ -35,11 +45,24 @@ export function LanguageSwitcher() {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const onLangChanged = (lng: string) => {
+      void ensureLoaded(lng);
+    };
+    i18n.on('languageChanged', onLangChanged);
+
+    return () => {
+      i18n.off('languageChanged', onLangChanged);
+      subscription.unsubscribe();
+    };
+  }, [i18n]);
 
   const handleLanguageChange = async (langCode: string) => {
+    // Ensure resources for the target language are loaded (http backend)
+    // before/after switching so newly added namespaces/keys apply immediately.
+    await i18n.loadLanguages(langCode);
     await i18n.changeLanguage(langCode);
+    await i18n.reloadResources([langCode]);
+
     localStorage.setItem('preferredLang', langCode);
 
     // Update profile if user is authenticated
