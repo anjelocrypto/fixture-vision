@@ -1063,54 +1063,40 @@ const Index = () => {
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
             {showFilterizer && (
               <PaywallGate feature="Filterizer" featureKey="bet_optimizer" allowTrial={true}>
-                <div data-tutorial="filterizer">
-                  <FilterizerPanel
-                    onApplyFilters={handleApplyFilters}
-                    onClearFilters={handleClearFilters}
-                    isActive={!!filterCriteria}
-                  />
-                </div>
+                <FilterizerPanel
+                  onApplyFilters={handleApplyFilters}
+                  onClearFilters={handleClearFilters}
+                  isActive={!!filterCriteria}
+                />
               </PaywallGate>
             )}
 
             {showWinner && (
               <PaywallGate feature="Winner Predictions" featureKey="bet_optimizer" allowTrial={true}>
-                <div data-tutorial="winner">
-                  <WinnerPanel onClose={() => setShowWinner(false)} />
-                </div>
+                <WinnerPanel onClose={() => setShowWinner(false)} />
               </PaywallGate>
             )}
 
             {showTeamTotals && (
               <PaywallGate feature="Team Totals O1.5" featureKey="bet_optimizer" allowTrial={true}>
-                <div data-tutorial="team-totals">
-                  <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
-                </div>
+                <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
               </PaywallGate>
             )}
 
             {showWhoConcedes && (
-              <div data-tutorial="who-concedes">
-                <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
-              </div>
+              <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
             )}
 
             {showCardWar && (
-              <div data-tutorial="card-war">
-                <CardWarPanel onClose={() => setShowCardWar(false)} />
-              </div>
+              <CardWarPanel onClose={() => setShowCardWar(false)} />
             )}
 
             {showBTTSIndex && (
-              <div data-tutorial="btts-index">
-                <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
-              </div>
+              <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
             )}
 
             {showSafeZone && (
-              <div data-tutorial="safe-zone">
-                <SafeZonePanel onClose={() => setShowSafeZone(false)} />
-              </div>
+              <SafeZonePanel onClose={() => setShowSafeZone(false)} />
             )}
 
             {filterCriteria ? (
@@ -1161,6 +1147,7 @@ const Index = () => {
                   className="w-full gap-2"
                   variant="default"
                   onClick={() => setTicketCreatorOpen(true)}
+                  data-tutorial="ticket-creator-btn"
                 >
                   <Sparkles className="h-4 w-4" />
                   {t('common:ai_ticket_creator')}
@@ -1181,6 +1168,7 @@ const Index = () => {
                       setShowCardWar(false);
                     }
                   }}
+                  data-tutorial="filterizer-btn"
                 >
                   <Filter className="h-4 w-4" />
                   {t('common:filterizer')}
@@ -1197,6 +1185,7 @@ const Index = () => {
                       setShowCardWar(false);
                     }
                   }}
+                  data-tutorial="winner-btn"
                 >
                   <Trophy className="h-4 w-4" />
                   {t('common:winner_1x2')}
@@ -1214,6 +1203,7 @@ const Index = () => {
                       setShowBTTSIndex(false);
                     }
                   }}
+                  data-tutorial="team-totals-btn"
                 >
                   <Target className="h-4 w-4" />
                   {t('common:team_totals')}
@@ -1231,6 +1221,7 @@ const Index = () => {
                       setShowBTTSIndex(false);
                     }
                   }}
+                  data-tutorial="who-concedes-btn"
                 >
                   <ShieldAlert className="h-4 w-4" />
                   {t('common:who_concedes')}
@@ -1248,6 +1239,7 @@ const Index = () => {
                       setShowBTTSIndex(false);
                     }
                   }}
+                  data-tutorial="card-war-btn"
                 >
                   <Swords className="h-4 w-4" />
                   {t('common:card_war')}
@@ -1266,6 +1258,7 @@ const Index = () => {
                       setShowSafeZone(false);
                     }
                   }}
+                  data-tutorial="btts-index-btn"
                 >
                   <Users className="h-4 w-4" />
                   {t('common:btts_index')}
@@ -1284,6 +1277,7 @@ const Index = () => {
                       setShowBTTSIndex(false);
                     }
                   }}
+                  data-tutorial="safe-zone-btn"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Safe Zone
@@ -1503,13 +1497,11 @@ const Index = () => {
       </div>
 
       <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
-        <div data-tutorial="ticket-creator">
-          <TicketCreatorDialog
-            open={ticketCreatorOpen}
-            onOpenChange={setTicketCreatorOpen}
-            onGenerate={generateAITicket}
-          />
-        </div>
+        <TicketCreatorDialog
+          open={ticketCreatorOpen}
+          onOpenChange={setTicketCreatorOpen}
+          onGenerate={generateAITicket}
+        />
       </PaywallGate>
 
       <TicketDrawer
