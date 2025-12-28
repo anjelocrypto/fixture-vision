@@ -1063,40 +1063,54 @@ const Index = () => {
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
             {showFilterizer && (
               <PaywallGate feature="Filterizer" featureKey="bet_optimizer" allowTrial={true}>
-                <FilterizerPanel
-                  onApplyFilters={handleApplyFilters}
-                  onClearFilters={handleClearFilters}
-                  isActive={!!filterCriteria}
-                />
+                <div data-tutorial="filterizer">
+                  <FilterizerPanel
+                    onApplyFilters={handleApplyFilters}
+                    onClearFilters={handleClearFilters}
+                    isActive={!!filterCriteria}
+                  />
+                </div>
               </PaywallGate>
             )}
 
             {showWinner && (
               <PaywallGate feature="Winner Predictions" featureKey="bet_optimizer" allowTrial={true}>
-                <WinnerPanel onClose={() => setShowWinner(false)} />
+                <div data-tutorial="winner">
+                  <WinnerPanel onClose={() => setShowWinner(false)} />
+                </div>
               </PaywallGate>
             )}
 
             {showTeamTotals && (
               <PaywallGate feature="Team Totals O1.5" featureKey="bet_optimizer" allowTrial={true}>
-                <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
+                <div data-tutorial="team-totals">
+                  <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
+                </div>
               </PaywallGate>
             )}
 
             {showWhoConcedes && (
-              <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
+              <div data-tutorial="who-concedes">
+                <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
+              </div>
             )}
 
             {showCardWar && (
-              <CardWarPanel onClose={() => setShowCardWar(false)} />
+              <div data-tutorial="card-war">
+                <CardWarPanel onClose={() => setShowCardWar(false)} />
+              </div>
             )}
 
             {showBTTSIndex && (
-              <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
+              <div data-tutorial="btts-index">
+                <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
+              </div>
             )}
 
             {showSafeZone && (
-              <SafeZonePanel onClose={() => setShowSafeZone(false)} />
+              <div data-tutorial="safe-zone">
+                <SafeZonePanel onClose={() => setShowSafeZone(false)} />
+              </div>
             )}
 
             {filterCriteria ? (
@@ -1489,11 +1503,13 @@ const Index = () => {
       </div>
 
       <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
-        <TicketCreatorDialog
-          open={ticketCreatorOpen}
-          onOpenChange={setTicketCreatorOpen}
-          onGenerate={generateAITicket}
-        />
+        <div data-tutorial="ticket-creator">
+          <TicketCreatorDialog
+            open={ticketCreatorOpen}
+            onOpenChange={setTicketCreatorOpen}
+            onGenerate={generateAITicket}
+          />
+        </div>
       </PaywallGate>
 
       <TicketDrawer

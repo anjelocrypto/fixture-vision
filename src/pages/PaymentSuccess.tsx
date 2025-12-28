@@ -6,6 +6,9 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
+const TUTORIAL_COMPLETED_KEY = 'ticketai_tutorial_completed';
+const FIRST_PAYMENT_KEY = 'ticketai_first_payment_tutorial';
+
 const PaymentSuccess = () => {
   const navigate = useNavigate();
 
@@ -31,6 +34,16 @@ const PaymentSuccess = () => {
             .maybeSingle();
           
           console.log("[PaymentSuccess] Entitlements refreshed");
+          
+          // Mark that we should start tutorial on next page load (first payment)
+          const tutorialKey = `${TUTORIAL_COMPLETED_KEY}_${session.user.id}`;
+          const firstPaymentKey = `${FIRST_PAYMENT_KEY}_${session.user.id}`;
+          const hasCompletedTutorial = localStorage.getItem(tutorialKey) === 'true';
+          
+          if (!hasCompletedTutorial) {
+            // Set flag to trigger tutorial when user goes to home
+            localStorage.setItem(firstPaymentKey, 'true');
+          }
         }
       } catch (error) {
         console.error("[PaymentSuccess] Error refreshing access:", error);

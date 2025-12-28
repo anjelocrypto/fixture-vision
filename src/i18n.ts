@@ -57,7 +57,7 @@ i18n
   .init({
     fallbackLng: 'en',
     supportedLngs: ['en', 'ka'],
-    ns: ['common', 'filterizer', 'ticket', 'winner', 'admin', 'account', 'filters', 'fixtures', 'optimizer'],
+    ns: ['common', 'filterizer', 'ticket', 'winner', 'admin', 'account', 'filters', 'fixtures', 'optimizer', 'tutorial'],
     defaultNS: 'common',
     debug: false,
     
