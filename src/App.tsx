@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { TutorialProvider } from "@/contexts/TutorialContext";
 import Index from "./pages/Index";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
@@ -35,44 +36,46 @@ const App = () => {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={0}>
           <BrowserRouter>
-            <Routes>
-              <Route path="/landing" element={<Landing />} />
-              <Route path="/auth" element={<Navigate to="/landing" replace />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/payment-success" element={<PaymentSuccess />} />
-              <Route path="/auth/payment-success" element={<PaymentSuccess />} />
-              <Route path="/legal/terms" element={<TermsOfService />} />
-              <Route path="/legal/privacy" element={<PrivacyPolicy />} />
-              <Route path="/demo" element={<Demo />} />
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/account"
-                element={
-                  <ProtectedRoute>
-                    <Account />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/health"
-                element={
-                  <ProtectedRoute>
-                    <AdminHealth />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/winner" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <TutorialProvider>
+              <Routes>
+                <Route path="/landing" element={<Landing />} />
+                <Route path="/auth" element={<Navigate to="/landing" replace />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/payment-success" element={<PaymentSuccess />} />
+                <Route path="/auth/payment-success" element={<PaymentSuccess />} />
+                <Route path="/legal/terms" element={<TermsOfService />} />
+                <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+                <Route path="/demo" element={<Demo />} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/account"
+                  element={
+                    <ProtectedRoute>
+                      <Account />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/health"
+                  element={
+                    <ProtectedRoute>
+                      <AdminHealth />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/winner" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </TutorialProvider>
           </BrowserRouter>
           <Toaster />
           <Sonner />

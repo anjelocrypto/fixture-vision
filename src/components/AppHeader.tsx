@@ -1,4 +1,4 @@
-import { Send, User, LogOut, Ticket, CreditCard, Sparkles, Activity } from "lucide-react";
+import { Send, User, LogOut, Ticket, CreditCard, Sparkles, Activity, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { MyTicketDrawer } from "./MyTicketDrawer";
 import { useAccess } from "@/hooks/useAccess";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useTranslation } from "react-i18next";
+import { useTutorial } from "@/contexts/TutorialContext";
 
 const sports = [
   { name: "Football", active: true },
@@ -30,6 +31,7 @@ export function AppHeader() {
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const { legs, loadFromStorage, loadFromServer } = useTicket();
   const { hasAccess, entitlement, isAdmin } = useAccess();
+  const { startTutorial } = useTutorial();
 
   useEffect(() => {
     // Load ticket from localStorage on mount
@@ -100,6 +102,20 @@ export function AppHeader() {
 
         {/* Right Utils - Simplified on mobile */}
         <div className="flex items-center gap-1 sm:gap-3">
+          {/* Guide Button - Only for paid users */}
+          {hasAccess && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={startTutorial}
+              className="gap-1.5 text-primary hover:text-primary/80"
+              data-tutorial="guide-button"
+            >
+              <BookOpen className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('tutorial:guide_button', 'Guide')}</span>
+            </Button>
+          )}
+          
           {/* Language Switcher */}
           <LanguageSwitcher />
           
@@ -109,6 +125,7 @@ export function AppHeader() {
             size="icon" 
             onClick={() => setTicketDrawerOpen(true)}
             className="relative"
+            data-tutorial="my-ticket"
           >
             <Ticket className="h-5 w-5" />
             {legs.length > 0 && (

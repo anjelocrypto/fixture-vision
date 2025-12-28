@@ -1,0 +1,41 @@
+{
+  "tutorial_welcome_title": "Welcome to TicketAI! 🎉",
+  "tutorial_welcome": "Let's take a quick tour of all the features that will help you make smarter betting decisions. Click 'Next' to begin!",
+  
+  "tutorial_safe_zone_title": "Safe Zone",
+  "tutorial_safe_zone": "This panel shows fixtures ranked by probability for Over 2.5 Goals, BTTS, High Corners, or High Fouls. Select a league, choose your market type, and see which matches have the highest chance of hitting!",
+  
+  "tutorial_btts_index_title": "BTTS Index",
+  "tutorial_btts_index": "Find teams with the highest 'Both Teams To Score' rates. Perfect for finding consistent BTTS bets. Teams are ranked by their BTTS percentage over the last 5, 10, or 15 matches.",
+  
+  "tutorial_who_concedes_title": "Who Concedes / Scores",
+  "tutorial_who_concedes": "Discover which teams concede or score the most goals. Toggle between 'Concedes' and 'Scores' mode to find leaky defenses or prolific attacks!",
+  
+  "tutorial_card_war_title": "WARS - Cards & Fouls",
+  "tutorial_card_war": "Find the most aggressive teams by cards and fouls. Great for betting on booking markets or corner/foul overs. Toggle between Cards and Fouls mode.",
+  
+  "tutorial_filterizer_title": "Filterizer",
+  "tutorial_filterizer": "The AI-powered fixture finder! Set your filters for goals, corners, cards, and more. The system scans all upcoming fixtures and finds matches that meet your criteria.",
+  
+  "tutorial_team_totals_title": "Team Totals O1.5",
+  "tutorial_team_totals": "Find teams likely to score 2+ goals. This uses scoring rates and opponent defensive data to identify high-probability Team Total Over 1.5 opportunities.",
+  
+  "tutorial_winner_title": "Winner (1X2)",
+  "tutorial_winner": "Get recommended winner picks based on edge calculations. See Home, Draw, or Away selections with model probability and value assessment.",
+  
+  "tutorial_ticket_creator_title": "AI Ticket Creator",
+  "tutorial_ticket_creator": "Let AI build an optimized betting ticket for you! Set your target odds range and the system generates a balanced ticket with high-value selections.",
+  
+  "tutorial_my_ticket_title": "My Ticket",
+  "tutorial_my_ticket": "All your selections are stored here! Click this icon to view your ticket, see combined odds, and copy the ticket to share or place at your bookmaker.",
+  
+  "tutorial_complete_title": "You're All Set! 🚀",
+  "tutorial_complete": "You now know how to use all TicketAI features. Start exploring and building winning tickets! You can restart this guide anytime from the header.",
+  
+  "tutorial_next": "Next",
+  "tutorial_back": "Back",
+  "tutorial_skip": "Skip",
+  "tutorial_close": "Close",
+  "tutorial_finish": "Finish",
+  "guide_button": "Guide"
+}
