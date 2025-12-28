@@ -84,9 +84,43 @@ const TermsOfService = () => {
             </section>
 
             <section id="fees-refunds">
-              <h2 className="text-2xl font-semibold mt-8 mb-4">11. Fees & refunds</h2>
-              <p><strong>Subscriptions:</strong> Renew automatically unless canceled before the renewal date.</p>
-              <p><strong>Refunds:</strong> If you believe a charge is in error, contact support@ticketai.bet within 7 days of the transaction. We review good-faith refund requests for: duplicate payments, accidental multiple subscriptions, or material non-delivery of Service for a full billing cycle. We do not offer pro-rata refunds for partial periods once a cycle has started, except where required by law.</p>
+              <h2 className="text-2xl font-semibold mt-8 mb-4">11. Fees & Refund Policy</h2>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.1 Subscription Billing</h3>
+              <p>All paid subscriptions are billed on a recurring basis (monthly or annually, depending on your selected plan). Subscriptions automatically renew at the end of each billing period unless canceled before the renewal date.</p>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.2 Auto-Renewal & Cancellation</h3>
+              <p>By subscribing to a paid plan, you authorize us to charge your payment method automatically at the start of each billing cycle. To avoid being charged for the next billing period, you must cancel your subscription at least 24 hours before the renewal date through your account settings or by contacting support@ticketai.bet.</p>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.3 Refund Eligibility</h3>
+              <p>We review refund requests on a case-by-case basis. Refunds may be considered for:</p>
+              <ul>
+                <li>Duplicate payments or billing errors</li>
+                <li>Accidental multiple subscriptions created in error</li>
+                <li>Material non-delivery of Service for an entire billing cycle</li>
+                <li>Technical issues preventing access to paid features for extended periods</li>
+              </ul>
+              <p>To request a refund, contact support@ticketai.bet within <strong>7 days</strong> of the transaction with your account details and reason for the request.</p>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.4 Non-Refundable Charges</h3>
+              <p className="font-semibold text-foreground">The following charges are NOT eligible for refunds:</p>
+              <ul>
+                <li><strong>Auto-renewal charges:</strong> Once your subscription automatically renews, that billing cycle is non-refundable. You are responsible for canceling before the renewal date if you do not wish to continue.</li>
+                <li><strong>Partial billing periods:</strong> We do not offer pro-rata refunds for unused portions of a billing cycle after cancellation.</li>
+                <li><strong>Day passes and one-time purchases:</strong> These are non-refundable once activated.</li>
+                <li><strong>Charges older than 7 days:</strong> Refund requests must be submitted within 7 days of the transaction.</li>
+              </ul>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.5 How to Cancel</h3>
+              <p>You may cancel your subscription at any time through:</p>
+              <ul>
+                <li>Your Account Settings page within the application</li>
+                <li>Contacting support@ticketai.bet</li>
+              </ul>
+              <p>Cancellation will take effect at the end of your current billing period, and you will retain access to paid features until that date.</p>
+              
+              <h3 className="text-xl font-semibold mt-6 mb-3">11.6 Disputes & Chargebacks</h3>
+              <p>If you have a billing concern, please contact us before initiating a chargeback with your payment provider. We are committed to resolving legitimate disputes quickly. Unjustified chargebacks may result in account suspension and collection of any owed amounts.</p>
             </section>
 
             <section id="fair-use">
