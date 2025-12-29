@@ -190,9 +190,20 @@ serve(async (req) => {
               
               // NBA API returns numeric status: 1=scheduled, 2=in progress, 3=finished
               // Basketball API returns string status: NS, FT, etc.
-              let status = game.status?.short || "NS";
-              if (isNBA && typeof status === "number") {
-                status = status === 3 ? "FT" : status === 2 ? "LIVE" : "NS";
+              let rawStatus = game.status?.short;
+              let status: string;
+              
+              if (isNBA) {
+                const statusNum = Number(rawStatus);
+                if (statusNum === 3 || rawStatus === "FT") {
+                  status = "FT";
+                } else if (statusNum === 2 || rawStatus === "LIVE") {
+                  status = "LIVE";
+                } else {
+                  status = "NS";
+                }
+              } else {
+                status = rawStatus || "NS";
               }
               
               // Skip NBA games not in our target leagues
