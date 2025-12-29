@@ -190,9 +190,11 @@ serve(async (req) => {
               const status = game.status?.short || "NS";
               
               // Skip NBA games not in our target leagues
+              // NBA API: league.id = 12 for NBA, 20 for G-League
+              // If league.id is missing, assume it's NBA standard
               if (isNBA) {
                 const nbaLeagueId = game.league?.id;
-                if (leagueKey === "nba" && nbaLeagueId !== 12) continue;
+                if (leagueKey === "nba" && nbaLeagueId && nbaLeagueId !== 12) continue;
                 if (leagueKey === "nba_gleague" && nbaLeagueId !== 20) continue;
               }
 
