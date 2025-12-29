@@ -164,3 +164,6 @@ verify_jwt = false
 
 [functions.safe-zone]
 verify_jwt = false
+
+[functions.basketball-safe-zone]
+verify_jwt = false

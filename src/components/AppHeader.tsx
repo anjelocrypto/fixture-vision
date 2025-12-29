@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
@@ -15,16 +15,18 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useTranslation } from "react-i18next";
 import { useTutorial } from "@/contexts/TutorialContext";
 
+// Sports configuration with routes
 const sports = [
-  { name: "Football", active: true },
-  { name: "UFC", active: false },
-  { name: "Basketball", active: false },
-  { name: "Tennis", active: false },
-  { name: "NFL", active: false },
+  { name: "Football", route: "/", active: true },
+  { name: "Basketball", route: "/basketball", active: true },
+  { name: "UFC", route: null, active: false },
+  { name: "Tennis", route: null, active: false },
+  { name: "NFL", route: null, active: false },
 ];
 
 export function AppHeader() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation(['common']);
   const [session, setSession] = useState<Session | null>(null);
@@ -33,26 +35,23 @@ export function AppHeader() {
   const { hasAccess, entitlement, isAdmin } = useAccess();
   const { startTutorial } = useTutorial();
 
-  useEffect(() => {
-    // Load ticket from localStorage on mount
-    loadFromStorage();
+  // Determine current sport from route
+  const currentSport = location.pathname === "/basketball" ? "Basketball" : "Football";
 
+  useEffect(() => {
+    loadFromStorage();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user?.id) {
         loadFromServer(session.user.id);
       }
     });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user?.id) {
         loadFromServer(session.user.id);
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -78,24 +77,29 @@ export function AppHeader() {
         {/* Sport Tabs - Hidden on mobile */}
         <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2 bg-secondary/50 rounded-full p-1">
-            {sports.map((sport) => (
-              <Button
-                key={sport.name}
-                variant={sport.active ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  if (!sport.active) {
-                    toast({
-                      title: "Coming Soon",
-                      description: `${sport.name} predictions will be available soon!`,
-                    });
-                  }
-                }}
-                className={sport.active ? "rounded-full" : "rounded-full text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"}
-              >
-                {sport.name}
-              </Button>
-            ))}
+            {sports.map((sport) => {
+              const isSelected = sport.name === currentSport;
+              return (
+                <Button
+                  key={sport.name}
+                  variant={isSelected ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => {
+                    if (sport.active && sport.route) {
+                      navigate(sport.route);
+                    } else if (!sport.active) {
+                      toast({
+                        title: "Coming Soon",
+                        description: `${sport.name} predictions will be available soon!`,
+                      });
+                    }
+                  }}
+                  className={isSelected ? "rounded-full" : "rounded-full text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"}
+                >
+                  {sport.name}
+                </Button>
+              );
+            })}
           </div>
           <LastFetchBadge />
         </div>
