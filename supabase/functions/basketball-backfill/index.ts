@@ -51,10 +51,21 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check (admin only)
+    // Auth check (cron, service role, or admin)
+    const cronKeyHeader = req.headers.get("x-cron-key");
     const authHeader = req.headers.get("authorization");
     let isAuthorized = authHeader === `Bearer ${serviceRoleKey}`;
 
+    // Check x-cron-key for cron job authentication
+    if (!isAuthorized && cronKeyHeader) {
+      const { data: dbKey } = await supabase.rpc("get_cron_internal_key");
+      if (cronKeyHeader === dbKey) {
+        isAuthorized = true;
+        console.log("[basketball-backfill] Authorized via x-cron-key");
+      }
+    }
+
+    // Check for admin user JWT
     if (!isAuthorized && authHeader) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
       if (anonKey) {
@@ -185,8 +196,11 @@ serve(async (req) => {
             if (!["FT", "AOT", "AP"].includes(status)) continue;
 
             // Filter NBA games to correct league
-            if (isNBA && league_key === "nba_gleague" && game.league?.id !== 20) continue;
-            if (isNBA && league_key === "nba" && game.league?.id !== 12) continue;
+            // NBA API: league.id = 12 for NBA, 20 for G-League
+            // If league.id is missing, assume it's NBA standard
+            const nbaLeagueId = game.league?.id;
+            if (isNBA && league_key === "nba_gleague" && nbaLeagueId !== 20) continue;
+            if (isNBA && league_key === "nba" && nbaLeagueId && nbaLeagueId !== 12) continue;
 
             const homeTeam = isNBA ? game.teams?.home : game.teams?.home;
             const awayTeam = isNBA ? game.teams?.visitors : game.teams?.away;
