@@ -167,3 +167,15 @@ verify_jwt = false
 
 [functions.basketball-safe-zone]
 verify_jwt = false
+
+[functions.basketball-sync-fixtures]
+verify_jwt = false
+
+[functions.basketball-sync-results]
+verify_jwt = false
+
+[functions.basketball-stats-refresh]
+verify_jwt = false
+
+[functions.basketball-backfill]
+verify_jwt = false
