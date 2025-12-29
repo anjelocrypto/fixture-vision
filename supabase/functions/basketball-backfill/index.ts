@@ -193,13 +193,25 @@ serve(async (req) => {
             
             // NBA API returns numeric status: 1=scheduled, 2=in progress, 3=finished
             // Basketball API returns string status: NS, FT, etc.
-            let status = game.status?.short || "NS";
-            if (isNBA && typeof status === "number") {
-              status = status === 3 ? "FT" : status === 2 ? "LIVE" : "NS";
+            let rawStatus = game.status?.short;
+            let status: string;
+            
+            if (isNBA) {
+              // NBA API returns numeric status (as number or string)
+              const statusNum = Number(rawStatus);
+              if (statusNum === 3 || rawStatus === "FT") {
+                status = "FT";
+              } else if (statusNum === 2 || rawStatus === "LIVE") {
+                status = "LIVE";
+              } else {
+                status = "NS";
+              }
+            } else {
+              status = rawStatus || "NS";
             }
 
             // Only process finished games
-            if (!["FT", "AOT", "AP"].includes(String(status))) continue;
+            if (!["FT", "AOT", "AP"].includes(status)) continue;
 
             // Filter NBA games to correct league
             // NBA API: league.id = 12 for NBA, 20 for G-League
