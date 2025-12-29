@@ -168,6 +168,7 @@ verify_jwt = false
 [functions.basketball-safe-zone]
 verify_jwt = false
 
+# Basketball pipeline - PRO PLAN (7500/day) - aggressive scheduling
 [functions.basketball-sync-fixtures]
 verify_jwt = false
 

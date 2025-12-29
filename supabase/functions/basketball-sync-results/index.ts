@@ -77,7 +77,8 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const batchLimit = body.limit || 15;
+    // PRO PLAN: 7500/day = ~300/hour - process up to 100 games per run
+    const batchLimit = body.limit || 100;
 
     // Find finished games without stats
     const { data: finishedGames, error: queryError } = await supabase

@@ -72,9 +72,9 @@ serve(async (req) => {
       });
     }
 
-    // Parse request
+    // Parse request - PRO PLAN: 7500/day allows aggressive backfill
     const body = await req.json();
-    const { league_key, from, to, max_api_calls = 50 } = body;
+    const { league_key, from, to, max_api_calls = 500 } = body;
 
     if (!league_key || !from || !to) {
       return new Response(

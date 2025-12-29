@@ -86,9 +86,9 @@ serve(async (req) => {
       });
     }
 
-    // Parse request body
+    // Parse request body - PRO PLAN: Can process all leagues frequently
     const body = await req.json().catch(() => ({}));
-    const windowHours = body.window_hours || 48;
+    const windowHours = body.window_hours || 72; // Extend to 72h for better coverage
     const targetLeagues = body.leagues || Object.keys(SUPPORTED_LEAGUES);
 
     console.log(`[basketball-sync-fixtures] Window: ${windowHours}h, Leagues: ${targetLeagues.join(", ")}`);
