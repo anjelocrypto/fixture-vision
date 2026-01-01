@@ -6,9 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/hooks/useAccess";
-import { ArrowLeft, CreditCard, RefreshCw, Sparkles, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, CreditCard, RefreshCw, Sparkles, Check, ChevronDown, ChevronUp, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const PLAN_NAMES: Record<string, string> = {
   day_pass: "Day Pass",
@@ -87,6 +98,7 @@ const Account = () => {
   const [searchParams] = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -158,6 +170,32 @@ const Account = () => {
       });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setCancelling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("cancel-subscription");
+
+      if (error) throw error;
+
+      toast({
+        title: "Subscription Cancelled",
+        description: "Your subscription has been cancelled successfully.",
+      });
+      
+      // Refresh access status
+      await refreshAccess();
+    } catch (error: any) {
+      console.error("Cancel error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel subscription",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -358,25 +396,65 @@ const Account = () => {
                 )}
 
                 {entitlement && (
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      onClick={handleRefreshStatus}
-                      disabled={refreshing}
-                      className="flex-1"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                      Refresh Status
-                    </Button>
-                    {entitlement?.stripe_subscription_id && (
+                  <div className="space-y-3 pt-4 border-t">
+                    <div className="flex gap-2">
                       <Button
-                        onClick={handleManageBilling}
-                        disabled={loading}
+                        variant="outline"
+                        onClick={handleRefreshStatus}
+                        disabled={refreshing}
                         className="flex-1"
                       >
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Manage Billing
+                        <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                        Refresh Status
                       </Button>
+                      {entitlement?.stripe_subscription_id && (
+                        <Button
+                          onClick={handleManageBilling}
+                          disabled={loading}
+                          className="flex-1"
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Manage Billing
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {/* Cancel Subscription Button */}
+                    {entitlement?.stripe_subscription_id && (entitlement.status === "active" || entitlement.status === "past_due") && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            className="w-full"
+                            disabled={cancelling}
+                          >
+                            <XCircle className="mr-2 h-4 w-4" />
+                            {cancelling ? "Cancelling..." : "Cancel Subscription"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will immediately cancel your subscription. You will lose access to premium features.
+                              {entitlement.status === "past_due" && (
+                                <span className="block mt-2 font-medium text-destructive">
+                                  Note: Your subscription is past due. Cancelling will resolve this and stop any future charges.
+                                </span>
+                              )}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={handleCancelSubscription}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Yes, Cancel
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                   </div>
                 )}
