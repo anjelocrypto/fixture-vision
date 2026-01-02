@@ -1,14 +1,16 @@
 /**
- * Basketball Backfill Edge Function
+ * Basketball Backfill Edge Function (Self-Managing)
  * 
- * Allows manual backfill of historical basketball data by date range.
- * Use this to gradually build 1 year of data while respecting free API limits.
- * 
- * Usage: POST with { league_key: "nba", from: "2024-01-01", to: "2024-03-01" }
+ * Key features:
+ * 1. Dynamic date range: computes current NBA season (Oct 1 → today)
+ * 2. Budget-aware: daily limit ~2500 API calls, derives per-run limit from cron frequency
+ * 3. Coverage-based early exit: stops when all NBA teams have sample_size >= 5
+ * 4. Uses x-cron-key auth pattern (no hardcoded tokens)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,16 +20,56 @@ const corsHeaders = {
 const NBA_BASE = "https://v2.nba.api-sports.io";
 const BASKETBALL_BASE = "https://v1.basketball.api-sports.io";
 
-const LEAGUE_CONFIG: Record<string, { api: string; leagueId?: number; season: string }> = {
-  nba: { api: "nba", season: "2024" },
-  nba_gleague: { api: "nba", leagueId: 20, season: "2024" },
-  euroleague: { api: "basketball", leagueId: 120, season: "2024-2025" },
-  eurocup: { api: "basketball", leagueId: 121, season: "2024-2025" },
-  spain_acb: { api: "basketball", leagueId: 117, season: "2024-2025" },
-  germany_bbl: { api: "basketball", leagueId: 43, season: "2024-2025" },
-  italy_lba: { api: "basketball", leagueId: 82, season: "2024-2025" },
-  france_prob: { api: "basketball", leagueId: 40, season: "2024-2025" },
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// Daily API budget for basketball backfill (safe under 7500/day global limit)
+const DAILY_BACKFILL_BUDGET = 2500;
+
+// Cron runs every 6 hours = 4 runs/day
+const RUNS_PER_DAY = 4;
+
+// Derived per-run limit
+const DEFAULT_MAX_API_CALLS = Math.floor(DAILY_BACKFILL_BUDGET / RUNS_PER_DAY); // 625
+
+// Minimum sample_size required for "coverage complete"
+const REQUIRED_SAMPLE_SIZE = 5;
+
+// ============================================================================
+
+const LEAGUE_CONFIG: Record<string, { api: string; leagueId?: number; season: string; seasonStartMonth: number }> = {
+  nba: { api: "nba", season: "2024", seasonStartMonth: 9 }, // October = month 9 (0-indexed)
+  nba_gleague: { api: "nba", leagueId: 20, season: "2024", seasonStartMonth: 10 },
+  euroleague: { api: "basketball", leagueId: 120, season: "2024-2025", seasonStartMonth: 9 },
+  eurocup: { api: "basketball", leagueId: 121, season: "2024-2025", seasonStartMonth: 9 },
+  spain_acb: { api: "basketball", leagueId: 117, season: "2024-2025", seasonStartMonth: 9 },
+  germany_bbl: { api: "basketball", leagueId: 43, season: "2024-2025", seasonStartMonth: 9 },
+  italy_lba: { api: "basketball", leagueId: 82, season: "2024-2025", seasonStartMonth: 9 },
+  france_prob: { api: "basketball", leagueId: 40, season: "2024-2025", seasonStartMonth: 9 },
 };
+
+/**
+ * Compute dynamic season date range.
+ * NBA season typically starts in October (month 9).
+ * If current month < season start month, we're in the second half of the previous year's season.
+ */
+function getSeasonDateRange(seasonStartMonth: number): { from: string; to: string } {
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth();
+  
+  // If we're before the season start month (e.g., Jan-Sep), use previous year as season start
+  const seasonYear = currentMonth >= seasonStartMonth ? currentYear : currentYear - 1;
+  
+  const from = new Date(Date.UTC(seasonYear, seasonStartMonth, 1));
+  const to = new Date(now.getTime()); // today
+  
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0],
+  };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -51,48 +93,24 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check (cron, service role, or admin)
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
-    let isAuthorized = authHeader === `Bearer ${serviceRoleKey}`;
-
-    // Check x-cron-key for cron job authentication
-    if (!isAuthorized && cronKeyHeader) {
-      const { data: dbKey } = await supabase.rpc("get_cron_internal_key");
-      if (cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        console.log("[basketball-backfill] Authorized via x-cron-key");
-      }
-    }
-
-    // Check for admin user JWT
-    if (!isAuthorized && authHeader) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-      if (anonKey) {
-        const userClient = createClient(supabaseUrl, anonKey, {
-          global: { headers: { Authorization: authHeader } }
-        });
-        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted");
-        if (isWhitelisted) isAuthorized = true;
-      }
-    }
-
-    if (!isAuthorized) {
-      return new Response(JSON.stringify({ error: "Unauthorized - Admin only" }), {
+    // Auth check using shared helper
+    const authResult = await checkCronOrAdminAuth(req, supabase, serviceRoleKey, "[basketball-backfill]");
+    if (!authResult.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized - Admin/cron only" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
-    // Parse request - PRO PLAN: 7500/day allows aggressive backfill
-    const body = await req.json();
-    const { league_key, from, to, max_api_calls = 500 } = body;
-
-    if (!league_key || !from || !to) {
-      return new Response(
-        JSON.stringify({ error: "Required: league_key, from (YYYY-MM-DD), to (YYYY-MM-DD)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Parse request - all params are now OPTIONAL (dynamic defaults)
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // Empty body is fine - use defaults
     }
+
+    const league_key = body.league_key || "nba";
+    const max_api_calls = body.max_api_calls || DEFAULT_MAX_API_CALLS;
 
     const config = LEAGUE_CONFIG[league_key];
     if (!config) {
@@ -102,7 +120,71 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[basketball-backfill] League: ${league_key}, Range: ${from} to ${to}, Max API: ${max_api_calls}`);
+    // Dynamic date range computation
+    const dynamicRange = getSeasonDateRange(config.seasonStartMonth);
+    const from = body.from || dynamicRange.from;
+    const to = body.to || dynamicRange.to;
+
+    console.log(`[basketball-backfill] League: ${league_key}, Dynamic range: ${from} to ${to}, Max API: ${max_api_calls}`);
+
+    // =========================================================================
+    // EARLY EXIT CHECK: Coverage complete?
+    // =========================================================================
+    const { data: coverageCheck, error: coverageError } = await supabase
+      .from("basketball_stats_cache")
+      .select("team_id, sample_size")
+      .eq("league_key", league_key);
+
+    if (coverageError) {
+      console.warn("[basketball-backfill] Could not check coverage:", coverageError.message);
+    } else {
+      const teams = coverageCheck || [];
+      const teamsWithFullCoverage = teams.filter((t: any) => t.sample_size >= REQUIRED_SAMPLE_SIZE).length;
+      const totalTeams = teams.length;
+      
+      console.log(`[basketball-backfill] Coverage check: ${teamsWithFullCoverage}/${totalTeams} teams have sample_size >= ${REQUIRED_SAMPLE_SIZE}`);
+      
+      // If all teams have sufficient coverage, skip backfill
+      if (totalTeams > 0 && teamsWithFullCoverage === totalTeams) {
+        console.log("[basketball-backfill] All teams have sufficient coverage - skipping backfill");
+        
+        await supabase.from("pipeline_run_logs").insert({
+          job_name: "basketball-backfill",
+          run_started: new Date(startTime).toISOString(),
+          run_finished: new Date().toISOString(),
+          success: true,
+          mode: authResult.method,
+          processed: 0,
+          failed: 0,
+          details: {
+            league_key,
+            from,
+            to,
+            skipped_reason: "coverage_complete",
+            teams_with_coverage: teamsWithFullCoverage,
+            total_teams: totalTeams,
+            required_sample_size: REQUIRED_SAMPLE_SIZE,
+            elapsed_ms: Date.now() - startTime,
+          }
+        });
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: "coverage_complete",
+            teams_with_coverage: teamsWithFullCoverage,
+            total_teams: totalTeams,
+            required_sample_size: REQUIRED_SAMPLE_SIZE,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // =========================================================================
+    // BACKFILL PROCESSING
+    // =========================================================================
 
     // Team cache
     const teamCache = new Map<string, number>();
@@ -191,13 +273,11 @@ serve(async (req) => {
             const isNBA = config.api === "nba";
             const gameId = game.id;
             
-            // NBA API returns numeric status: 1=scheduled, 2=in progress, 3=finished
-            // Basketball API returns string status: NS, FT, etc.
+            // Status parsing
             let rawStatus = game.status?.short;
             let status: string;
             
             if (isNBA) {
-              // NBA API returns numeric status (as number or string)
               const statusNum = Number(rawStatus);
               if (statusNum === 3 || rawStatus === "FT") {
                 status = "FT";
@@ -214,8 +294,6 @@ serve(async (req) => {
             if (!["FT", "AOT", "AP"].includes(status)) continue;
 
             // Filter NBA games to correct league
-            // NBA API: league.id = 12 for NBA, 20 for G-League
-            // If league.id is missing, assume it's NBA standard
             const nbaLeagueId = game.league?.id;
             if (isNBA && league_key === "nba_gleague" && nbaLeagueId !== 20) continue;
             if (isNBA && league_key === "nba" && nbaLeagueId && nbaLeagueId !== 12) continue;
@@ -346,7 +424,7 @@ serve(async (req) => {
       run_started: new Date(startTime).toISOString(),
       run_finished: new Date().toISOString(),
       success: true,
-      mode: "manual",
+      mode: authResult.method,
       processed: gamesUpserted,
       failed: errors.length,
       details: {
@@ -359,6 +437,8 @@ serve(async (req) => {
         teams_upserted: teamsUpserted,
         api_calls: apiCalls,
         max_api_calls,
+        daily_budget: DAILY_BACKFILL_BUDGET,
+        runs_per_day: RUNS_PER_DAY,
         elapsed_ms: elapsed,
         errors: errors.slice(0, 10),
       }
@@ -377,6 +457,11 @@ serve(async (req) => {
         api_calls: apiCalls,
         api_limit_remaining: max_api_calls - apiCalls,
         elapsed_ms: elapsed,
+        config: {
+          daily_budget: DAILY_BACKFILL_BUDGET,
+          runs_per_day: RUNS_PER_DAY,
+          per_run_limit: DEFAULT_MAX_API_CALLS,
+        },
         errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
         next_step: apiCalls >= max_api_calls 
           ? `Continue from next date after ${dates[dates.length - 1]}` 
