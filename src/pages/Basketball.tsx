@@ -1,24 +1,45 @@
 import { useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { BasketballLeftRail } from "@/components/basketball/BasketballLeftRail";
+import { BasketballCenterRail } from "@/components/basketball/BasketballCenterRail";
 import { BasketballSafeZonePanel } from "@/components/basketball/BasketballSafeZonePanel";
+import { BasketballFixtureAnalyzer } from "@/components/basketball/BasketballFixtureAnalyzer";
 import { PaywallGate } from "@/components/PaywallGate";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { Menu, Target } from "lucide-react";
+import { Menu, Target, Calendar, ChartBar } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Helmet } from "react-helmet-async";
+import type { BasketballGame } from "@/hooks/useBasketballFixtures";
+
+type ViewMode = "calendar" | "safezone";
 
 const Basketball = () => {
   const isMobile = useIsMobile();
   const [selectedCompetition, setSelectedCompetition] = useState<string | null>("nba");
   const [leftSheetOpen, setLeftSheetOpen] = useState(false);
+  const [rightSheetOpen, setRightSheetOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("calendar");
+  const [selectedDate, setSelectedDate] = useState<"today" | "tomorrow">("today");
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+
+  const handleAnalyze = (game: BasketballGame) => {
+    setSelectedGameId(game.id);
+    if (isMobile) {
+      setRightSheetOpen(true);
+    }
+  };
+
+  const handleCompetitionChange = (key: string | null) => {
+    setSelectedCompetition(key);
+    setSelectedGameId(null); // Clear selection when league changes
+  };
 
   return (
     <>
       <Helmet>
-        <title>Basketball Points Safe Zone | TicketAI</title>
-        <meta name="description" content="Basketball betting predictions - find high scoring games with Points Safe Zone rankings for NBA, EuroLeague, and more." />
+        <title>Basketball Betting Analysis | TicketAI</title>
+        <meta name="description" content="Basketball betting predictions - analyze games, view team stats, and find high scoring matchups for NBA, EuroLeague, and more." />
       </Helmet>
       
       <div className="min-h-screen flex flex-col bg-background">
@@ -29,7 +50,7 @@ const Basketball = () => {
           <div className="hidden lg:flex">
             <BasketballLeftRail
               selectedCompetition={selectedCompetition}
-              onSelectCompetition={(key) => setSelectedCompetition(key)}
+              onSelectCompetition={handleCompetitionChange}
             />
           </div>
 
@@ -39,7 +60,7 @@ const Basketball = () => {
               <BasketballLeftRail
                 selectedCompetition={selectedCompetition}
                 onSelectCompetition={(key) => {
-                  setSelectedCompetition(key);
+                  handleCompetitionChange(key);
                   setLeftSheetOpen(false);
                 }}
               />
@@ -48,7 +69,7 @@ const Basketball = () => {
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header */}
+            {/* Header with Mode Toggle */}
             <div className="border-b border-border bg-card/30 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-between shrink-0 gap-2">
               {/* Mobile menu button */}
               <Button
@@ -60,41 +81,82 @@ const Basketball = () => {
                 <Menu className="h-5 w-5" />
               </Button>
               
-              <h2 className="text-base sm:text-xl font-semibold flex items-center gap-2">
-                <Target className="h-5 w-5 text-orange-500" />
-                Points Safe Zone
-              </h2>
+              {/* Mode Toggle */}
+              <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+                <Button
+                  variant={viewMode === "calendar" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("calendar")}
+                  className="gap-1.5"
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span className="hidden sm:inline">Fixtures</span>
+                </Button>
+                <Button
+                  variant={viewMode === "safezone" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("safezone")}
+                  className="gap-1.5"
+                >
+                  <Target className="h-4 w-4" />
+                  <span className="hidden sm:inline">Safe Zone</span>
+                </Button>
+              </div>
               
-              <div className="shrink-0" />
+              {/* Right sheet trigger on mobile */}
+              {isMobile && viewMode === "calendar" && selectedGameId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRightSheetOpen(true)}
+                  className="shrink-0"
+                >
+                  <ChartBar className="h-4 w-4 mr-1" />
+                  Analysis
+                </Button>
+              )}
+              {!isMobile && <div className="shrink-0 w-10" />}
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-              <PaywallGate feature="Basketball Points Safe Zone" featureKey="bet_optimizer" allowTrial={true}>
-                <div className="max-w-4xl mx-auto">
-                  <BasketballSafeZonePanel selectedCompetition={selectedCompetition} />
-                </div>
+            <div className="flex-1 overflow-hidden flex">
+              <PaywallGate feature="Basketball Analysis" featureKey="bet_optimizer" allowTrial={true}>
+                {viewMode === "safezone" ? (
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-6">
+                    <div className="max-w-4xl mx-auto">
+                      <BasketballSafeZonePanel selectedCompetition={selectedCompetition} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Center Rail - Fixtures Calendar */}
+                    <div className="flex-1 overflow-hidden border-r border-border lg:max-w-md">
+                      <BasketballCenterRail
+                        selectedCompetition={selectedCompetition}
+                        selectedDate={selectedDate}
+                        onSelectDate={setSelectedDate}
+                        onAnalyze={handleAnalyze}
+                        selectedGameId={selectedGameId}
+                      />
+                    </div>
+
+                    {/* Right Rail - Fixture Analyzer (Desktop) */}
+                    <div className="hidden lg:flex flex-1 overflow-hidden">
+                      <BasketballFixtureAnalyzer gameId={selectedGameId} />
+                    </div>
+                  </>
+                )}
               </PaywallGate>
             </div>
           </div>
-
-          {/* Right Rail Placeholder (empty for now) */}
-          <div className="hidden lg:flex w-[300px] flex-col border-l border-border bg-card/20">
-            <div className="p-6 text-center text-muted-foreground">
-              <div className="text-4xl mb-4">🏀</div>
-              <h3 className="font-semibold mb-2">Basketball Beta</h3>
-              <p className="text-sm">
-                More basketball features coming soon:
-              </p>
-              <ul className="text-xs mt-3 space-y-1 text-left list-disc list-inside">
-                <li>Player Props Analysis</li>
-                <li>Spread Predictions</li>
-                <li>Quarter/Half Analysis</li>
-                <li>Head-to-Head Stats</li>
-              </ul>
-            </div>
-          </div>
         </div>
+
+        {/* Mobile Right Sheet - Analyzer */}
+        <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
+          <SheetContent side="right" className="w-full sm:w-[400px] p-0 overflow-y-auto">
+            <BasketballFixtureAnalyzer gameId={selectedGameId} />
+          </SheetContent>
+        </Sheet>
       </div>
     </>
   );
