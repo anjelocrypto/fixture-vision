@@ -85,10 +85,12 @@ serve(async (req) => {
     fullLookbackDate.setMonth(fullLookbackDate.getMonth() - LOOKBACK_MONTHS);
     const fullLookbackDateStr = fullLookbackDate.toISOString().split("T")[0];
 
-    // Define CURRENT SEASON as this season (2025-26) starting from Aug 1 of current year
+    // Define CURRENT SEASON - if we're before August, use previous year as season start
+    // e.g., January 2026 → 2025-26 season started Aug 2025
     const now = new Date();
-    const seasonYear = now.getUTCFullYear();
-    const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug = 7 (0-based)
+    const currentMonth = now.getUTCMonth(); // 0-11, Aug = 7
+    const seasonYear = currentMonth >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug 1
     const currentSeasonDateStr = seasonStartDate.toISOString().split("T")[0];
 
     // STEP 1: Get teams currently in the league based on THIS SEASON fixtures (2025-26)
