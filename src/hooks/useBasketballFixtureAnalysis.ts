@@ -108,11 +108,14 @@ export function useBasketballFixtureAnalysis(gameId: number | null) {
 }
 
 async function fetchTeamStats(teamId: number) {
+  // Get the most recent season's stats (there can be multiple seasons)
   const { data } = await supabase
     .from("basketball_stats_cache")
     .select("*")
     .eq("team_id", teamId)
-    .single();
+    .order("season", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   return data;
 }
 
