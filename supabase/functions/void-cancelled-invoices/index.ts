@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,18 +21,6 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
-    // Auth: require CRON_INTERNAL_KEY header for security
-    const cronKey = req.headers.get("x-cron-key");
-    const expectedKey = Deno.env.get("CRON_INTERNAL_KEY");
-    
-    if (!cronKey || cronKey !== expectedKey) {
-      logStep("Unauthorized access attempt");
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
-      });
-    }
-
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
@@ -41,8 +30,20 @@ serve(async (req) => {
       throw new Error("Supabase environment variables not set");
     }
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Auth check using shared helper
+    const authResult = await checkCronOrAdminAuth(req, supabase, supabaseServiceKey, "[VOID-CANCELLED-INVOICES]");
+    if (!authResult.authorized) {
+      logStep("Unauthorized access attempt", { method: authResult.method });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+    logStep("Authorized", { method: authResult.method });
+
+    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
     // Get all cancelled entitlements with stripe_customer_id
     const { data: cancelledUsers, error: dbError } = await supabase
