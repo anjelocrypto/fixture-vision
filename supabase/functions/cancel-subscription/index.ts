@@ -72,6 +72,34 @@ serve(async (req) => {
       logStep("Cancelled subscription", { subscriptionId: sub.id, status: sub.status });
     }
 
+    // Void any open invoices to stop payment collection attempts
+    let voidedInvoices = 0;
+    try {
+      const openInvoices = await stripe.invoices.list({
+        customer: customerId,
+        status: "open",
+        limit: 10,
+      });
+
+      for (const invoice of openInvoices.data) {
+        try {
+          await stripe.invoices.voidInvoice(invoice.id);
+          voidedInvoices++;
+          logStep("Voided open invoice", { invoiceId: invoice.id, amount: invoice.amount_due });
+        } catch (voidError) {
+          logStep("Failed to void invoice", { 
+            invoiceId: invoice.id, 
+            error: voidError instanceof Error ? voidError.message : String(voidError) 
+          });
+        }
+      }
+      logStep("Invoice voiding complete", { voidedCount: voidedInvoices, totalOpen: openInvoices.data.length });
+    } catch (invoiceError) {
+      logStep("Warning: Failed to fetch/void invoices", { 
+        error: invoiceError instanceof Error ? invoiceError.message : String(invoiceError) 
+      });
+    }
+
     // Update user_entitlements in database
     const { error: updateError } = await supabaseClient
       .from("user_entitlements")
@@ -92,7 +120,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: "Subscription cancelled successfully",
-        cancelledCount: activeOrPastDue.length
+        cancelledCount: activeOrPastDue.length,
+        voidedInvoices
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
