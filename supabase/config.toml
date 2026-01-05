@@ -180,3 +180,9 @@ verify_jwt = false
 
 [functions.basketball-backfill]
 verify_jwt = false
+
+[functions.void-cancelled-invoices]
+verify_jwt = false
+
+[functions.cancel-subscription]
+verify_jwt = true
