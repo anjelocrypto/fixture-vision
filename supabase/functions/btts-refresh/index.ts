@@ -76,9 +76,14 @@ serve(async (req) => {
     const lookbackDateStr = lookbackDate.toISOString().split("T")[0];
 
     const now = new Date();
-    const seasonYear = now.getUTCFullYear();
+    // Fix: If we're before August, the current season started LAST year
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth(); // 0-indexed, so Jan=0, Aug=7
+    const seasonYear = month >= 7 ? year : year - 1;
     const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug = 7
     const currentSeasonDateStr = seasonStartDate.toISOString().split("T")[0];
+    
+    console.log(`[btts-refresh] Season year: ${seasonYear}, season start: ${currentSeasonDateStr}, lookback: ${lookbackDateStr}`);
 
     // Process each league
     const allMetrics: any[] = [];
@@ -230,12 +235,15 @@ serve(async (req) => {
       }
     }
 
-    // Log to optimizer_run_logs
+    // Log to optimizer_run_logs with finished_at set
     const duration = Date.now() - startTime;
+    const finishedAt = new Date().toISOString();
     await supabase.from("optimizer_run_logs").insert({
       run_type: "btts-refresh",
       window_start: lookbackDate.toISOString(),
-      window_end: new Date().toISOString(),
+      window_end: finishedAt,
+      started_at: new Date(startTime).toISOString(),
+      finished_at: finishedAt,
       scanned: leaguesProcessed,
       upserted: teamsProcessed,
       failed: errors.length,
