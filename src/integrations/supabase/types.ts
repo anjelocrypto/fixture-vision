@@ -962,6 +962,57 @@ export type Database = {
           },
         ]
       }
+      performance_weights: {
+        Row: {
+          bayes_win_rate: number
+          computed_at: string
+          id: number
+          league_id: number | null
+          line: number
+          losses: number
+          market: string
+          pushes: number
+          raw_win_rate: number
+          roi_pct: number
+          sample_size: number
+          side: string
+          weight: number
+          wins: number
+        }
+        Insert: {
+          bayes_win_rate?: number
+          computed_at?: string
+          id?: number
+          league_id?: number | null
+          line: number
+          losses?: number
+          market: string
+          pushes?: number
+          raw_win_rate?: number
+          roi_pct?: number
+          sample_size?: number
+          side: string
+          weight?: number
+          wins?: number
+        }
+        Update: {
+          bayes_win_rate?: number
+          computed_at?: string
+          id?: number
+          league_id?: number | null
+          line?: number
+          losses?: number
+          market?: string
+          pushes?: number
+          raw_win_rate?: number
+          roi_pct?: number
+          sample_size?: number
+          side?: string
+          weight?: number
+          wins?: number
+        }
+        Relationships: []
+      }
       pipeline_alerts: {
         Row: {
           alert_type: string
