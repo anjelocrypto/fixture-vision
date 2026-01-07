@@ -112,6 +112,29 @@ serve(async (req) => {
     console.log(`[sync-player-importance] 🚀 Starting sync for season ${currentSeason}`);
     console.log(`[sync-player-importance] Target leagues: [${targetLeagues.join(', ')}]`);
     
+    // Insert initial pipeline log for observability
+    const runStarted = new Date();
+    let pipelineLogId: number | null = null;
+    try {
+      const { data: logData } = await supabaseClient
+        .from("pipeline_run_logs")
+        .insert({
+          job_name: "sync-player-importance",
+          run_started: runStarted.toISOString(),
+          success: false,
+          mode: cronKey ? "cron" : "manual",
+          processed: 0,
+          failed: 0,
+          leagues_covered: targetLeagues,
+          details: { status: "started", season: currentSeason },
+        })
+        .select("id")
+        .single();
+      pipelineLogId = logData?.id || null;
+    } catch (e) {
+      console.error("[sync-player-importance] Failed to insert pipeline log:", e);
+    }
+    
     const results: Array<{ league_id: number; teams_processed: number; players_synced: number; error?: string }> = [];
     let totalTeams = 0;
     let totalPlayers = 0;
@@ -144,7 +167,32 @@ serve(async (req) => {
       }
     }
     
+    const failedLeagues = results.filter(r => r.error).length;
     console.log(`[sync-player-importance] 🎉 Sync complete: ${totalTeams} teams, ${totalPlayers} players across ${targetLeagues.length} leagues`);
+    
+    // Update pipeline log on success
+    if (pipelineLogId) {
+      try {
+        await supabaseClient
+          .from("pipeline_run_logs")
+          .update({
+            run_finished: new Date().toISOString(),
+            success: failedLeagues === 0,
+            processed: totalPlayers,
+            failed: failedLeagues,
+            leagues_covered: targetLeagues,
+            details: { 
+              season: currentSeason,
+              total_teams: totalTeams,
+              total_players: totalPlayers,
+              results,
+            },
+          })
+          .eq("id", pipelineLogId);
+      } catch (e) {
+        console.error("[sync-player-importance] Failed to update pipeline log:", e);
+      }
+    }
     
     return new Response(
       JSON.stringify({
