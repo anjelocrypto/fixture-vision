@@ -82,6 +82,7 @@ const AITicketSchema = z.object({
   countryCode: z.string().optional(),
   leagueIds: z.array(z.number()).optional(),
   debug: z.boolean().optional(),
+  ticketMode: z.enum(["max_win_rate", "balanced", "high_risk"]).optional(),
 });
 
 const BetOptimizerSchema = z.object({
@@ -429,10 +430,44 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     countryCode,
     leagueIds,
     debug = false,
+    ticketMode = "balanced",
   } = body;
 
   const globalMode = !fixtureIds || fixtureIds.length === 0;
-  const markets = includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"];
+  const isMaxWinRateMode = ticketMode === "max_win_rate";
+  
+  // For Max Win Rate mode, restrict to scorable markets only
+  const markets = isMaxWinRateMode 
+    ? ["goals", "corners", "cards"] 
+    : (includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"]);
+  
+  // High-probability lines for max win rate mode (based on historical analysis)
+  const HIGH_WIN_RATE_LINES: Record<string, number[]> = {
+    goals: [1.5],        // 86.1% historical win rate
+    corners: [8.5],      // Best corner line
+    cards: [2.5, 3.5],   // 91.7% for Over 3.5
+  };
+  
+  // Lines to avoid in max win rate mode
+  const LOW_WIN_RATE_LINES: Record<string, number[]> = {
+    goals: [2.5, 3.5],   // Over 2.5 only 28.6%
+    corners: [10.5, 11.5],
+    cards: [4.5, 5.5],   // Over 4.5 only 25%
+  };
+  
+  // League weights based on historical performance
+  const LEAGUE_WEIGHTS: Record<number, number> = {
+    40: 1.3,   // Championship 78.9%
+    39: 1.2,   // Premier League 77.8%
+    3: 1.1,    // Europa League 75%
+    848: 1.1,  // Conference League 71.4%
+    2: 1.0,    // Champions League 61.5%
+    135: 1.0,  // Serie A 60%
+    140: 0.7,  // La Liga 37.5%
+    61: 0.5,   // Ligue 1 12.5%
+    307: 0.3,  // Pro League Saudi 0%
+  };
+  
   const candidatePool: TicketLeg[] = [];
   const logs: string[] = [];
   let usedLive = false;
@@ -459,8 +494,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       break;
   }
 
-  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}, dayRange: ${dayRangeLabel}`);
-  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}]}`);
+  console.log(`[AI-ticket] Mode: ${globalMode ? "GLOBAL" : "SPECIFIC"} | ticketMode: ${ticketMode} | minOdds: ${minOdds}, maxOdds: ${maxOdds}, legs: ${legsMin}-${legsMax}, markets: ${markets.join(",")}, useLive: ${useLiveOdds}, dayRange: ${dayRangeLabel}`);
+  console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], mode:${ticketMode}}`);
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
   // GLOBAL MODE: Query optimized_selections for selected date range
@@ -605,6 +640,29 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           suspiciousDropped++;
           logs.push(`[SUSPICIOUS] ${suspiciousWarning} (fixture ${(sel as any).fixture_id}, ${(sel as any).bookmaker}) - DROPPED`);
           continue;
+        }
+        
+        // MAX WIN RATE MODE: Filter for high-probability lines only
+        if (isMaxWinRateMode) {
+          // Only allow "over" side (scorable)
+          if (side !== "over") {
+            logs.push(`[MAX_WIN_RATE] ${market} ${side} ${line} not scorable (side must be over) - DROPPED`);
+            continue;
+          }
+          
+          // Avoid low win rate lines
+          const avoidLines = LOW_WIN_RATE_LINES[market] || [];
+          if (avoidLines.includes(Number(line))) {
+            logs.push(`[MAX_WIN_RATE] ${market} over ${line} is low-probability line - DROPPED`);
+            continue;
+          }
+          
+          // Apply league weight filter (skip leagues with <0.8 weight)
+          const leagueWeight = LEAGUE_WEIGHTS[(sel as any).league_id] ?? 0.9;
+          if (leagueWeight < 0.8) {
+            logs.push(`[MAX_WIN_RATE] League ${(sel as any).league_id} has low win rate (weight=${leagueWeight}) - DROPPED`);
+            continue;
+          }
         }
         
         tempCandidates.push({

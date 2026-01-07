@@ -524,6 +524,7 @@ const Index = () => {
           legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,
           dayRange: params.dayRange,
+          ticketMode: params.ticketMode, // New: pass ticket mode to backend
         },
       });
 
