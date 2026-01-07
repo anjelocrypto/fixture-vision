@@ -133,44 +133,42 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Upsert using raw SQL to handle COALESCE unique index properly
+    // Use delete-then-insert pattern since unique index uses COALESCE expression
     let upserted = 0;
     
     for (const record of records) {
-      const { data, error: upsertError } = await supabase.rpc("exec_sql", {
-        sql: `
-          INSERT INTO performance_weights (market, side, line, league_id, sample_size, wins, losses, pushes, raw_win_rate, roi_pct, bayes_win_rate, weight, computed_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-          ON CONFLICT (market, side, line, COALESCE(league_id, -1))
-          DO UPDATE SET
-            sample_size = EXCLUDED.sample_size,
-            wins = EXCLUDED.wins,
-            losses = EXCLUDED.losses,
-            pushes = EXCLUDED.pushes,
-            raw_win_rate = EXCLUDED.raw_win_rate,
-            roi_pct = EXCLUDED.roi_pct,
-            bayes_win_rate = EXCLUDED.bayes_win_rate,
-            weight = EXCLUDED.weight,
-            computed_at = EXCLUDED.computed_at
-        `,
-        params: [
-          record.market, record.side, record.line, record.league_id,
-          record.sample_size, record.wins, record.losses, record.pushes,
-          record.raw_win_rate, record.roi_pct, record.bayes_win_rate, record.weight, record.computed_at
-        ]
-      });
+      try {
+        // Delete existing row matching this combination
+        if (record.league_id === null) {
+          await supabase
+            .from("performance_weights")
+            .delete()
+            .eq("market", record.market)
+            .eq("side", record.side)
+            .eq("line", record.line)
+            .is("league_id", null);
+        } else {
+          await supabase
+            .from("performance_weights")
+            .delete()
+            .eq("market", record.market)
+            .eq("side", record.side)
+            .eq("line", record.line)
+            .eq("league_id", record.league_id);
+        }
 
-      // Fallback: direct upsert if exec_sql RPC doesn't exist
-      if (upsertError?.code === "42883") {
-        const { error: directError } = await supabase
+        // Insert fresh row
+        const { error: insertError } = await supabase
           .from("performance_weights")
-          .upsert(record, { onConflict: "market,side,line" });
+          .insert(record);
         
-        if (!directError) upserted++;
-      } else if (!upsertError) {
-        upserted++;
-      } else {
-        console.error(`${LOG_PREFIX} Upsert error: ${upsertError.message}`);
+        if (!insertError) {
+          upserted++;
+        } else {
+          console.error(`${LOG_PREFIX} Insert error for ${record.market}|${record.side}|${record.line}: ${insertError.message}`);
+        }
+      } catch (err) {
+        console.error(`${LOG_PREFIX} Upsert error:`, err);
       }
     }
 
