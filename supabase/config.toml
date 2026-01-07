@@ -186,3 +186,6 @@ verify_jwt = false
 
 [functions.cancel-subscription]
 verify_jwt = true
+
+[functions.backfill-ticket-outcomes]
+verify_jwt = false

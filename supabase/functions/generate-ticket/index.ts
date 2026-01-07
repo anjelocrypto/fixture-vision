@@ -1011,15 +1011,51 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     logs.push(`[AI-ticket] Created ticket ${ticketId}`);
 
     // === PHASE 2: Populate ticket_leg_outcomes + ticket_outcomes ===
-    // Parse each leg into canonical fields and insert into outcome tracking tables
-    const legOutcomes = ticket.legs.map((leg: TicketLeg) => {
+    
+    // Step 1: Collect all fixture IDs and fetch league_ids in one query
+    const fixtureIds = [...new Set(ticket.legs.map((leg: TicketLeg) => leg.fixtureId))];
+    const { data: fixturesData } = await supabase
+      .from("fixtures")
+      .select("id, league_id, timestamp")
+      .in("id", fixtureIds);
+    
+    const fixtureMap = new Map<number, { league_id: number | null; kickoff_at: string | null }>();
+    for (const f of fixturesData || []) {
+      fixtureMap.set(f.id, {
+        league_id: f.league_id,
+        kickoff_at: f.timestamp ? new Date(f.timestamp * 1000).toISOString() : null,
+      });
+    }
+
+    // Step 2: Parse each leg into canonical fields
+    const legOutcomes: Array<{
+      ticket_id: string;
+      user_id: string;
+      fixture_id: number;
+      league_id: number | null;
+      market: string;
+      side: string;
+      line: number;
+      odds: number;
+      selection_key: string;
+      selection: string;
+      source: string;
+      picked_at: string;
+      kickoff_at: string | null;
+      result_status: string;
+      derived_from_selection: boolean;
+    }> = [];
+    
+    let skippedLegs = 0;
+
+    for (const leg of ticket.legs as TicketLeg[]) {
       // Parse side and line from selection (handles "over 2.5", "Over 2.5", "o2.5", etc.)
       const selectionLower = (leg.selection || "").toLowerCase().trim();
       let side: string;
       let line: number;
 
       // Use explicit fields if available, otherwise parse from selection
-      if (leg.side && leg.line !== undefined) {
+      if (leg.side && leg.line !== undefined && leg.line > 0) {
         side = leg.side;
         line = leg.line;
       } else {
@@ -1029,14 +1065,27 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         line = lineMatch ? parseFloat(lineMatch[1]) : 0;
       }
 
+      // Skip legs with invalid line (0 means parsing failed)
+      if (line <= 0) {
+        logs.push(`[AI-ticket] Skipped leg: invalid line for fixture ${leg.fixtureId} market ${leg.market} selection "${leg.selection}"`);
+        skippedLegs++;
+        continue;
+      }
+
+      // Get league_id and kickoff from fixture lookup
+      const fixtureInfo = fixtureMap.get(leg.fixtureId);
+      const leagueId = fixtureInfo?.league_id ?? null;
+      // Prefer fixture timestamp over leg.start (more reliable)
+      const kickoffAt = fixtureInfo?.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null);
+
       // Build selection_key for deterministic matching
       const selectionKey = `${leg.market}|${side}|${line}`.toLowerCase();
 
-      return {
+      legOutcomes.push({
         ticket_id: ticketId,
         user_id: userId,
         fixture_id: leg.fixtureId,
-        league_id: null, // Will be backfilled from fixtures table if needed
+        league_id: leagueId,
         market: leg.market,
         side,
         line,
@@ -1045,31 +1094,40 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         selection: leg.selection,
         source: leg.source || "prematch",
         picked_at: new Date().toISOString(),
-        kickoff_at: leg.start ? new Date(leg.start).toISOString() : null,
+        kickoff_at: kickoffAt,
         result_status: "PENDING",
-        derived_from_selection: !leg.side || leg.line === undefined, // True if we had to parse
-      };
-    });
-
-    // Bulk insert leg outcomes (ON CONFLICT DO NOTHING via unique index)
-    const { error: legOutcomesError } = await supabase
-      .from("ticket_leg_outcomes")
-      .insert(legOutcomes);
-
-    if (legOutcomesError) {
-      console.error("[AI-ticket] ticket_leg_outcomes insert error:", legOutcomesError);
-      logs.push(`[AI-ticket] Warning: leg outcomes insert failed: ${legOutcomesError.message}`);
-    } else {
-      logs.push(`[AI-ticket] Inserted ${legOutcomes.length} leg outcomes`);
+        derived_from_selection: !leg.side || leg.line === undefined || leg.line <= 0,
+      });
     }
 
-    // Insert ticket outcome summary
+    if (skippedLegs > 0) {
+      logs.push(`[AI-ticket] Skipped ${skippedLegs} legs due to invalid line values`);
+    }
+
+    // Step 3: Upsert leg outcomes (idempotent - ignore duplicates on unique index)
+    if (legOutcomes.length > 0) {
+      const { error: legOutcomesError } = await supabase
+        .from("ticket_leg_outcomes")
+        .upsert(legOutcomes, { 
+          onConflict: "ticket_id,fixture_id,market,side,line",
+          ignoreDuplicates: true 
+        });
+
+      if (legOutcomesError) {
+        console.error("[AI-ticket] ticket_leg_outcomes upsert error:", legOutcomesError);
+        logs.push(`[AI-ticket] Warning: leg outcomes upsert failed: ${legOutcomesError.message}`);
+      } else {
+        logs.push(`[AI-ticket] Upserted ${legOutcomes.length} leg outcomes`);
+      }
+    }
+
+    // Step 4: Upsert ticket outcome summary (idempotent)
     const { error: ticketOutcomeError } = await supabase
       .from("ticket_outcomes")
-      .insert({
+      .upsert({
         ticket_id: ticketId,
         user_id: userId,
-        legs_total: ticket.legs.length,
+        legs_total: legOutcomes.length, // Use actual inserted count (excludes skipped)
         legs_settled: 0,
         legs_won: 0,
         legs_lost: 0,
@@ -1077,13 +1135,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         legs_void: 0,
         ticket_status: "PENDING",
         total_odds: ticket.total_odds,
+      }, {
+        onConflict: "ticket_id",
+        ignoreDuplicates: true
       });
 
     if (ticketOutcomeError) {
-      console.error("[AI-ticket] ticket_outcomes insert error:", ticketOutcomeError);
-      logs.push(`[AI-ticket] Warning: ticket outcome insert failed: ${ticketOutcomeError.message}`);
+      console.error("[AI-ticket] ticket_outcomes upsert error:", ticketOutcomeError);
+      logs.push(`[AI-ticket] Warning: ticket outcome upsert failed: ${ticketOutcomeError.message}`);
     } else {
-      logs.push(`[AI-ticket] Inserted ticket outcome summary`);
+      logs.push(`[AI-ticket] Upserted ticket outcome summary`);
     }
 
     logs.push(`[AI-ticket] Persisted ${ticket.legs.length} legs to optimizer_cache, generated_tickets, and outcome tables`);
