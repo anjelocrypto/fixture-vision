@@ -989,17 +989,104 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       });
     }
 
-    // Write generated_tickets row
-    await supabase.from("generated_tickets").insert({
-      user_id: userId,
-      total_odds: ticket.total_odds,
-      min_target: minOdds,
-      max_target: maxOdds,
-      used_live: usedLive && !fallbackToPrematch,
-      legs: ticket.legs,
+    // Write generated_tickets row and get the ID
+    const { data: insertedTicket, error: ticketError } = await supabase
+      .from("generated_tickets")
+      .insert({
+        user_id: userId,
+        total_odds: ticket.total_odds,
+        min_target: minOdds,
+        max_target: maxOdds,
+        used_live: usedLive && !fallbackToPrematch,
+        legs: ticket.legs,
+      })
+      .select("id")
+      .single();
+
+    if (ticketError) {
+      throw ticketError;
+    }
+
+    const ticketId = insertedTicket.id;
+    logs.push(`[AI-ticket] Created ticket ${ticketId}`);
+
+    // === PHASE 2: Populate ticket_leg_outcomes + ticket_outcomes ===
+    // Parse each leg into canonical fields and insert into outcome tracking tables
+    const legOutcomes = ticket.legs.map((leg: TicketLeg) => {
+      // Parse side and line from selection (handles "over 2.5", "Over 2.5", "o2.5", etc.)
+      const selectionLower = (leg.selection || "").toLowerCase().trim();
+      let side: string;
+      let line: number;
+
+      // Use explicit fields if available, otherwise parse from selection
+      if (leg.side && leg.line !== undefined) {
+        side = leg.side;
+        line = leg.line;
+      } else {
+        // Parse from selection string
+        side = selectionLower.startsWith("under") || selectionLower.startsWith("u") ? "under" : "over";
+        const lineMatch = selectionLower.match(/([\d.]+)/);
+        line = lineMatch ? parseFloat(lineMatch[1]) : 0;
+      }
+
+      // Build selection_key for deterministic matching
+      const selectionKey = `${leg.market}|${side}|${line}`.toLowerCase();
+
+      return {
+        ticket_id: ticketId,
+        user_id: userId,
+        fixture_id: leg.fixtureId,
+        league_id: null, // Will be backfilled from fixtures table if needed
+        market: leg.market,
+        side,
+        line,
+        odds: leg.odds,
+        selection_key: selectionKey,
+        selection: leg.selection,
+        source: leg.source || "prematch",
+        picked_at: new Date().toISOString(),
+        kickoff_at: leg.start ? new Date(leg.start).toISOString() : null,
+        result_status: "PENDING",
+        derived_from_selection: !leg.side || leg.line === undefined, // True if we had to parse
+      };
     });
 
-    logs.push(`[AI-ticket] Persisted ${ticket.legs.length} legs to optimizer_cache and 1 ticket to generated_tickets`);
+    // Bulk insert leg outcomes (ON CONFLICT DO NOTHING via unique index)
+    const { error: legOutcomesError } = await supabase
+      .from("ticket_leg_outcomes")
+      .insert(legOutcomes);
+
+    if (legOutcomesError) {
+      console.error("[AI-ticket] ticket_leg_outcomes insert error:", legOutcomesError);
+      logs.push(`[AI-ticket] Warning: leg outcomes insert failed: ${legOutcomesError.message}`);
+    } else {
+      logs.push(`[AI-ticket] Inserted ${legOutcomes.length} leg outcomes`);
+    }
+
+    // Insert ticket outcome summary
+    const { error: ticketOutcomeError } = await supabase
+      .from("ticket_outcomes")
+      .insert({
+        ticket_id: ticketId,
+        user_id: userId,
+        legs_total: ticket.legs.length,
+        legs_settled: 0,
+        legs_won: 0,
+        legs_lost: 0,
+        legs_pushed: 0,
+        legs_void: 0,
+        ticket_status: "PENDING",
+        total_odds: ticket.total_odds,
+      });
+
+    if (ticketOutcomeError) {
+      console.error("[AI-ticket] ticket_outcomes insert error:", ticketOutcomeError);
+      logs.push(`[AI-ticket] Warning: ticket outcome insert failed: ${ticketOutcomeError.message}`);
+    } else {
+      logs.push(`[AI-ticket] Inserted ticket outcome summary`);
+    }
+
+    logs.push(`[AI-ticket] Persisted ${ticket.legs.length} legs to optimizer_cache, generated_tickets, and outcome tables`);
   } catch (dbError) {
     console.error("[AI-ticket] DB persistence error:", dbError);
     logs.push(`[AI-ticket] Warning: DB persistence failed`);
