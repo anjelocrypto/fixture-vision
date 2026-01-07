@@ -12,7 +12,7 @@
  * 
  * On failure: logs CRITICAL alert to pipeline_alerts table
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 interface LeagueExpectation {

@@ -1,6 +1,6 @@
 // Pipeline Health Check - Monitors data freshness and job health
 // Returns OK/WARNING/CRITICAL status based on fixture coverage and job runs
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 // Key leagues to monitor
