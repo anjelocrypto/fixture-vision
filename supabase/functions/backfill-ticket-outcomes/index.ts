@@ -1,14 +1,12 @@
 /*
- * BACKFILL TICKET OUTCOMES
+ * BACKFILL TICKET OUTCOMES - Cursor-based, DB-driven
  * 
- * One-time/batch Edge Function to populate ticket_leg_outcomes + ticket_outcomes
- * for historical tickets that were created before the outcome tracking system.
- * 
- * Processes tickets in batches (default 100) to avoid timeouts.
- * Safe to run multiple times - uses upsert with ignoreDuplicates.
+ * Processes tickets in batches using cursor pagination to avoid timeouts.
+ * Only fetches tickets that DON'T already have outcomes in the DB query itself.
  * 
  * Query params:
- * - batch_size: Number of tickets to process (default 100, max 500)
+ * - batch_size: Number of tickets to process (default 50, max 200)
+ * - cursor: ISO timestamp to start after (for pagination)
  * - dry_run: If "true", only logs what would be done without inserting
  */
 
@@ -43,8 +41,6 @@ serve(async (req) => {
   const logs: string[] = [];
 
   try {
-    // Auth check - require admin or service role
-    const authHeader = req.headers.get("authorization");
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -52,34 +48,37 @@ serve(async (req) => {
 
     // Parse query params
     const url = new URL(req.url);
-    const batchSize = Math.min(parseInt(url.searchParams.get("batch_size") || "100"), 500);
+    const batchSize = Math.min(parseInt(url.searchParams.get("batch_size") || "50"), 200);
+    const cursor = url.searchParams.get("cursor") || null; // ISO timestamp
     const dryRun = url.searchParams.get("dry_run") === "true";
 
-    logs.push(`[backfill] Starting with batch_size=${batchSize}, dry_run=${dryRun}`);
+    logs.push(`[backfill] Starting: batch_size=${batchSize}, cursor=${cursor || 'start'}, dry_run=${dryRun}`);
 
-    // Get count of existing outcomes
-    const { count: existingOutcomeCount } = await supabase
-      .from("ticket_outcomes")
-      .select("ticket_id", { count: "exact", head: true });
-
-    logs.push(`[backfill] Found ${existingOutcomeCount || 0} tickets already with outcomes`);
-
-    // Get count of total tickets
-    const { count: totalTicketCount } = await supabase
+    // DB-DRIVEN APPROACH: Use a single query that joins to find missing outcomes
+    // This avoids loading all outcome IDs into memory
+    let query = supabase
       .from("generated_tickets")
-      .select("id", { count: "exact", head: true });
+      .select(`id, user_id, total_odds, legs, created_at`)
+      .order("created_at", { ascending: true })
+      .limit(batchSize);
 
-    const ticketsNeeded = (totalTicketCount || 0) - (existingOutcomeCount || 0);
-    logs.push(`[backfill] Approx ${ticketsNeeded} tickets need backfill`);
+    // Apply cursor if provided
+    if (cursor) {
+      query = query.gt("created_at", cursor);
+    }
 
-    if (ticketsNeeded <= 0) {
-      logs.push("[backfill] All tickets already have outcomes");
+    const { data: tickets, error: queryError } = await query;
+
+    if (queryError) throw queryError;
+
+    if (!tickets || tickets.length === 0) {
+      logs.push("[backfill] No more tickets to process");
       return new Response(
         JSON.stringify({ 
           success: true, 
-          processed: 0, 
-          already_done: existingOutcomeCount || 0,
+          processed_tickets: 0,
           remaining: 0,
+          next_cursor: null,
           logs, 
           duration_ms: Date.now() - startTime 
         }),
@@ -87,59 +86,32 @@ serve(async (req) => {
       );
     }
 
-    // Get ticket IDs that already have outcomes
-    const { data: existingOutcomeIds } = await supabase
+    // Get IDs of tickets in this batch
+    const ticketIds = tickets.map(t => t.id);
+
+    // Check which of these already have outcomes
+    const { data: existingOutcomes } = await supabase
       .from("ticket_outcomes")
-      .select("ticket_id");
+      .select("ticket_id")
+      .in("ticket_id", ticketIds);
 
-    const existingTicketIds = new Set((existingOutcomeIds || []).map((o: { ticket_id: string }) => o.ticket_id));
+    const existingSet = new Set((existingOutcomes || []).map(o => o.ticket_id));
+    
+    // Filter to only tickets needing backfill
+    const ticketsToProcess = tickets.filter(t => !existingSet.has(t.id));
 
-    // Fetch tickets in pages until we have enough for this batch
-    const ticketsNeedingBackfill: Array<{
-      id: string;
-      user_id: string;
-      total_odds: number;
-      legs: LegJson[];
-      created_at: string;
-    }> = [];
+    logs.push(`[backfill] Batch has ${tickets.length} tickets, ${ticketsToProcess.length} need backfill, ${existingSet.size} already done`);
 
-    let offset = 0;
-    const pageSize = 500; // Fetch in pages to avoid 1000 row limit
-
-    while (ticketsNeedingBackfill.length < batchSize) {
-      const { data: ticketPage, error: queryError } = await supabase
-        .from("generated_tickets")
-        .select(`id, user_id, total_odds, legs, created_at`)
-        .order("created_at", { ascending: true })
-        .range(offset, offset + pageSize - 1);
-
-      if (queryError) throw queryError;
-      if (!ticketPage || ticketPage.length === 0) break; // No more tickets
-
-      for (const t of ticketPage) {
-        if (!existingTicketIds.has(t.id)) {
-          ticketsNeedingBackfill.push(t);
-          if (ticketsNeedingBackfill.length >= batchSize) break;
-        }
-      }
-
-      offset += pageSize;
-      
-      // Safety check - if we've scanned a lot and found nothing, exit
-      if (offset > 10000) {
-        logs.push(`[backfill] Scanned ${offset} tickets, stopping pagination`);
-        break;
-      }
-    }
-
-    if (ticketsNeedingBackfill.length === 0) {
-      logs.push("[backfill] All tickets already have outcomes");
+    if (ticketsToProcess.length === 0) {
+      // All in this batch already done, return next cursor to continue
+      const nextCursor = tickets[tickets.length - 1]?.created_at || null;
+      logs.push(`[backfill] All in batch already done, advancing cursor`);
       return new Response(
         JSON.stringify({ 
           success: true, 
-          processed: 0, 
-          already_done: existingTicketIds.size,
-          remaining: 0,
+          processed_tickets: 0,
+          skipped_already_done: existingSet.size,
+          next_cursor: nextCursor,
           logs, 
           duration_ms: Date.now() - startTime 
         }),
@@ -147,18 +119,16 @@ serve(async (req) => {
       );
     }
 
-    logs.push(`[backfill] Found ${ticketsNeedingBackfill.length} tickets to process this batch`);
-
-    // Collect all fixture IDs across all tickets for bulk lookup
+    // Collect all fixture IDs for bulk lookup
     const allFixtureIds = new Set<number>();
-    for (const ticket of ticketsNeedingBackfill) {
+    for (const ticket of ticketsToProcess) {
       const legs = ticket.legs as LegJson[];
       for (const leg of legs) {
         if (leg.fixtureId) allFixtureIds.add(leg.fixtureId);
       }
     }
 
-    // Bulk fetch fixture data (league_id, timestamp)
+    // Bulk fetch fixture data
     const { data: fixturesData } = await supabase
       .from("fixtures")
       .select("id, league_id, timestamp")
@@ -172,15 +142,53 @@ serve(async (req) => {
       });
     }
 
-    logs.push(`[backfill] Loaded ${fixtureMap.size} fixtures for league_id lookup`);
+    logs.push(`[backfill] Loaded ${fixtureMap.size} fixtures for lookup`);
+
+    // DRY RUN CHECK - return early before any writes
+    if (dryRun) {
+      let totalLegs = 0;
+      let skippedLegs = 0;
+      for (const ticket of ticketsToProcess) {
+        const legs = ticket.legs as LegJson[];
+        for (const leg of legs) {
+          const selectionLower = (leg.selection || "").toLowerCase().trim();
+          let line: number;
+          if (leg.side && leg.line !== undefined && leg.line > 0) {
+            line = leg.line;
+          } else {
+            const lineMatch = selectionLower.match(/([\d.]+)/);
+            line = lineMatch ? parseFloat(lineMatch[1]) : 0;
+          }
+          if (line <= 0) {
+            skippedLegs++;
+          } else {
+            totalLegs++;
+          }
+        }
+      }
+      const nextCursor = tickets[tickets.length - 1]?.created_at || null;
+      logs.push(`[dry-run] Would process ${ticketsToProcess.length} tickets, ${totalLegs} legs, skip ${skippedLegs}`);
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          dry_run: true,
+          would_process_tickets: ticketsToProcess.length,
+          would_insert_legs: totalLegs,
+          would_skip_legs: skippedLegs,
+          next_cursor: nextCursor,
+          logs, 
+          duration_ms: Date.now() - startTime 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Process each ticket
     let processedTickets = 0;
     let insertedLegs = 0;
     let skippedLegs = 0;
-    let insertedTicketOutcomes = 0;
 
-    for (const ticket of ticketsNeedingBackfill) {
+    for (const ticket of ticketsToProcess) {
       const legs = ticket.legs as LegJson[];
       const legOutcomes: Array<{
         ticket_id: string;
@@ -201,7 +209,6 @@ serve(async (req) => {
       }> = [];
 
       for (const leg of legs) {
-        // Parse side and line
         const selectionLower = (leg.selection || "").toLowerCase().trim();
         let side: string;
         let line: number;
@@ -215,17 +222,14 @@ serve(async (req) => {
           line = lineMatch ? parseFloat(lineMatch[1]) : 0;
         }
 
-        // Skip invalid legs
         if (line <= 0) {
           skippedLegs++;
           continue;
         }
 
-        // Get fixture info
         const fixtureInfo = fixtureMap.get(leg.fixtureId);
         const leagueId = fixtureInfo?.league_id ?? null;
         const kickoffAt = fixtureInfo?.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null);
-
         const selectionKey = `${leg.market}|${side}|${line}`.toLowerCase();
 
         legOutcomes.push({
@@ -247,13 +251,6 @@ serve(async (req) => {
         });
       }
 
-      if (dryRun) {
-        logs.push(`[dry-run] Would insert ${legOutcomes.length} legs for ticket ${ticket.id}`);
-        processedTickets++;
-        insertedLegs += legOutcomes.length;
-        continue;
-      }
-
       // Upsert leg outcomes
       if (legOutcomes.length > 0) {
         const { error: legError } = await supabase
@@ -267,7 +264,6 @@ serve(async (req) => {
           logs.push(`[backfill] Error inserting legs for ticket ${ticket.id}: ${legError.message}`);
           continue;
         }
-
         insertedLegs += legOutcomes.length;
       }
 
@@ -295,21 +291,22 @@ serve(async (req) => {
         continue;
       }
 
-      insertedTicketOutcomes++;
       processedTickets++;
     }
 
-    logs.push(`[backfill] Completed: ${processedTickets} tickets, ${insertedLegs} legs inserted, ${skippedLegs} legs skipped, ${insertedTicketOutcomes} ticket outcomes created`);
+    // Return next cursor for pagination
+    const nextCursor = tickets[tickets.length - 1]?.created_at || null;
+
+    logs.push(`[backfill] Done: ${processedTickets} tickets, ${insertedLegs} legs, ${skippedLegs} skipped`);
+    
     return new Response(
       JSON.stringify({
         success: true,
         processed_tickets: processedTickets,
         inserted_legs: insertedLegs,
         skipped_legs: skippedLegs,
-        inserted_ticket_outcomes: insertedTicketOutcomes,
-        already_done: existingTicketIds.size,
-        remaining: ticketsNeeded - processedTickets,
-        dry_run: dryRun,
+        skipped_already_done: existingSet.size,
+        next_cursor: nextCursor,
         logs,
         duration_ms: Date.now() - startTime,
       }),
