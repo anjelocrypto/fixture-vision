@@ -8,6 +8,7 @@
  * - batch_size: Number of tickets to process (default 50, max 200)
  * - cursor: ISO timestamp to start after (for pagination)
  * - dry_run: If "true", only logs what would be done without inserting
+ * - missing_only: If "true", directly targets tickets without outcomes (ignores cursor)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -51,25 +52,48 @@ serve(async (req) => {
     const batchSize = Math.min(parseInt(url.searchParams.get("batch_size") || "50"), 200);
     const cursor = url.searchParams.get("cursor") || null; // ISO timestamp
     const dryRun = url.searchParams.get("dry_run") === "true";
+    const targetIds = url.searchParams.get("target_ids"); // Comma-separated UUIDs
 
-    logs.push(`[backfill] Starting: batch_size=${batchSize}, cursor=${cursor || 'start'}, dry_run=${dryRun}`);
+    logs.push(`[backfill] Starting: batch_size=${batchSize}, cursor=${cursor || 'start'}, dry_run=${dryRun}, target_ids=${targetIds ? 'provided' : 'none'}`);
 
-    // DB-DRIVEN APPROACH: Use a single query that joins to find missing outcomes
-    // This avoids loading all outcome IDs into memory
-    let query = supabase
-      .from("generated_tickets")
-      .select(`id, user_id, total_odds, legs, created_at`)
-      .order("created_at", { ascending: true })
-      .limit(batchSize);
+    let tickets: Array<{
+      id: string;
+      user_id: string;
+      total_odds: number;
+      legs: LegJson[];
+      created_at: string;
+    }> = [];
 
-    // Apply cursor if provided
-    if (cursor) {
-      query = query.gt("created_at", cursor);
+    if (targetIds) {
+      // TARGET_IDS MODE: Process specific ticket IDs
+      const ids = targetIds.split(",").map(id => id.trim()).filter(id => id.length > 0);
+      logs.push(`[backfill] Targeting ${ids.length} specific tickets`);
+      
+      if (ids.length > 0) {
+        const { data: ticketData, error: ticketError } = await supabase
+          .from("generated_tickets")
+          .select("id, user_id, total_odds, legs, created_at")
+          .in("id", ids.slice(0, batchSize));
+        
+        if (ticketError) throw ticketError;
+        tickets = (ticketData || []) as typeof tickets;
+      }
+    } else {
+      // CURSOR MODE: Standard pagination
+      let query = supabase
+        .from("generated_tickets")
+        .select(`id, user_id, total_odds, legs, created_at`)
+        .order("created_at", { ascending: true })
+        .limit(batchSize);
+
+      if (cursor) {
+        query = query.gt("created_at", cursor);
+      }
+
+      const { data: queryTickets, error: queryError } = await query;
+      if (queryError) throw queryError;
+      tickets = (queryTickets || []) as typeof tickets;
     }
-
-    const { data: tickets, error: queryError } = await query;
-
-    if (queryError) throw queryError;
 
     if (!tickets || tickets.length === 0) {
       logs.push("[backfill] No more tickets to process");
