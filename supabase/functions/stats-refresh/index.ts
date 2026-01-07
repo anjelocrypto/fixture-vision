@@ -12,7 +12,7 @@
 // - Gradual, reliable progress toward 100% coverage
 // ============================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";

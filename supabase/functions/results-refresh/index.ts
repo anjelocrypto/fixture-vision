@@ -2,7 +2,7 @@
 // CRITICAL FIX: Also updates fixtures.status from NS to FT for finished matches
 // Uses centralized API-Football rate limiter for safe, automated operation
 // HARDENED: Logs all runs to pipeline_run_logs for observability
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
 
