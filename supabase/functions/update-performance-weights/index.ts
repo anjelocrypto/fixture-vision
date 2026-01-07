@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     const allAggregations = [...globalStats.values(), ...leagueStats.values()];
     console.log(`${LOG_PREFIX} Computed ${allAggregations.length} aggregations (${globalStats.size} global, ${leagueStats.size} league-specific)`);
 
-    // Prepare upsert records
+    // Prepare upsert records with league_key for proper unique constraint
     const records = allAggregations.map((agg) => {
       const { wins, losses, pushes, sample_size, total_odds } = agg;
       
@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
         side: agg.side,
         line: agg.line,
         league_id: agg.league_id,
+        league_key: agg.league_id ?? -1, // For proper unique constraint
         sample_size,
         wins,
         losses,
@@ -133,44 +134,20 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Use delete-then-insert pattern since unique index uses COALESCE expression
-    let upserted = 0;
-    
-    for (const record of records) {
-      try {
-        // Delete existing row matching this combination
-        if (record.league_id === null) {
-          await supabase
-            .from("performance_weights")
-            .delete()
-            .eq("market", record.market)
-            .eq("side", record.side)
-            .eq("line", record.line)
-            .is("league_id", null);
-        } else {
-          await supabase
-            .from("performance_weights")
-            .delete()
-            .eq("market", record.market)
-            .eq("side", record.side)
-            .eq("line", record.line)
-            .eq("league_id", record.league_id);
-        }
+    // Batch upsert with proper unique constraint (market, side, line, league_key)
+    const { error: upsertError, count } = await supabase
+      .from("performance_weights")
+      .upsert(records, { 
+        onConflict: "market,side,line,league_key",
+        ignoreDuplicates: false 
+      });
 
-        // Insert fresh row
-        const { error: insertError } = await supabase
-          .from("performance_weights")
-          .insert(record);
-        
-        if (!insertError) {
-          upserted++;
-        } else {
-          console.error(`${LOG_PREFIX} Insert error for ${record.market}|${record.side}|${record.line}: ${insertError.message}`);
-        }
-      } catch (err) {
-        console.error(`${LOG_PREFIX} Upsert error:`, err);
-      }
+    if (upsertError) {
+      console.error(`${LOG_PREFIX} Batch upsert error: ${upsertError.message}`);
+      throw new Error(`Upsert failed: ${upsertError.message}`);
     }
+
+    const upserted = records.length;
 
     console.log(`${LOG_PREFIX} Successfully upserted ${upserted}/${records.length} performance weights`);
 

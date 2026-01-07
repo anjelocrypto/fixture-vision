@@ -968,6 +968,7 @@ export type Database = {
           computed_at: string
           id: number
           league_id: number | null
+          league_key: number
           line: number
           losses: number
           market: string
@@ -984,6 +985,7 @@ export type Database = {
           computed_at?: string
           id?: number
           league_id?: number | null
+          league_key?: number
           line: number
           losses?: number
           market: string
@@ -1000,6 +1002,7 @@ export type Database = {
           computed_at?: string
           id?: number
           league_id?: number | null
+          league_key?: number
           line?: number
           losses?: number
           market?: string
