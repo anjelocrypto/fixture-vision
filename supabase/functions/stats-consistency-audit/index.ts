@@ -9,7 +9,7 @@
 // Returns detailed per-metric diffs and logs results to optimizer_run_logs.
 // ============================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
 import { recomputeTeamStatsFromDB, DBStatsResult } from "../_shared/stats_db.ts";

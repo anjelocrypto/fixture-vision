@@ -1,7 +1,7 @@
 // Backfill historical fixture_results for last 12 months
 // STRATEGY: Fetch FT fixtures directly from API-Football, not from fixtures table
 // Deployed: 2025-11-23 (v2 - direct API fetch)
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
 

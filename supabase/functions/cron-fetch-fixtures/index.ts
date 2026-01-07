@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { ALLOWED_LEAGUE_IDS, getCountryIdForLeague } from '../_shared/leagues.ts';
 import { apiHeaders, API_BASE } from '../_shared/api.ts';
 import { UPCOMING_WINDOW_HOURS } from '../_shared/config.ts';
