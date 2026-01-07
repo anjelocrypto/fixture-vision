@@ -2,14 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 /**
- * Basketball Safe Zone Edge Function v1.0
+ * Basketball Safe Zone Edge Function v2.0
  * 
  * Returns upcoming basketball games ranked by probability of high total points
- * Uses NBA API and Basketball API endpoints
- * 
- * Endpoints used:
- * - NBA: https://v2.nba.api-sports.io
- * - Basketball: https://v1.basketball.api-sports.io
+ * Uses LOCAL DATABASE (basketball_games + basketball_stats_cache) for reliability
  */
 
 const corsHeaders = {
@@ -17,34 +13,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Supported leagues
-const SUPPORTED_LEAGUES = {
-  // NBA API
-  nba: { id: 12, name: "NBA", api: "nba", avg_total: 225 },
-  nba_gleague: { id: 20, name: "G-League", api: "nba", avg_total: 220 },
-  // Basketball API (international)
-  euroleague: { id: 120, name: "EuroLeague", api: "basketball", avg_total: 160 },
-  eurocup: { id: 121, name: "EuroCup", api: "basketball", avg_total: 158 },
-  spain_acb: { id: 117, name: "Spain ACB", api: "basketball", avg_total: 165 },
-  germany_bbl: { id: 43, name: "Germany BBL", api: "basketball", avg_total: 165 },
-  italy_lba: { id: 82, name: "Italy Lega A", api: "basketball", avg_total: 162 },
-  france_prob: { id: 40, name: "France Pro B", api: "basketball", avg_total: 160 },
+// Supported leagues with their average totals
+const SUPPORTED_LEAGUES: Record<string, { name: string; avg_total: number }> = {
+  nba: { name: "NBA", avg_total: 225 },
+  nba_gleague: { name: "G-League", avg_total: 220 },
+  euroleague: { name: "EuroLeague", avg_total: 160 },
+  eurocup: { name: "EuroCup", avg_total: 158 },
+  spain_acb: { name: "Spain ACB", avg_total: 165 },
+  germany_bbl: { name: "Germany BBL", avg_total: 165 },
+  italy_lba: { name: "Italy Lega A", avg_total: 162 },
+  france_prob: { name: "France Pro B", avg_total: 160 },
 };
 
-const NBA_BASE = "https://v2.nba.api-sports.io";
-const BASKETBALL_BASE = "https://v1.basketball.api-sports.io";
-
 interface BasketballSafeZoneRequest {
-  league_key: string;  // e.g. "nba", "euroleague"
-  days_ahead?: number; // 1-7, default 3
-  limit?: number;      // max games to return
-}
-
-interface TeamSeasonStats {
-  team_id: number;
-  points_for: number;
-  points_against: number;
-  games_played: number;
+  league_key: string;
+  days_ahead?: number;
+  limit?: number;
 }
 
 interface GameResult {
@@ -71,136 +55,6 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-// Fetch games from NBA API
-async function fetchNBAGames(apiKey: string, daysAhead: number): Promise<any[]> {
-  const games: any[] = [];
-  const now = new Date();
-  
-  for (let d = 0; d <= daysAhead; d++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + d);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    try {
-      const response = await fetch(`${NBA_BASE}/games?date=${dateStr}`, {
-        headers: { "x-apisports-key": apiKey }
-      });
-      
-      if (!response.ok) {
-        console.warn(`[basketball-safe-zone] NBA API error for ${dateStr}: ${response.status}`);
-        continue;
-      }
-      
-      const data = await response.json();
-      if (data.response && Array.isArray(data.response)) {
-        // Filter for scheduled games only (not finished)
-        const upcoming = data.response.filter((g: any) => 
-          g.status?.short !== "FT" && g.status?.short !== "AOT"
-        );
-        games.push(...upcoming.map((g: any) => ({
-          ...g,
-          api: "nba",
-          league_key: g.league?.id === 20 ? "nba_gleague" : "nba"
-        })));
-      }
-    } catch (err) {
-      console.error(`[basketball-safe-zone] Error fetching NBA games for ${dateStr}:`, err);
-    }
-  }
-  
-  return games;
-}
-
-// Fetch games from Basketball API (international)
-async function fetchBasketballGames(apiKey: string, leagueId: number, leagueKey: string, daysAhead: number): Promise<any[]> {
-  const games: any[] = [];
-  const now = new Date();
-  
-  for (let d = 0; d <= daysAhead; d++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + d);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    try {
-      const response = await fetch(`${BASKETBALL_BASE}/games?league=${leagueId}&date=${dateStr}`, {
-        headers: { "x-apisports-key": apiKey }
-      });
-      
-      if (!response.ok) {
-        console.warn(`[basketball-safe-zone] Basketball API error: ${response.status}`);
-        continue;
-      }
-      
-      const data = await response.json();
-      if (data.response && Array.isArray(data.response)) {
-        // Filter for scheduled games
-        const upcoming = data.response.filter((g: any) => 
-          g.status?.short !== "FT" && g.status?.short !== "AOT"
-        );
-        games.push(...upcoming.map((g: any) => ({
-          ...g,
-          api: "basketball",
-          league_key: leagueKey
-        })));
-      }
-    } catch (err) {
-      console.error(`[basketball-safe-zone] Error fetching basketball games:`, err);
-    }
-  }
-  
-  return games;
-}
-
-// Get team season stats from NBA API
-async function getNBATeamStats(apiKey: string, teamId: number, season: number): Promise<TeamSeasonStats | null> {
-  try {
-    const response = await fetch(`${NBA_BASE}/teams/statistics?id=${teamId}&season=${season}`, {
-      headers: { "x-apisports-key": apiKey }
-    });
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (!data.response || data.response.length === 0) return null;
-    
-    const stats = data.response[0];
-    return {
-      team_id: teamId,
-      points_for: stats.points?.for?.average?.all || 110,
-      points_against: stats.points?.against?.average?.all || 110,
-      games_played: stats.games?.played?.all || 0,
-    };
-  } catch (err) {
-    console.error(`[basketball-safe-zone] Error fetching NBA team stats:`, err);
-    return null;
-  }
-}
-
-// Get team season stats from Basketball API
-async function getBasketballTeamStats(apiKey: string, teamId: number, leagueId: number, season: string): Promise<TeamSeasonStats | null> {
-  try {
-    const response = await fetch(`${BASKETBALL_BASE}/statistics?team=${teamId}&league=${leagueId}&season=${season}`, {
-      headers: { "x-apisports-key": apiKey }
-    });
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (!data.response || data.response.length === 0) return null;
-    
-    const stats = data.response[0];
-    return {
-      team_id: teamId,
-      points_for: stats.points?.for?.average?.all || 80,
-      points_against: stats.points?.against?.average?.all || 80,
-      games_played: stats.games?.played?.all || 0,
-    };
-  } catch (err) {
-    console.error(`[basketball-safe-zone] Error fetching basketball team stats:`, err);
-    return null;
-  }
-}
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -214,7 +68,7 @@ serve(async (req) => {
     const { league_key, days_ahead = 3, limit = 20 } = body;
 
     // Validate league
-    const leagueConfig = SUPPORTED_LEAGUES[league_key as keyof typeof SUPPORTED_LEAGUES];
+    const leagueConfig = SUPPORTED_LEAGUES[league_key];
     if (!leagueConfig) {
       return new Response(
         JSON.stringify({ 
@@ -224,32 +78,44 @@ serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get("API_FOOTBALL_KEY");
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "API_FOOTBALL_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     console.log(`[basketball-safe-zone] Fetching games for ${league_key}, days_ahead=${days_ahead}`);
 
-    // Fetch games based on API type
-    let games: any[] = [];
-    const currentSeason = new Date().getFullYear();
-    const basketballSeason = `${currentSeason - 1}-${currentSeason}`;
+    // Calculate date range
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + days_ahead);
 
-    if (leagueConfig.api === "nba") {
-      games = await fetchNBAGames(apiKey, days_ahead);
-      // Filter to requested league
-      games = games.filter(g => g.league_key === league_key);
-    } else {
-      games = await fetchBasketballGames(apiKey, leagueConfig.id, league_key, days_ahead);
+    // Fetch upcoming games from local database
+    const { data: games, error: gamesError } = await supabase
+      .from("basketball_games")
+      .select(`
+        id,
+        date,
+        league_key,
+        home_team_id,
+        away_team_id,
+        home_team:basketball_teams!basketball_games_home_team_id_fkey(id, name),
+        away_team:basketball_teams!basketball_games_away_team_id_fkey(id, name)
+      `)
+      .eq("league_key", league_key)
+      .eq("status_short", "NS")
+      .gte("date", now.toISOString())
+      .lte("date", endDate.toISOString())
+      .order("date", { ascending: true });
+
+    if (gamesError) {
+      console.error(`[basketball-safe-zone] Error fetching games:`, gamesError);
+      throw gamesError;
     }
 
-    console.log(`[basketball-safe-zone] Found ${games.length} upcoming games`);
+    console.log(`[basketball-safe-zone] Found ${games?.length || 0} upcoming games in database`);
 
-    if (games.length === 0) {
+    if (!games || games.length === 0) {
       return new Response(
         JSON.stringify({
           league_key,
@@ -265,33 +131,31 @@ serve(async (req) => {
       );
     }
 
-    // Collect unique team IDs and fetch stats
+    // Collect unique team IDs
     const teamIds = new Set<number>();
     for (const game of games) {
-      if (leagueConfig.api === "nba") {
-        teamIds.add(game.teams?.home?.id);
-        teamIds.add(game.teams?.visitors?.id);
-      } else {
-        teamIds.add(game.teams?.home?.id);
-        teamIds.add(game.teams?.away?.id);
-      }
+      teamIds.add(game.home_team_id);
+      teamIds.add(game.away_team_id);
     }
 
-    // Fetch team stats (batch)
-    const teamStatsMap = new Map<number, TeamSeasonStats>();
-    
-    for (const teamId of teamIds) {
-      if (!teamId) continue;
-      
-      let stats: TeamSeasonStats | null = null;
-      if (leagueConfig.api === "nba") {
-        stats = await getNBATeamStats(apiKey, teamId, currentSeason);
-      } else {
-        stats = await getBasketballTeamStats(apiKey, teamId, leagueConfig.id, basketballSeason);
-      }
-      
-      if (stats) {
-        teamStatsMap.set(teamId, stats);
+    // Fetch team stats from local cache (latest season only)
+    const { data: teamStats, error: statsError } = await supabase
+      .from("basketball_stats_cache")
+      .select("*")
+      .in("team_id", Array.from(teamIds))
+      .order("season", { ascending: false });
+
+    if (statsError) {
+      console.error(`[basketball-safe-zone] Error fetching stats:`, statsError);
+    }
+
+    // Build stats map (use latest season per team)
+    const teamStatsMap = new Map<number, any>();
+    if (teamStats) {
+      for (const stat of teamStats) {
+        if (!teamStatsMap.has(stat.team_id)) {
+          teamStatsMap.set(stat.team_id, stat);
+        }
       }
     }
 
@@ -301,55 +165,51 @@ serve(async (req) => {
     const results: GameResult[] = [];
     
     for (const game of games) {
-      const isNBA = leagueConfig.api === "nba";
-      const homeTeamId = isNBA ? game.teams?.home?.id : game.teams?.home?.id;
-      const awayTeamId = isNBA ? game.teams?.visitors?.id : game.teams?.away?.id;
-      const homeTeamName = isNBA ? game.teams?.home?.name : game.teams?.home?.name;
-      const awayTeamName = isNBA ? game.teams?.visitors?.name : game.teams?.away?.name;
+      const homeTeam = game.home_team as any;
+      const awayTeam = game.away_team as any;
       
-      const homeStats = teamStatsMap.get(homeTeamId);
-      const awayStats = teamStatsMap.get(awayTeamId);
+      const homeStats = teamStatsMap.get(game.home_team_id);
+      const awayStats = teamStatsMap.get(game.away_team_id);
       
       // Default to league average if no stats
       const defaultPPG = leagueConfig.avg_total / 2;
       
-      const homePPG = homeStats?.points_for || defaultPPG;
-      const homePAPG = homeStats?.points_against || defaultPPG;
-      const awayPPG = awayStats?.points_for || defaultPPG;
-      const awayPAPG = awayStats?.points_against || defaultPPG;
+      // Use last5 stats if available, otherwise season averages
+      const homePPG = homeStats?.last5_ppg_for || homeStats?.ppg_for || defaultPPG;
+      const homePAPG = homeStats?.last5_ppg_against || homeStats?.ppg_against || defaultPPG;
+      const awayPPG = awayStats?.last5_ppg_for || awayStats?.ppg_for || defaultPPG;
+      const awayPAPG = awayStats?.last5_ppg_against || awayStats?.ppg_against || defaultPPG;
       
-      // Calculate expected total points
-      const avgAttack = (homePPG + awayPPG) / 2;
-      const avgDefense = (homePAPG + awayPAPG) / 2;
-      let muPoints = (avgAttack + avgDefense) / 2;
+      // Calculate expected total points using offensive/defensive matchup
+      // Home team expected score = (home offense + away defense) / 2
+      // Away team expected score = (away offense + home defense) / 2
+      const homeExpected = (homePPG + awayPAPG) / 2;
+      const awayExpected = (awayPPG + homePAPG) / 2;
+      let muPoints = homeExpected + awayExpected;
       
-      // Home edge adjustment (small boost for home scoring)
-      muPoints = muPoints + 2;
+      // Home court advantage (small boost)
+      muPoints = muPoints + 3;
       
-      // Book line (use league default if no odds available)
+      // Book line (use league default)
       const bookLine = leagueConfig.avg_total;
       
       // Calculate safe zone probability
-      // Simple scaled score: higher mu_points vs book_line = higher probability
-      const rawScore = (muPoints - bookLine) / 15; // Normalize difference
-      const safeZoneProb = clamp(0.5 + rawScore, 0.25, 0.85);
+      // Higher mu_points vs book_line = higher probability of high scoring game
+      const rawScore = (muPoints - bookLine) / 20; // Normalize difference
+      const safeZoneProb = clamp(0.5 + rawScore, 0.20, 0.90);
       
-      // Data quality based on games played
-      const minGames = Math.min(
-        homeStats?.games_played || 0,
-        awayStats?.games_played || 0
+      // Data quality based on sample size
+      const minSample = Math.min(
+        homeStats?.sample_size || 0,
+        awayStats?.sample_size || 0
       );
       let dataQuality: "high" | "medium" | "low";
-      if (minGames >= 20) dataQuality = "high";
-      else if (minGames >= 10) dataQuality = "medium";
+      if (minSample >= 10) dataQuality = "high";
+      else if (minSample >= 5) dataQuality = "medium";
       else dataQuality = "low";
       
       // Parse date/time
-      const gameDate = isNBA 
-        ? game.date?.start 
-        : game.date;
-      
-      const dateObj = new Date(gameDate);
+      const dateObj = new Date(game.date);
       
       results.push({
         game_id: game.id,
@@ -357,10 +217,10 @@ serve(async (req) => {
         league_name: leagueConfig.name,
         date: dateObj.toISOString().split('T')[0],
         time: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        home_team: homeTeamName || "Home",
-        home_team_id: homeTeamId || 0,
-        away_team: awayTeamName || "Away",
-        away_team_id: awayTeamId || 0,
+        home_team: homeTeam?.name || "Home",
+        home_team_id: game.home_team_id,
+        away_team: awayTeam?.name || "Away",
+        away_team_id: game.away_team_id,
         home_ppg: Math.round(homePPG * 10) / 10,
         away_ppg: Math.round(awayPPG * 10) / 10,
         home_papg: Math.round(homePAPG * 10) / 10,
@@ -390,7 +250,7 @@ serve(async (req) => {
           total_games_found: games.length,
           teams_with_stats: teamStatsMap.size,
           processing_ms: elapsed,
-          model_version: "basketball-safe-zone-v1",
+          model_version: "basketball-safe-zone-v2-db",
         }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
