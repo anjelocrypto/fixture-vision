@@ -599,19 +599,20 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
         
-        // STATS INTEGRITY CHECK: Skip fixtures with unreliable stats
-        const validation = validationResults.get((sel as any).fixture_id);
-        if (validation && !validation.isValid) {
-          statsIntegrityDropped++;
-          logs.push(`[STATS_INTEGRITY_FAIL] fixture ${(sel as any).fixture_id} - ${validation.reason} - DROPPED`);
-          continue;
-        }
-        
         // Enforce global odds band [ODDS_MIN, ODDS_MAX]
         if ((sel as any).odds < ODDS_MIN || (sel as any).odds > ODDS_MAX) {
           droppedOutOfBand++;
           continue;
         }
+        
+        // MAX WIN RATE MODE: Apply mode-specific odds filter (minOdds from request)
+        // This is stricter than the global band for max_win_rate mode
+        if (isMaxWinRateMode && (sel as any).odds < minOdds) {
+          droppedOutOfBand++;
+          logs.push(`[MAX_WIN_RATE] Odds ${(sel as any).odds} < minOdds ${minOdds} for fixture ${(sel as any).fixture_id} - DROPPED`);
+          continue;
+        }
+        
         bandKept++;
         
         // Validate combined_snapshot against qualification range (same as Filterizer)
