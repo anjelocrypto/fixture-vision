@@ -1,6 +1,7 @@
 {
   "title": "AI Ticket Creator",
   "description": "Create an optimized betting ticket mixing fixtures and markets from all leagues based on statistical analysis and real-time odds.",
+  "ticket_mode": "Ticket Mode",
   "per_leg_odds_note": "Per-leg odds: 1.25–5.00 (enforced)",
   "total_odds_note": "Total odds target: Hard constraint (exact match only)",
   "legs_note": "Legs: We'll try 5–15 legs and search for combos inside your target. Results vary per attempt.",
