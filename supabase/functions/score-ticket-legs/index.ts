@@ -4,6 +4,10 @@
  * Runs every 5 minutes via cron.
  * Scores legs based on fixture_results after match is finished (FT).
  * 
+ * Uses RPC get_scorable_pending_legs which:
+ * - INNER JOINs with fixture_results (FT) so we only get scorable legs
+ * - Uses FOR UPDATE SKIP LOCKED to prevent double-processing
+ * 
  * Scoring rules:
  * - goals: goals_home + goals_away
  * - corners: corners_home + corners_away  
@@ -22,25 +26,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-key",
 };
 
-interface FixtureResult {
-  fixture_id: number;
-  goals_home: number;
-  goals_away: number;
-  corners_home: number | null;
-  corners_away: number | null;
-  cards_home: number | null;
-  cards_away: number | null;
-  status: string;
-}
-
-interface PendingLeg {
-  id: string;
+interface ScorableLeg {
+  leg_id: string;
   ticket_id: string;
   user_id: string;
   fixture_id: number;
   market: string;
   side: string;
   line: number;
+  goals_home: number;
+  goals_away: number;
+  corners_home: number | null;
+  corners_away: number | null;
+  cards_home: number | null;
+  cards_away: number | null;
 }
 
 serve(async (req) => {
@@ -69,27 +68,23 @@ serve(async (req) => {
   logs.push(`[score] Authorized via ${auth.method}`);
 
   try {
-
     // Parse optional batch_size param
     const url = new URL(req.url);
     const batchSize = Math.min(parseInt(url.searchParams.get("batch_size") || "500"), 1000);
 
     logs.push(`[score] Starting with batch_size=${batchSize}`);
 
-    // Step 1: Get pending legs where kickoff was > 2 hours ago
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    
-    const { data: pendingLegs, error: legsError } = await supabase
-      .from("ticket_leg_outcomes")
-      .select("id, ticket_id, user_id, fixture_id, market, side, line")
-      .eq("result_status", "PENDING")
-      .lt("kickoff_at", twoHoursAgo)
-      .limit(batchSize);
+    // Step 1: Get SCORABLE pending legs via RPC (INNER JOINs fixture_results FT, uses FOR UPDATE SKIP LOCKED)
+    const { data: scorableLegs, error: legsError } = await supabase
+      .rpc("get_scorable_pending_legs", { batch_limit: batchSize });
 
-    if (legsError) throw legsError;
+    if (legsError) {
+      logs.push(`[score] RPC error: ${legsError.message}`);
+      throw legsError;
+    }
 
-    if (!pendingLegs || pendingLegs.length === 0) {
-      logs.push("[score] No pending legs to score");
+    if (!scorableLegs || scorableLegs.length === 0) {
+      logs.push("[score] No scorable legs found (all pending legs either have no FT results or are locked)");
       return new Response(
         JSON.stringify({
           success: true,
@@ -103,54 +98,27 @@ serve(async (req) => {
       );
     }
 
-    logs.push(`[score] Found ${pendingLegs.length} pending legs`);
+    logs.push(`[score] Found ${scorableLegs.length} scorable legs with FT results`);
 
-    // Step 2: Get unique fixture IDs and fetch results
-    const fixtureIds = [...new Set(pendingLegs.map(leg => leg.fixture_id))];
-    
-    const { data: fixtureResults, error: resultsError } = await supabase
-      .from("fixture_results")
-      .select("fixture_id, goals_home, goals_away, corners_home, corners_away, cards_home, cards_away, status")
-      .in("fixture_id", fixtureIds)
-      .eq("status", "FT");
-
-    if (resultsError) throw resultsError;
-
-    // Build lookup map
-    const resultMap = new Map<number, FixtureResult>();
-    for (const r of fixtureResults || []) {
-      resultMap.set(r.fixture_id, r);
-    }
-
-    logs.push(`[score] Found ${resultMap.size} finished fixtures out of ${fixtureIds.length}`);
-
-    // Step 3: Score each leg
+    // Step 2: Score each leg (results are already in the row from RPC)
     let scoredLegs = 0;
     let skippedLegs = 0;
     const ticketsToUpdate = new Set<string>();
 
-    for (const leg of pendingLegs) {
-      const result = resultMap.get(leg.fixture_id);
-      
-      if (!result) {
-        // Fixture not finished yet, skip
-        skippedLegs++;
-        continue;
-      }
-
+    for (const leg of scorableLegs as ScorableLeg[]) {
       // Calculate actual value based on market
       let actualValue: number | null = null;
       const market = leg.market.toLowerCase();
       
       if (market === "goals" || market === "total_goals" || market === "over_under") {
-        actualValue = result.goals_home + result.goals_away;
+        actualValue = leg.goals_home + leg.goals_away;
       } else if (market === "corners" || market === "total_corners") {
-        if (result.corners_home !== null && result.corners_away !== null) {
-          actualValue = result.corners_home + result.corners_away;
+        if (leg.corners_home !== null && leg.corners_away !== null) {
+          actualValue = leg.corners_home + leg.corners_away;
         }
       } else if (market === "cards" || market === "total_cards") {
-        if (result.cards_home !== null && result.cards_away !== null) {
-          actualValue = result.cards_home + result.cards_away;
+        if (leg.cards_home !== null && leg.cards_away !== null) {
+          actualValue = leg.cards_home + leg.cards_away;
         }
       } else if (market === "team_goals" || market === "team_total") {
         // For team-specific markets, we'd need side info like "home" or "away"
@@ -160,7 +128,7 @@ serve(async (req) => {
       }
 
       if (actualValue === null) {
-        // Can't score without actual value
+        // Can't score without actual value (e.g., corners/cards not available)
         skippedLegs++;
         continue;
       }
@@ -187,7 +155,7 @@ serve(async (req) => {
         }
       } else {
         // Unknown side, skip
-        logs.push(`[score] Unknown side "${leg.side}" for leg ${leg.id}`);
+        logs.push(`[score] Unknown side "${leg.side}" for leg ${leg.leg_id}`);
         skippedLegs++;
         continue;
       }
@@ -199,12 +167,12 @@ serve(async (req) => {
           result_status: resultStatus,
           actual_value: actualValue,
           settled_at: new Date().toISOString(),
-          scored_version: "v1.0",
+          scored_version: "v1.1-rpc",
         })
-        .eq("id", leg.id);
+        .eq("id", leg.leg_id);
 
       if (updateError) {
-        logs.push(`[score] Error updating leg ${leg.id}: ${updateError.message}`);
+        logs.push(`[score] Error updating leg ${leg.leg_id}: ${updateError.message}`);
         continue;
       }
 
@@ -214,7 +182,7 @@ serve(async (req) => {
 
     logs.push(`[score] Scored ${scoredLegs} legs, skipped ${skippedLegs}`);
 
-    // Step 4: Update ticket summaries
+    // Step 3: Update ticket summaries
     let updatedTickets = 0;
 
     for (const ticketId of ticketsToUpdate) {
@@ -290,7 +258,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        scanned_legs: pendingLegs.length,
+        scanned_legs: scorableLegs.length,
         scored_legs: scoredLegs,
         skipped_legs: skippedLegs,
         updated_tickets: updatedTickets,
