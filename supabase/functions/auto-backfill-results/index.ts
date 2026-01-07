@@ -12,8 +12,8 @@ import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "..
 import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
 
 const SUPPORTED_LEAGUES = [39, 40, 78, 140, 135, 61, 2, 3, 848, 45, 48, 66, 81, 137, 143];
-const BATCH_SIZE = 30; // Process 30 fixtures per run to stay within timeout
-const LOOKBACK_DAYS = 14; // Look back 14 days for missing results
+const DEFAULT_BATCH_SIZE = 30; // Process 30 fixtures per run to stay within timeout
+const DEFAULT_LOOKBACK_DAYS = 14; // Look back 14 days for missing results
 
 interface FixtureResultRow {
   fixture_id: number;
@@ -56,6 +56,22 @@ Deno.serve(async (req: Request) => {
 
   const startTime = Date.now();
   console.log("[auto-backfill] ===== FUNCTION START =====");
+
+  // Parse request body for optional overrides
+  let requestBody: { batch_size?: number; lookback_days?: number } = {};
+  try {
+    if (req.body) {
+      requestBody = await req.json();
+    }
+  } catch {
+    // No body or invalid JSON - use defaults
+  }
+
+  // Use request params or defaults
+  const BATCH_SIZE = requestBody.batch_size ?? DEFAULT_BATCH_SIZE;
+  const LOOKBACK_DAYS = requestBody.lookback_days ?? DEFAULT_LOOKBACK_DAYS;
+
+  console.log(`[auto-backfill] Using batch_size=${BATCH_SIZE}, lookback_days=${LOOKBACK_DAYS}`);
 
   // Track for logging
   let pipelineLogId: number | null = null;
