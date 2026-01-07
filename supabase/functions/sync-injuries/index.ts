@@ -94,6 +94,29 @@ serve(async (req) => {
 
     console.log(`[sync-injuries] Syncing injuries for ${leagueIds.length} leagues, season ${currentSeason}`);
 
+    // Insert initial pipeline log for observability
+    const runStarted = new Date();
+    let pipelineLogId: number | null = null;
+    try {
+      const { data: logData } = await supabaseClient
+        .from("pipeline_run_logs")
+        .insert({
+          job_name: "sync-injuries",
+          run_started: runStarted.toISOString(),
+          success: false,
+          mode: cronKey ? "cron" : "manual",
+          processed: 0,
+          failed: 0,
+          leagues_covered: leagueIds,
+          details: { status: "started", season: currentSeason },
+        })
+        .select("id")
+        .single();
+      pipelineLogId = logData?.id || null;
+    } catch (e) {
+      console.error("[sync-injuries] Failed to insert pipeline log:", e);
+    }
+
     let totalFetched = 0;
     let totalUpserted = 0;
     const leagueResults: Record<number, number> = {};
@@ -148,6 +171,30 @@ serve(async (req) => {
 
     console.log(`[sync-injuries] ✅ Sync complete: ${totalFetched} fetched, ${totalUpserted} upserted`);
 
+    // Update pipeline log on success
+    if (pipelineLogId) {
+      try {
+        await supabaseClient
+          .from("pipeline_run_logs")
+          .update({
+            run_finished: new Date().toISOString(),
+            success: true,
+            processed: totalUpserted,
+            failed: 0,
+            leagues_covered: leagueIds,
+            details: { 
+              season: currentSeason,
+              total_fetched: totalFetched,
+              total_upserted: totalUpserted,
+              league_results: leagueResults,
+            },
+          })
+          .eq("id", pipelineLogId);
+      } catch (e) {
+        console.error("[sync-injuries] Failed to update pipeline log:", e);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -162,6 +209,10 @@ serve(async (req) => {
   } catch (error) {
     console.error("[sync-injuries] Error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Log failure if we have a pipeline log id
+    // Note: pipelineLogId might not be in scope here if error happened early
+    
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
