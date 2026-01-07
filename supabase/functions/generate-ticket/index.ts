@@ -36,6 +36,14 @@ import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
+import { 
+  loadPerformanceWeights, 
+  areWeightsLoaded,
+  shouldDynamicallyAvoid, 
+  getDynamicLeagueWeight,
+  STATIC_LOW_WIN_RATE_LINES,
+  STATIC_LEAGUE_WEIGHTS
+} from "../_shared/dynamic_weights.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -441,32 +449,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     ? ["goals", "corners", "cards"] 
     : (includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"]);
   
-  // High-probability lines for max win rate mode (based on historical analysis)
-  const HIGH_WIN_RATE_LINES: Record<string, number[]> = {
-    goals: [1.5],        // 86.1% historical win rate
-    corners: [8.5],      // Best corner line
-    cards: [2.5, 3.5],   // 91.7% for Over 3.5
-  };
-  
-  // Lines to avoid in max win rate mode
-  const LOW_WIN_RATE_LINES: Record<string, number[]> = {
-    goals: [2.5, 3.5],   // Over 2.5 only 28.6%
-    corners: [10.5, 11.5],
-    cards: [4.5, 5.5],   // Over 4.5 only 25%
-  };
-  
-  // League weights based on historical performance
-  const LEAGUE_WEIGHTS: Record<number, number> = {
-    40: 1.3,   // Championship 78.9%
-    39: 1.2,   // Premier League 77.8%
-    3: 1.1,    // Europa League 75%
-    848: 1.1,  // Conference League 71.4%
-    2: 1.0,    // Champions League 61.5%
-    135: 1.0,  // Serie A 60%
-    140: 0.7,  // La Liga 37.5%
-    61: 0.5,   // Ligue 1 12.5%
-    307: 0.3,  // Pro League Saudi 0%
-  };
+  // Load dynamic weights for max_win_rate mode
+  let useDynamicWeights = false;
+  if (isMaxWinRateMode) {
+    useDynamicWeights = await loadPerformanceWeights(supabase);
+    console.log(`[AI-ticket] Dynamic weights loaded: ${useDynamicWeights}, areWeightsLoaded: ${areWeightsLoaded()}`);
+  }
   
   const candidatePool: TicketLeg[] = [];
   const logs: string[] = [];
@@ -650,18 +638,33 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
             continue;
           }
           
-          // Avoid low win rate lines
-          const avoidLines = LOW_WIN_RATE_LINES[market] || [];
-          if (avoidLines.includes(Number(line))) {
-            logs.push(`[MAX_WIN_RATE] ${market} over ${line} is low-probability line - DROPPED`);
-            continue;
-          }
+          const leagueId = (sel as any).league_id;
           
-          // Apply league weight filter (skip leagues with <0.8 weight)
-          const leagueWeight = LEAGUE_WEIGHTS[(sel as any).league_id] ?? 0.9;
-          if (leagueWeight < 0.8) {
-            logs.push(`[MAX_WIN_RATE] League ${(sel as any).league_id} has low win rate (weight=${leagueWeight}) - DROPPED`);
-            continue;
+          // Check if line should be avoided (use dynamic weights if loaded, else static)
+          if (useDynamicWeights && areWeightsLoaded()) {
+            if (shouldDynamicallyAvoid(market, side, Number(line), leagueId)) {
+              logs.push(`[MAX_WIN_RATE] ${market} over ${line} dynamically avoided (low Bayesian win rate) - DROPPED`);
+              continue;
+            }
+            // Apply dynamic league weight filter (skip leagues with <0.8 weight)
+            const leagueWeight = getDynamicLeagueWeight(leagueId);
+            if (leagueWeight < 0.8) {
+              logs.push(`[MAX_WIN_RATE] League ${leagueId} has low dynamic weight (${leagueWeight.toFixed(2)}) - DROPPED`);
+              continue;
+            }
+          } else {
+            // Fallback to static checks
+            const avoidLines = STATIC_LOW_WIN_RATE_LINES[market] || [];
+            if (avoidLines.includes(Number(line))) {
+              logs.push(`[MAX_WIN_RATE] ${market} over ${line} is static low-probability line - DROPPED`);
+              continue;
+            }
+            // Static league weight filter
+            const leagueWeight = STATIC_LEAGUE_WEIGHTS[leagueId] ?? 0.9;
+            if (leagueWeight < 0.8) {
+              logs.push(`[MAX_WIN_RATE] League ${leagueId} has low static weight (${leagueWeight}) - DROPPED`);
+              continue;
+            }
           }
         }
         
