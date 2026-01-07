@@ -1375,6 +1375,136 @@ export type Database = {
         }
         Relationships: []
       }
+      ticket_leg_outcomes: {
+        Row: {
+          actual_value: number | null
+          created_at: string
+          derived_from_selection: boolean
+          fixture_id: number
+          id: string
+          kickoff_at: string | null
+          league_id: number | null
+          line: number
+          market: string
+          odds: number
+          picked_at: string
+          result_status: string
+          scored_version: string | null
+          selection: string
+          selection_key: string
+          settled_at: string | null
+          side: string
+          source: string
+          ticket_id: string
+          user_id: string
+        }
+        Insert: {
+          actual_value?: number | null
+          created_at?: string
+          derived_from_selection?: boolean
+          fixture_id: number
+          id?: string
+          kickoff_at?: string | null
+          league_id?: number | null
+          line: number
+          market: string
+          odds: number
+          picked_at?: string
+          result_status?: string
+          scored_version?: string | null
+          selection: string
+          selection_key: string
+          settled_at?: string | null
+          side: string
+          source?: string
+          ticket_id: string
+          user_id: string
+        }
+        Update: {
+          actual_value?: number | null
+          created_at?: string
+          derived_from_selection?: boolean
+          fixture_id?: number
+          id?: string
+          kickoff_at?: string | null
+          league_id?: number | null
+          line?: number
+          market?: string
+          odds?: number
+          picked_at?: string
+          result_status?: string
+          scored_version?: string | null
+          selection?: string
+          selection_key?: string
+          settled_at?: string | null
+          side?: string
+          source?: string
+          ticket_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_leg_outcomes_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_outcomes: {
+        Row: {
+          created_at: string
+          legs_lost: number
+          legs_pushed: number
+          legs_settled: number
+          legs_total: number
+          legs_void: number
+          legs_won: number
+          settled_at: string | null
+          ticket_id: string
+          ticket_status: string
+          total_odds: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          legs_lost?: number
+          legs_pushed?: number
+          legs_settled?: number
+          legs_total?: number
+          legs_void?: number
+          legs_won?: number
+          settled_at?: string | null
+          ticket_id: string
+          ticket_status?: string
+          total_odds: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          legs_lost?: number
+          legs_pushed?: number
+          legs_settled?: number
+          legs_total?: number
+          legs_void?: number
+          legs_won?: number
+          settled_at?: string | null
+          ticket_id?: string
+          ticket_status?: string
+          total_odds?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_outcomes_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "generated_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_entitlements: {
         Row: {
           current_period_end: string
