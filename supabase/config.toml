@@ -189,3 +189,6 @@ verify_jwt = true
 
 [functions.backfill-ticket-outcomes]
 verify_jwt = false
+
+[functions.score-ticket-legs]
+verify_jwt = false
