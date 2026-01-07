@@ -41,6 +41,7 @@ import {
   areWeightsLoaded,
   shouldDynamicallyAvoid, 
   getDynamicLeagueWeight,
+  getWeightRecord,
   STATIC_LOW_WIN_RATE_LINES,
   STATIC_LEAGUE_WEIGHTS
 } from "../_shared/dynamic_weights.ts";
@@ -451,6 +452,15 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   
   // Load dynamic weights for max_win_rate mode
   let useDynamicWeights = false;
+  let maxWinRateStats = { 
+    total_candidates: 0, 
+    rejected_by_avoid: 0, 
+    rejected_by_league_weight: 0, 
+    rejected_not_over: 0,
+    kept: 0,
+    global_weights_used: 0,
+    league_weights_used: 0
+  };
   if (isMaxWinRateMode) {
     useDynamicWeights = await loadPerformanceWeights(supabase);
     console.log(`[AI-ticket] Dynamic weights loaded: ${useDynamicWeights}, areWeightsLoaded: ${areWeightsLoaded()}`);
@@ -632,8 +642,11 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // MAX WIN RATE MODE: Filter for high-probability lines only
         if (isMaxWinRateMode) {
+          maxWinRateStats.total_candidates++;
+          
           // Only allow "over" side (scorable)
           if (side !== "over") {
+            maxWinRateStats.rejected_not_over++;
             logs.push(`[MAX_WIN_RATE] ${market} ${side} ${line} not scorable (side must be over) - DROPPED`);
             continue;
           }
@@ -642,29 +655,50 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           
           // Check if line should be avoided (use dynamic weights if loaded, else static)
           if (useDynamicWeights && areWeightsLoaded()) {
+            // Get weight record for verbose logging
+            const weightRecord = getWeightRecord(market, side, Number(line), leagueId);
+            const recordType = weightRecord ? (weightRecord.league_id !== null ? 'league-specific' : 'global') : 'none';
+            
             if (shouldDynamicallyAvoid(market, side, Number(line), leagueId)) {
-              logs.push(`[MAX_WIN_RATE] ${market} over ${line} dynamically avoided (low Bayesian win rate) - DROPPED`);
+              maxWinRateStats.rejected_by_avoid++;
+              const bayesRate = weightRecord?.bayes_win_rate?.toFixed(2) ?? 'N/A';
+              const weight = weightRecord?.weight?.toFixed(2) ?? 'N/A';
+              logs.push(`[MAX_WIN_RATE] ${market} over ${line} dynamically avoided (bayes=${bayesRate}, weight=${weight}, record=${recordType}) - DROPPED`);
               continue;
             }
+            
             // Apply dynamic league weight filter (skip leagues with <0.8 weight)
             const leagueWeight = getDynamicLeagueWeight(leagueId);
             if (leagueWeight < 0.8) {
+              maxWinRateStats.rejected_by_league_weight++;
               logs.push(`[MAX_WIN_RATE] League ${leagueId} has low dynamic weight (${leagueWeight.toFixed(2)}) - DROPPED`);
               continue;
             }
+            
+            // Track which weight type was used
+            if (weightRecord?.league_id !== null) {
+              maxWinRateStats.league_weights_used++;
+            } else {
+              maxWinRateStats.global_weights_used++;
+            }
+            maxWinRateStats.kept++;
+            logs.push(`[MAX_WIN_RATE] KEPT ${market} over ${line} (bayes=${weightRecord?.bayes_win_rate?.toFixed(2) ?? 'N/A'}, weight=${weightRecord?.weight?.toFixed(2) ?? 'N/A'}, record=${recordType}, leagueWt=${leagueWeight.toFixed(2)})`);
           } else {
             // Fallback to static checks
             const avoidLines = STATIC_LOW_WIN_RATE_LINES[market] || [];
             if (avoidLines.includes(Number(line))) {
+              maxWinRateStats.rejected_by_avoid++;
               logs.push(`[MAX_WIN_RATE] ${market} over ${line} is static low-probability line - DROPPED`);
               continue;
             }
             // Static league weight filter
             const leagueWeight = STATIC_LEAGUE_WEIGHTS[leagueId] ?? 0.9;
             if (leagueWeight < 0.8) {
+              maxWinRateStats.rejected_by_league_weight++;
               logs.push(`[MAX_WIN_RATE] League ${leagueId} has low static weight (${leagueWeight}) - DROPPED`);
               continue;
             }
+            maxWinRateStats.kept++;
           }
         }
         
@@ -683,6 +717,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       }
       
       logs.push(`[ticket] stats_integrity_dropped=${statsIntegrityDropped}`);
+      
+      // Log MAX_WIN_RATE summary
+      if (isMaxWinRateMode) {
+        logs.push(`[MAX_WIN_RATE SUMMARY] total_candidates=${maxWinRateStats.total_candidates} | rejected_not_over=${maxWinRateStats.rejected_not_over} | rejected_by_avoid=${maxWinRateStats.rejected_by_avoid} | rejected_by_league_weight=${maxWinRateStats.rejected_by_league_weight} | kept=${maxWinRateStats.kept} | global_weights_used=${maxWinRateStats.global_weights_used} | league_weights_used=${maxWinRateStats.league_weights_used}`);
+        console.log(`[MAX_WIN_RATE SUMMARY] total=${maxWinRateStats.total_candidates}, rejected_not_over=${maxWinRateStats.rejected_not_over}, rejected_by_avoid=${maxWinRateStats.rejected_by_avoid}, rejected_by_league=${maxWinRateStats.rejected_by_league_weight}, kept=${maxWinRateStats.kept}, global_wts=${maxWinRateStats.global_weights_used}, league_wts=${maxWinRateStats.league_weights_used}`);
+      }
       
       // Dedupe: keep best odds per fixture+market
       const dedupMap = new Map<string, TicketLeg>();
