@@ -1985,6 +1985,24 @@ export type Database = {
           fixture_timestamp: number
         }[]
       }
+      get_scorable_pending_legs: {
+        Args: { batch_limit?: number }
+        Returns: {
+          cards_away: number
+          cards_home: number
+          corners_away: number
+          corners_home: number
+          fixture_id: number
+          goals_away: number
+          goals_home: number
+          leg_id: string
+          line: number
+          market: string
+          side: string
+          ticket_id: string
+          user_id: string
+        }[]
+      }
       get_trial_credits: { Args: never; Returns: number }
       has_role: {
         Args: {
