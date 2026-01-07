@@ -57,43 +57,80 @@ serve(async (req) => {
 
     logs.push(`[backfill] Starting with batch_size=${batchSize}, dry_run=${dryRun}`);
 
-    // Find tickets that don't have outcome rows yet
-    // LEFT JOIN to find tickets missing from ticket_outcomes
-    const { data: ticketsToBackfill, error: queryError } = await supabase
+    // Get count of existing outcomes
+    const { count: existingOutcomeCount } = await supabase
+      .from("ticket_outcomes")
+      .select("ticket_id", { count: "exact", head: true });
+
+    logs.push(`[backfill] Found ${existingOutcomeCount || 0} tickets already with outcomes`);
+
+    // Get count of total tickets
+    const { count: totalTicketCount } = await supabase
       .from("generated_tickets")
-      .select(`
-        id,
-        user_id,
-        total_odds,
-        legs,
-        created_at
-      `)
-      .order("created_at", { ascending: true })
-      .limit(batchSize);
+      .select("id", { count: "exact", head: true });
 
-    if (queryError) {
-      throw queryError;
-    }
+    const ticketsNeeded = (totalTicketCount || 0) - (existingOutcomeCount || 0);
+    logs.push(`[backfill] Approx ${ticketsNeeded} tickets need backfill`);
 
-    if (!ticketsToBackfill || ticketsToBackfill.length === 0) {
-      logs.push("[backfill] No tickets found to process");
+    if (ticketsNeeded <= 0) {
+      logs.push("[backfill] All tickets already have outcomes");
       return new Response(
-        JSON.stringify({ success: true, processed: 0, logs, duration_ms: Date.now() - startTime }),
+        JSON.stringify({ 
+          success: true, 
+          processed: 0, 
+          already_done: existingOutcomeCount || 0,
+          remaining: 0,
+          logs, 
+          duration_ms: Date.now() - startTime 
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check which tickets already have outcomes
-    const ticketIds = ticketsToBackfill.map(t => t.id);
-    const { data: existingOutcomes } = await supabase
+    // Get ticket IDs that already have outcomes
+    const { data: existingOutcomeIds } = await supabase
       .from("ticket_outcomes")
-      .select("ticket_id")
-      .in("ticket_id", ticketIds);
+      .select("ticket_id");
 
-    const existingTicketIds = new Set((existingOutcomes || []).map(o => o.ticket_id));
-    const ticketsNeedingBackfill = ticketsToBackfill.filter(t => !existingTicketIds.has(t.id));
+    const existingTicketIds = new Set((existingOutcomeIds || []).map((o: { ticket_id: string }) => o.ticket_id));
 
-    logs.push(`[backfill] Found ${ticketsToBackfill.length} tickets, ${ticketsNeedingBackfill.length} need backfill`);
+    // Fetch tickets in pages until we have enough for this batch
+    const ticketsNeedingBackfill: Array<{
+      id: string;
+      user_id: string;
+      total_odds: number;
+      legs: LegJson[];
+      created_at: string;
+    }> = [];
+
+    let offset = 0;
+    const pageSize = 500; // Fetch in pages to avoid 1000 row limit
+
+    while (ticketsNeedingBackfill.length < batchSize) {
+      const { data: ticketPage, error: queryError } = await supabase
+        .from("generated_tickets")
+        .select(`id, user_id, total_odds, legs, created_at`)
+        .order("created_at", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (queryError) throw queryError;
+      if (!ticketPage || ticketPage.length === 0) break; // No more tickets
+
+      for (const t of ticketPage) {
+        if (!existingTicketIds.has(t.id)) {
+          ticketsNeedingBackfill.push(t);
+          if (ticketsNeedingBackfill.length >= batchSize) break;
+        }
+      }
+
+      offset += pageSize;
+      
+      // Safety check - if we've scanned a lot and found nothing, exit
+      if (offset > 10000) {
+        logs.push(`[backfill] Scanned ${offset} tickets, stopping pagination`);
+        break;
+      }
+    }
 
     if (ticketsNeedingBackfill.length === 0) {
       logs.push("[backfill] All tickets already have outcomes");
@@ -101,13 +138,16 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true, 
           processed: 0, 
-          already_done: ticketsToBackfill.length,
+          already_done: existingTicketIds.size,
+          remaining: 0,
           logs, 
           duration_ms: Date.now() - startTime 
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    logs.push(`[backfill] Found ${ticketsNeedingBackfill.length} tickets to process this batch`);
 
     // Collect all fixture IDs across all tickets for bulk lookup
     const allFixtureIds = new Set<number>();
@@ -260,7 +300,6 @@ serve(async (req) => {
     }
 
     logs.push(`[backfill] Completed: ${processedTickets} tickets, ${insertedLegs} legs inserted, ${skippedLegs} legs skipped, ${insertedTicketOutcomes} ticket outcomes created`);
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -268,7 +307,8 @@ serve(async (req) => {
         inserted_legs: insertedLegs,
         skipped_legs: skippedLegs,
         inserted_ticket_outcomes: insertedTicketOutcomes,
-        already_done: ticketsToBackfill.length - ticketsNeedingBackfill.length,
+        already_done: existingTicketIds.size,
+        remaining: ticketsNeeded - processedTickets,
         dry_run: dryRun,
         logs,
         duration_ms: Date.now() - startTime,
