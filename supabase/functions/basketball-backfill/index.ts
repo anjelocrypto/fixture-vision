@@ -33,6 +33,9 @@ const RUNS_PER_DAY = 4;
 // Derived per-run limit
 const DEFAULT_MAX_API_CALLS = Math.floor(DAILY_BACKFILL_BUDGET / RUNS_PER_DAY); // 625
 
+// GUARDRAIL: Hard upper bound to prevent accidental quota burn
+const MAX_ALLOWED_CALLS = 2500;
+
 // Minimum sample_size required for "coverage complete"
 const REQUIRED_SAMPLE_SIZE = 5;
 
@@ -110,7 +113,13 @@ serve(async (req) => {
     }
 
     const league_key = body.league_key || "nba";
-    const max_api_calls = body.max_api_calls || DEFAULT_MAX_API_CALLS;
+    let max_api_calls = body.max_api_calls || DEFAULT_MAX_API_CALLS;
+
+    // GUARDRAIL: Enforce hard upper bound
+    if (max_api_calls > MAX_ALLOWED_CALLS) {
+      console.warn(`[basketball-backfill] max_api_calls ${max_api_calls} exceeds limit, capping to ${MAX_ALLOWED_CALLS}`);
+      max_api_calls = MAX_ALLOWED_CALLS;
+    }
 
     const config = LEAGUE_CONFIG[league_key];
     if (!config) {
@@ -125,7 +134,7 @@ serve(async (req) => {
     const from = body.from || dynamicRange.from;
     const to = body.to || dynamicRange.to;
 
-    console.log(`[basketball-backfill] League: ${league_key}, Dynamic range: ${from} to ${to}, Max API: ${max_api_calls}`);
+    console.log(`[basketball-backfill] League: ${league_key}, Dynamic range: ${from} to ${to}, Max API: ${max_api_calls}, Hard cap: ${MAX_ALLOWED_CALLS}`);
 
     // =========================================================================
     // EARLY EXIT CHECK: Coverage complete?
@@ -416,7 +425,10 @@ serve(async (req) => {
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[basketball-backfill] Completed in ${elapsed}ms`);
+    const elapsedSec = Math.round(elapsed / 1000);
+    
+    // Structured summary log for auditability
+    console.log(`[basketball-backfill] calls=${apiCalls} games=${gamesUpserted} stats=${statsUpserted} teams=${teamsUpserted} duration=${elapsedSec}s errors=${errors.length}`);
 
     // Log to pipeline
     await supabase.from("pipeline_run_logs").insert({
