@@ -15,10 +15,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-key",
 };
 
 interface FixtureResult {
@@ -50,11 +51,24 @@ serve(async (req) => {
   const startTime = Date.now();
   const logs: string[] = [];
 
-  try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // Auth check - require service role, cron key, or admin user
+  const auth = await checkCronOrAdminAuth(req, supabase, serviceRoleKey, "[score-ticket-legs]");
+  if (!auth.authorized) {
+    console.error("[score-ticket-legs] Unauthorized request");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized", method: auth.method }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+  }
+
+  logs.push(`[score] Authorized via ${auth.method}`);
+
+  try {
 
     // Parse optional batch_size param
     const url = new URL(req.url);
