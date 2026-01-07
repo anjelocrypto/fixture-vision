@@ -7,7 +7,7 @@
  * Falls back to static defaults if weights not available.
  */
 
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 // Minimum sample size to trust dynamic weights
 const MIN_SAMPLE_SIZE = 10;

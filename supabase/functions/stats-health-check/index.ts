@@ -12,7 +12,7 @@
  * NOT for deep audits or auto-healing - those are separate tools.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 const corsHeaders = {

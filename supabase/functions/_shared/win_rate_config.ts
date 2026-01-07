@@ -10,7 +10,7 @@
  * - Historical win rates derived from 297 scorable legs with fixture_results
  */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 // Markets that can be scored against fixture_results
 export const SCORABLE_MARKETS = ["goals", "corners", "cards"] as const;

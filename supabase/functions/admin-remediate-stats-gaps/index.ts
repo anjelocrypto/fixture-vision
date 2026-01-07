@@ -9,7 +9,7 @@
 // Source of truth: STATS_FULL_PROJECT_QA_REPORT.md and STATS_GLOBAL_INTEGRITY_REPORT.md
 // ============================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { LEAGUE_NAMES, ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
