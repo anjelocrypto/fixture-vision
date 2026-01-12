@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle, ShieldAlert, Rocket } from "lucide-react";
+import { Activity, Database, TrendingUp, Zap, Clock, CheckCircle2, XCircle, ShieldAlert, Rocket, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 import { StatsHealthDashboard } from "@/components/StatsHealthDashboard";
@@ -116,6 +116,49 @@ const AdminHealth = () => {
   const [isTurboRunning, setIsTurboRunning] = useState(false);
   const [isTopLeaguesTurboRunning, setIsTopLeaguesTurboRunning] = useState(false);
   const [isResultsBackfillRunning, setIsResultsBackfillRunning] = useState(false);
+  const [isExportingUsers, setIsExportingUsers] = useState(false);
+
+  // Export all registered users as CSV
+  const handleExportUsers = async () => {
+    setIsExportingUsers(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("No session");
+        return;
+      }
+
+      toast.info("Exporting users...");
+
+      const response = await supabase.functions.invoke("export-users", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        toast.error(`Export failed: ${response.error.message}`);
+        return;
+      }
+
+      // Create blob and download
+      const blob = new Blob([response.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `registered_users_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Users exported successfully!");
+    } catch (err: any) {
+      toast.error(`Export error: ${err.message}`);
+    } finally {
+      setIsExportingUsers(false);
+    }
+  };
 
   // Pipeline health dashboard query
   const { data: pipelineHealth } = useQuery({
@@ -562,6 +605,16 @@ const AdminHealth = () => {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button 
+            onClick={handleExportUsers} 
+            disabled={isExportingUsers}
+            variant="secondary"
+            className="gap-2"
+            title="Export all registered user emails to CSV"
+          >
+            <Download className="w-4 h-4" />
+            {isExportingUsers ? "Exporting..." : "Export Users"}
+          </Button>
           <Button 
             onClick={handleResultsBackfill} 
             disabled={isResultsBackfillRunning}
