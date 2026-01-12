@@ -46,23 +46,47 @@ serve(async (req) => {
       });
     }
 
-    // Fetch all users from auth.users
-    const { data: users, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
-      perPage: 10000,
-    });
-
-    if (usersError) {
-      console.error("Error fetching users:", usersError);
-      return new Response(JSON.stringify({ error: "Failed to fetch users" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Fetch ALL users with pagination
+    const allUsers: any[] = [];
+    let page = 1;
+    const perPage = 1000;
+    
+    while (true) {
+      console.log(`Fetching page ${page}...`);
+      const { data, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
+        page,
+        perPage,
       });
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+        return new Response(JSON.stringify({ error: "Failed to fetch users" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!data.users || data.users.length === 0) {
+        break;
+      }
+
+      allUsers.push(...data.users);
+      console.log(`Page ${page}: fetched ${data.users.length} users, total: ${allUsers.length}`);
+
+      // If we got less than perPage, we've reached the end
+      if (data.users.length < perPage) {
+        break;
+      }
+      
+      page++;
     }
+
+    console.log(`Total users fetched: ${allUsers.length}`);
 
     // Generate CSV content
     const csvRows = ["User ID,Email,Registration Date,Email Confirmed"];
     
-    for (const user of users.users) {
+    for (const user of allUsers) {
       const id = user.id;
       const email = user.email || "";
       const createdAt = user.created_at ? new Date(user.created_at).toISOString().replace("T", " ").split(".")[0] : "";
