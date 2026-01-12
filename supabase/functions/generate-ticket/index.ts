@@ -517,7 +517,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     
     let query = supabase
       .from("optimized_selections")
-      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version`)
+      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
       .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
@@ -658,17 +658,27 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // === EDGE REQUIREMENT: model_prob > implied_prob + 3% ===
         const impliedProb = 1 / (sel as any).odds;
-        // For now, model_prob is based on combined stats qualification (we use implied prob as baseline, 
-        // but real model_prob should come from Poisson/Bayesian model)
-        // TEMPORARY: Use Bayesian win rate from weights if available, else estimate from qualification
-        let modelProb = impliedProb; // Default to implied (no edge)
-        
         const leagueId = (sel as any).league_id;
-        if (useDynamicWeights && areWeightsLoaded()) {
-          const weightRecord = getWeightRecord(market, side, Number(line), leagueId);
-          if (weightRecord?.bayes_win_rate) {
-            modelProb = weightRecord.bayes_win_rate;
+        
+        // Priority for model_prob:
+        // 1. Use model_prob from optimized_selections (pre-computed from stats pipeline)
+        // 2. Fall back to Bayesian win rate from performance_weights
+        // 3. Last resort: implied prob (no edge)
+        let modelProb = (sel as any).model_prob ?? null;
+        
+        if (!modelProb || modelProb <= 0) {
+          // Fall back to dynamic weights if available
+          if (useDynamicWeights && areWeightsLoaded()) {
+            const weightRecord = getWeightRecord(market, side, Number(line), leagueId);
+            if (weightRecord?.bayes_win_rate) {
+              modelProb = weightRecord.bayes_win_rate;
+            }
           }
+        }
+        
+        // Final fallback: implied prob (will result in zero edge)
+        if (!modelProb || modelProb <= 0) {
+          modelProb = impliedProb;
         }
         
         // Calculate edge
