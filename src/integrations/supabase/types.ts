@@ -514,6 +514,8 @@ export type Database = {
           legs: Json
           max_target: number
           min_target: number
+          ticket_mode: string | null
+          ticket_model_prob: number | null
           total_odds: number
           used_live: boolean
           user_id: string
@@ -524,6 +526,8 @@ export type Database = {
           legs: Json
           max_target: number
           min_target: number
+          ticket_mode?: string | null
+          ticket_model_prob?: number | null
           total_odds: number
           used_live?: boolean
           user_id: string
@@ -534,6 +538,8 @@ export type Database = {
           legs?: Json
           max_target?: number
           min_target?: number
+          ticket_mode?: string | null
+          ticket_model_prob?: number | null
           total_odds?: number
           used_live?: boolean
           user_id?: string
@@ -1440,6 +1446,7 @@ export type Database = {
           league_id: number | null
           line: number
           market: string
+          model_prob: number | null
           odds: number
           picked_at: string
           result_status: string
@@ -1462,6 +1469,7 @@ export type Database = {
           league_id?: number | null
           line: number
           market: string
+          model_prob?: number | null
           odds: number
           picked_at?: string
           result_status?: string
@@ -1484,6 +1492,7 @@ export type Database = {
           league_id?: number | null
           line?: number
           market?: string
+          model_prob?: number | null
           odds?: number
           picked_at?: string
           result_status?: string
@@ -1517,6 +1526,8 @@ export type Database = {
           legs_won: number
           settled_at: string | null
           ticket_id: string
+          ticket_mode: string | null
+          ticket_model_prob: number | null
           ticket_status: string
           total_odds: number
           user_id: string
@@ -1531,6 +1542,8 @@ export type Database = {
           legs_won?: number
           settled_at?: string | null
           ticket_id: string
+          ticket_mode?: string | null
+          ticket_model_prob?: number | null
           ticket_status?: string
           total_odds: number
           user_id: string
@@ -1545,6 +1558,8 @@ export type Database = {
           legs_won?: number
           settled_at?: string | null
           ticket_id?: string
+          ticket_mode?: string | null
+          ticket_model_prob?: number | null
           ticket_status?: string
           total_odds?: number
           user_id?: string
