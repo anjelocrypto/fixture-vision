@@ -76,6 +76,7 @@ interface TicketLeg {
   source?: "prematch" | "live";
   line?: number; // Actual line from odds (for consistency checking)
   side?: "over" | "under"; // Actual side from odds (for consistency checking)
+  modelProb?: number; // Model confidence for this leg (0-1)
 }
 
 // Validation schemas
@@ -450,6 +451,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     ? ["goals", "corners", "cards"] 
     : (includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"]);
   
+  // === EDGE REQUIREMENT CONFIG ===
+  const MIN_EDGE_THRESHOLD = 0.03; // 3% minimum edge
+  const LOG_MARGINAL_EDGE = true; // Log edges between 0-3% for analysis
+  
   // Load dynamic weights for max_win_rate mode
   let useDynamicWeights = false;
   let maxWinRateStats = { 
@@ -457,9 +462,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     rejected_by_avoid: 0, 
     rejected_by_league_weight: 0, 
     rejected_not_over: 0,
+    rejected_by_edge: 0,
     kept: 0,
     global_weights_used: 0,
     league_weights_used: 0
+  };
+  
+  // === EDGE FILTER STATS ===
+  let edgeFilterStats = {
+    total_checked: 0,
+    dropped_negative_edge: 0,
+    dropped_marginal_edge: 0, // 0 < edge < 3%
+    kept_with_edge: 0,
+    avg_edge_kept: 0,
   };
   if (isMaxWinRateMode) {
     useDynamicWeights = await loadPerformanceWeights(supabase);
@@ -641,6 +656,44 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           continue;
         }
         
+        // === EDGE REQUIREMENT: model_prob > implied_prob + 3% ===
+        const impliedProb = 1 / (sel as any).odds;
+        // For now, model_prob is based on combined stats qualification (we use implied prob as baseline, 
+        // but real model_prob should come from Poisson/Bayesian model)
+        // TEMPORARY: Use Bayesian win rate from weights if available, else estimate from qualification
+        let modelProb = impliedProb; // Default to implied (no edge)
+        
+        const leagueId = (sel as any).league_id;
+        if (useDynamicWeights && areWeightsLoaded()) {
+          const weightRecord = getWeightRecord(market, side, Number(line), leagueId);
+          if (weightRecord?.bayes_win_rate) {
+            modelProb = weightRecord.bayes_win_rate;
+          }
+        }
+        
+        // Calculate edge
+        const edge = modelProb - impliedProb;
+        edgeFilterStats.total_checked++;
+        
+        // Store model_prob on the candidate for later persistence
+        const candidateModelProb = modelProb;
+        
+        // Apply edge filter
+        if (edge < 0) {
+          edgeFilterStats.dropped_negative_edge++;
+          logs.push(`[EDGE_FILTER] ${market} ${side} ${line} @ ${(sel as any).odds} - edge=${(edge * 100).toFixed(2)}% (negative) - DROPPED`);
+          continue;
+        } else if (edge < MIN_EDGE_THRESHOLD) {
+          edgeFilterStats.dropped_marginal_edge++;
+          if (LOG_MARGINAL_EDGE) {
+            logs.push(`[EDGE_FILTER_LOG] ${market} ${side} ${line} @ ${(sel as any).odds} - edge=${(edge * 100).toFixed(2)}% (marginal, <3%) - LOGGED BUT DROPPED`);
+          }
+          continue;
+        }
+        
+        edgeFilterStats.kept_with_edge++;
+        logs.push(`[EDGE_FILTER] ${market} ${side} ${line} @ ${(sel as any).odds} - edge=${(edge * 100).toFixed(2)}% (model=${(modelProb * 100).toFixed(1)}%, implied=${(impliedProb * 100).toFixed(1)}%) - KEPT`);
+        
         // MAX WIN RATE MODE: Filter for high-probability lines only
         if (isMaxWinRateMode) {
           maxWinRateStats.total_candidates++;
@@ -651,8 +704,6 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
             logs.push(`[MAX_WIN_RATE] ${market} ${side} ${line} not scorable (side must be over) - DROPPED`);
             continue;
           }
-          
-          const leagueId = (sel as any).league_id;
           
           // Check if line should be avoided (use dynamic weights if loaded, else static)
           if (useDynamicWeights && areWeightsLoaded()) {
@@ -714,8 +765,17 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           bookmaker: (sel as any).bookmaker || "Unknown",
           combinedAvg: combinedSnapshot?.[market],
           source: (sel as any).is_live ? "live" : "prematch",
-        });
+          // NEW: Store model_prob for edge-based selection
+          modelProb: candidateModelProb,
+        } as TicketLeg & { modelProb: number });
       }
+      
+      // Log edge filter summary
+      if (edgeFilterStats.kept_with_edge > 0) {
+        edgeFilterStats.avg_edge_kept = edgeFilterStats.avg_edge_kept / edgeFilterStats.kept_with_edge;
+      }
+      logs.push(`[EDGE_FILTER SUMMARY] checked=${edgeFilterStats.total_checked} | dropped_negative=${edgeFilterStats.dropped_negative_edge} | dropped_marginal=${edgeFilterStats.dropped_marginal_edge} | kept=${edgeFilterStats.kept_with_edge}`);
+      console.log(`[EDGE_FILTER SUMMARY] checked=${edgeFilterStats.total_checked}, dropped_negative=${edgeFilterStats.dropped_negative_edge}, dropped_marginal=${edgeFilterStats.dropped_marginal_edge}, kept=${edgeFilterStats.kept_with_edge}`);
       
       logs.push(`[ticket] stats_integrity_dropped=${statsIntegrityDropped}`);
       
@@ -725,15 +785,22 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         console.log(`[MAX_WIN_RATE SUMMARY] total=${maxWinRateStats.total_candidates}, rejected_not_over=${maxWinRateStats.rejected_not_over}, rejected_by_avoid=${maxWinRateStats.rejected_by_avoid}, rejected_by_league=${maxWinRateStats.rejected_by_league_weight}, kept=${maxWinRateStats.kept}, global_wts=${maxWinRateStats.global_weights_used}, league_wts=${maxWinRateStats.league_weights_used}`);
       }
       
-      // Dedupe: keep best odds per fixture+market
-      const dedupMap = new Map<string, TicketLeg>();
-      for (const leg of tempCandidates) {
-        const key = `${leg.fixtureId}|${leg.market}`;
+      // === ONE LEG PER FIXTURE: Keep best edge per fixture (not fixture+market) ===
+      const dedupMap = new Map<number, TicketLeg & { modelProb?: number }>();
+      for (const leg of tempCandidates as (TicketLeg & { modelProb?: number })[]) {
+        const key = leg.fixtureId; // Changed from `${leg.fixtureId}|${leg.market}` to enforce one leg per fixture
         const prev = dedupMap.get(key);
-        if (!prev || leg.odds > prev.odds) dedupMap.set(key, leg);
+        // Prefer leg with higher model_prob (edge), fallback to higher odds
+        const legEdge = (leg.modelProb || 0) - (1 / leg.odds);
+        const prevEdge = prev ? ((prev.modelProb || 0) - (1 / prev.odds)) : -Infinity;
+        if (!prev || legEdge > prevEdge) {
+          dedupMap.set(key, leg);
+        }
       }
       const deduped = Array.from(dedupMap.values());
       candidatePool.push(...deduped);
+      logs.push(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates (one per fixture)`);
+      console.log(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates`);
       
       if (droppedOutOfBand > 0) logs.push(`[Global Mode] Dropped ${droppedOutOfBand} selections outside [${ODDS_MIN}, ${ODDS_MAX}] band`);
       if (droppedNotQualified > 0) logs.push(`[Global Mode] Dropped ${droppedNotQualified} selections not meeting v2 combined qualification`);
@@ -1033,6 +1100,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       });
     }
 
+    // Calculate ticket_model_prob as product of leg model_probs
+    const ticketModelProb = ticket.legs.reduce((acc, leg: TicketLeg) => {
+      const legModelProb = leg.modelProb ?? (1 / leg.odds); // Fallback to implied prob if model_prob missing
+      return acc * legModelProb;
+    }, 1);
+
     // Write generated_tickets row and get the ID
     const { data: insertedTicket, error: ticketError } = await supabase
       .from("generated_tickets")
@@ -1043,6 +1116,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         max_target: maxOdds,
         used_live: usedLive && !fallbackToPrematch,
         legs: ticket.legs,
+        ticket_mode: ticketMode,
+        ticket_model_prob: ticketModelProb,
       })
       .select("id")
       .single();
@@ -1088,6 +1163,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       kickoff_at: string | null;
       result_status: string;
       derived_from_selection: boolean;
+      model_prob: number | null; // NEW: leg-level model confidence
     }> = [];
     
     let skippedLegs = 0;
@@ -1141,6 +1217,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         kickoff_at: kickoffAt,
         result_status: "PENDING",
         derived_from_selection: !leg.side || leg.line === undefined || leg.line <= 0,
+        model_prob: leg.modelProb ?? null, // NEW: store model confidence for calibration
       });
     }
 
@@ -1179,6 +1256,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         legs_void: 0,
         ticket_status: "PENDING",
         total_odds: ticket.total_odds,
+        ticket_mode: ticketMode, // NEW: store for performance analysis
+        ticket_model_prob: ticketModelProb, // NEW: product of leg model_probs
       }, {
         onConflict: "ticket_id",
         ignoreDuplicates: true
@@ -1586,10 +1665,11 @@ function generateOptimizedTicket(
     return a.market.localeCompare(b.market);
   });
 
+  // ONE LEG PER FIXTURE: State now tracks used fixtures (not fixture+market)
   type State = { 
     legs: TicketLeg[]; 
     product: number; 
-    used: Map<number, Set<string>>;
+    usedFixtures: Set<number>; // Changed from Map<number, Set<string>>
     avgEdge: number;
   };
   
@@ -1645,15 +1725,14 @@ function generateOptimizedTicket(
         
         if (startLeg.odds < ODDS_MIN || startLeg.odds > ODDS_MAX) continue;
         
-        const used = new Map<number, Set<string>>();
-        const mset = new Set<string>();
-        mset.add(startLeg.market);
-        used.set(startLeg.fixtureId, mset);
+        // ONE LEG PER FIXTURE: Track used fixture IDs (not fixture+market)
+        const usedFixtures = new Set<number>();
+        usedFixtures.add(startLeg.fixtureId);
         
         seedStates.push({
           legs: [startLeg],
           product: startLeg.odds,
-          used,
+          usedFixtures,
           avgEdge: 0,
         });
       }
@@ -1662,7 +1741,7 @@ function generateOptimizedTicket(
     console.log(`[stochastic-search] Generated ${seedStates.length} market-balanced seeds from ${availableMarkets.length} markets: ${availableMarkets.join(', ')}`);
     
     // Also add empty state
-    seedStates.push({ legs: [], product: 1, used: new Map(), avgEdge: 0 });
+    seedStates.push({ legs: [], product: 1, usedFixtures: new Set<number>(), avgEdge: 0 });
     
     let beam: State[] = seedStates;
     let expansions = 0;
@@ -1678,8 +1757,8 @@ function generateOptimizedTicket(
           
           if (cand.odds < ODDS_MIN || cand.odds > ODDS_MAX) continue;
           
-          const set = state.used.get(cand.fixtureId);
-          if (set && set.has(cand.market)) continue;
+          // ONE LEG PER FIXTURE: Skip if this fixture is already used
+          if (state.usedFixtures.has(cand.fixtureId)) continue;
 
           const newProduct = state.product * cand.odds;
           
@@ -1691,14 +1770,9 @@ function generateOptimizedTicket(
 
           const newLegs = [...state.legs, cand];
           
-          // Deep copy the used map (shallow copy shares Set references causing constraint bleeding!)
-          const newUsed = new Map<number, Set<string>>();
-          for (const [fid, markets] of state.used.entries()) {
-            newUsed.set(fid, new Set(markets));
-          }
-          const mset = newUsed.get(cand.fixtureId) || new Set<string>();
-          mset.add(cand.market);
-          newUsed.set(cand.fixtureId, mset);
+          // ONE LEG PER FIXTURE: Simple Set copy
+          const newUsedFixtures = new Set(state.usedFixtures);
+          newUsedFixtures.add(cand.fixtureId);
           
           const totalEdge = newLegs.reduce((sum, leg) => {
             const edgePct = leg.combinedAvg && leg.odds > 1 
@@ -1727,7 +1801,7 @@ function generateOptimizedTicket(
             }
           }
 
-          next.push({ legs: newLegs, product: newProduct, used: newUsed, avgEdge });
+          next.push({ legs: newLegs, product: newProduct, usedFixtures: newUsedFixtures, avgEdge });
         }
         
         if (expansions > MAX_EVALUATIONS) break;
