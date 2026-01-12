@@ -144,10 +144,17 @@ serve(async (req) => {
           
           console.log(`[sync-injuries] Deduped from ${injuries.length} to ${uniqueInjuries.length} unique injuries for league ${leagueId}`);
 
+          // Add last_update timestamp to all injuries
+          const now = new Date().toISOString();
+          const injuriesWithTimestamp = uniqueInjuries.map((injury: any) => ({
+            ...injury,
+            last_update: now,
+          }));
+
           // Upsert injuries to database
           const { error: upsertError } = await supabaseClient
             .from("player_injuries")
-            .upsert(uniqueInjuries, {
+            .upsert(injuriesWithTimestamp, {
               onConflict: "player_id,team_id,league_id,season",
               ignoreDuplicates: false,
             });
