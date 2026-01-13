@@ -1,27 +1,31 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target } from "lucide-react";
+import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target, CheckCircle, XCircle } from "lucide-react";
 import { Market, useMarkets, useMyCoins, useMyPositions, useLeaderboard } from "@/hooks/useMarkets";
 import { MarketCard } from "./MarketCard";
 import { PlaceBetDialog } from "./PlaceBetDialog";
 import { LeaderboardPanel } from "./LeaderboardPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+type MarketStatus = "open" | "closed" | "resolved";
+
 export function MarketsPanel() {
   const { t } = useTranslation("common");
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
   const [betDialogOpen, setBetDialogOpen] = useState(false);
+  const [marketStatusFilter, setMarketStatusFilter] = useState<MarketStatus>("open");
 
-  const { data: openMarkets, isLoading: marketsLoading } = useMarkets("open");
+  const { data: markets, isLoading: marketsLoading } = useMarkets(marketStatusFilter);
   const { data: coins, isLoading: coinsLoading } = useMyCoins();
   const { data: positions } = useMyPositions();
   const { data: leaderboard } = useLeaderboard(10);
 
   const pendingPositions = positions?.filter((p) => p.status === "pending") || [];
-  const settledPositions = positions?.filter((p) => p.status !== "pending") || [];
+  const wonPositions = positions?.filter((p) => p.status === "won") || [];
+  const lostPositions = positions?.filter((p) => p.status === "lost") || [];
+  const voidPositions = positions?.filter((p) => p.status === "void") || [];
 
   const handleBet = (market: Market) => {
     setSelectedMarket(market);
@@ -80,42 +84,56 @@ export function MarketsPanel() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Open Markets */}
+        {/* Markets Tab */}
         <TabsContent value="markets" className="mt-4 space-y-3">
+          {/* Market Status Filter */}
+          <div className="flex gap-2 mb-4">
+            {(["open", "closed", "resolved"] as MarketStatus[]).map((status) => (
+              <Badge
+                key={status}
+                variant={marketStatusFilter === status ? "default" : "outline"}
+                className="cursor-pointer capitalize"
+                onClick={() => setMarketStatusFilter(status)}
+              >
+                {status === "open" && <Target className="h-3 w-3 mr-1" />}
+                {status === "closed" && <Clock className="h-3 w-3 mr-1" />}
+                {status === "resolved" && <CheckCircle className="h-3 w-3 mr-1" />}
+                {status}
+              </Badge>
+            ))}
+          </div>
+
           {marketsLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading markets...</div>
-          ) : !openMarkets?.length ? (
+          ) : !markets?.length ? (
             <div className="text-center py-8 text-muted-foreground">
-              No open markets right now. Check back soon!
+              No {marketStatusFilter} markets right now.
             </div>
           ) : (
-            openMarkets.map((market) => (
+            markets.map((market) => (
               <MarketCard
                 key={market.id}
                 market={market}
                 onBet={handleBet}
+                showBetButton={marketStatusFilter === "open"}
               />
             ))
           )}
         </TabsContent>
 
-        {/* My Positions */}
-        <TabsContent value="positions" className="mt-4 space-y-3">
+        {/* My Positions Tab */}
+        <TabsContent value="positions" className="mt-4 space-y-4">
           {pendingPositions.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Pending</h4>
-              {pendingPositions.map((pos) => (
-                <PositionCard key={pos.id} position={pos} />
-              ))}
-            </div>
+            <PositionSection title="Pending" icon={<Clock className="h-4 w-4 text-yellow-500" />} positions={pendingPositions} />
           )}
-          {settledPositions.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Settled</h4>
-              {settledPositions.slice(0, 5).map((pos) => (
-                <PositionCard key={pos.id} position={pos} />
-              ))}
-            </div>
+          {wonPositions.length > 0 && (
+            <PositionSection title="Won" icon={<CheckCircle className="h-4 w-4 text-green-500" />} positions={wonPositions} />
+          )}
+          {lostPositions.length > 0 && (
+            <PositionSection title="Lost" icon={<XCircle className="h-4 w-4 text-red-500" />} positions={lostPositions} />
+          )}
+          {voidPositions.length > 0 && (
+            <PositionSection title="Refunded" icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={voidPositions} />
           )}
           {!positions?.length && (
             <div className="text-center py-8 text-muted-foreground">
@@ -137,6 +155,21 @@ export function MarketsPanel() {
         onOpenChange={setBetDialogOpen}
         userBalance={coins?.balance ?? 0}
       />
+    </div>
+  );
+}
+
+// Position Section Component
+function PositionSection({ title, icon, positions }: { title: string; icon: React.ReactNode; positions: any[] }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        {icon}
+        <span>{title} ({positions.length})</span>
+      </div>
+      {positions.map((pos) => (
+        <PositionCard key={pos.id} position={pos} />
+      ))}
     </div>
   );
 }
