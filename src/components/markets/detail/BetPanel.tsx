@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Coins, TrendingUp, TrendingDown, AlertCircle, Loader2, Clock } from "lucide-react";
+import { Coins, TrendingUp, TrendingDown, AlertCircle, Loader2, Clock, ArrowRight, Minus } from "lucide-react";
 import { Market, usePlaceBet } from "@/hooks/useMarkets";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { Separator } from "@/components/ui/separator";
 
 interface BetPanelProps {
   market: Market;
@@ -26,9 +27,14 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
 
   const stakeNum = Number(stake) || 0;
   const fee = Math.max(MIN_FEE, Math.floor(stakeNum * FEE_RATE));
-  const netStake = stakeNum - fee;
+  const netStake = Math.max(0, stakeNum - fee);
   const odds = outcome === "yes" ? market.odds_yes : market.odds_no;
   const potentialPayout = Math.floor(netStake * odds);
+  const potentialProfit = potentialPayout - stakeNum;
+
+  // Implied probability (Polymarket-style price in cents)
+  const yesPrice = Math.round((1 / market.odds_yes) * 100);
+  const noPrice = Math.round((1 / market.odds_no) * 100);
 
   const isValid = stakeNum >= MIN_STAKE && stakeNum <= userBalance;
   const insufficientBalance = stakeNum > userBalance;
@@ -55,20 +61,20 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
 
   return (
     <Card className="sticky top-4 border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-      <CardHeader className="pb-2 pt-5 px-5">
+      <CardHeader className="pb-3 pt-5 px-5">
         <CardTitle className="text-lg flex items-center gap-2 font-semibold">
           <Coins className="h-5 w-5 text-primary" />
-          Place Bet
+          Trade
         </CardTitle>
-        <div className="flex items-center gap-1.5 text-xs text-primary mt-1">
+        <div className="flex items-center gap-1.5 text-xs text-amber-500 mt-1 bg-amber-500/10 px-2 py-1 rounded-md w-fit">
           <Clock className="h-3.5 w-3.5" />
           <span>Closes {closesIn}</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-5 px-5 pb-5">
-        {/* Outcome Selection */}
+        {/* Outcome Selection with Polymarket-style prices */}
         <div className="space-y-3">
-          <Label className="text-sm font-medium text-foreground">Your Prediction</Label>
+          <Label className="text-sm font-medium text-foreground">Buy Outcome</Label>
           <RadioGroup
             value={outcome}
             onValueChange={(v) => setOutcome(v as "yes" | "no")}
@@ -83,10 +89,13 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
               }`}
             >
               <RadioGroupItem value="yes" id="yes-detail" className="sr-only" />
-              <TrendingUp className={`h-6 w-6 mb-1.5 ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`} />
-              <span className={`text-sm font-bold ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>YES</span>
-              <span className={`text-xs mt-1 ${outcome === "yes" ? "text-emerald-400/80" : "text-muted-foreground"}`}>
-                @ {market.odds_yes.toFixed(2)}
+              <TrendingUp className={`h-5 w-5 mb-1 ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`} />
+              <span className={`text-xs font-bold ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>YES</span>
+              <span className={`text-xl font-bold mt-1 ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>
+                {yesPrice}¢
+              </span>
+              <span className={`text-[10px] ${outcome === "yes" ? "text-emerald-400/80" : "text-muted-foreground"}`}>
+                @ {market.odds_yes.toFixed(2)} odds
               </span>
             </Label>
             <Label
@@ -98,10 +107,13 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
               }`}
             >
               <RadioGroupItem value="no" id="no-detail" className="sr-only" />
-              <TrendingDown className={`h-6 w-6 mb-1.5 ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`} />
-              <span className={`text-sm font-bold ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>NO</span>
-              <span className={`text-xs mt-1 ${outcome === "no" ? "text-red-400/80" : "text-muted-foreground"}`}>
-                @ {market.odds_no.toFixed(2)}
+              <TrendingDown className={`h-5 w-5 mb-1 ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`} />
+              <span className={`text-xs font-bold ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>NO</span>
+              <span className={`text-xl font-bold mt-1 ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>
+                {noPrice}¢
+              </span>
+              <span className={`text-[10px] ${outcome === "no" ? "text-red-400/80" : "text-muted-foreground"}`}>
+                @ {market.odds_no.toFixed(2)} odds
               </span>
             </Label>
           </RadioGroup>
@@ -109,7 +121,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
 
         {/* Stake Input */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium text-foreground">Stake Amount</Label>
+          <Label className="text-sm font-medium text-foreground">Amount</Label>
           <div className="relative">
             <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -117,7 +129,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
               value={stake}
               onChange={(e) => setStake(e.target.value)}
               placeholder={`Min ${MIN_STAKE} coins`}
-              className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50"
+              className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 text-lg"
               min={MIN_STAKE}
               max={userBalance}
             />
@@ -142,6 +154,41 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
           </div>
         </div>
 
+        {/* Breakdown */}
+        {stakeNum > 0 && (
+          <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border/30">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Stake</span>
+              <span className="font-medium">{stakeNum.toLocaleString()} coins</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Fee (2%)</span>
+              <span className="font-medium text-red-400 flex items-center gap-1">
+                <Minus className="h-3 w-3" />
+                {fee} coins
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Net Stake</span>
+              <span className="font-medium">{netStake.toLocaleString()} coins</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Odds</span>
+              <span className="font-medium">@ {odds.toFixed(2)}</span>
+            </div>
+            <Separator className="my-2" />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">Potential Payout</span>
+              <div className="text-right">
+                <span className="text-lg font-bold text-emerald-400">{potentialPayout.toLocaleString()}</span>
+                <span className="text-xs text-emerald-400/80 ml-1">
+                  (+{potentialProfit.toLocaleString()} profit)
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Errors */}
         {insufficientBalance && (
           <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg">
@@ -154,16 +201,18 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         <Button
           onClick={handleSubmit}
           disabled={!isValid || placeBet.isPending}
-          className={`w-full h-11 font-semibold text-base shadow-lg transition-all duration-200 ${
+          className={`w-full h-12 font-semibold text-base shadow-lg transition-all duration-200 ${
             outcome === "yes"
               ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20"
               : "bg-red-600 hover:bg-red-500 shadow-red-600/20"
           }`}
         >
-          {placeBet.isPending && (
+          {placeBet.isPending ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <ArrowRight className="h-4 w-4 mr-2" />
           )}
-          Place {outcome.toUpperCase()} Bet
+          Buy {outcome.toUpperCase()}
         </Button>
       </CardContent>
     </Card>

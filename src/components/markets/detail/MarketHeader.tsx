@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Clock, CheckCircle, XCircle, Calendar, Trophy } from "lucide-react";
 import { MarketWithFixture } from "@/hooks/useMarketDetail";
 import { formatDistanceToNow, format } from "date-fns";
+import { PriceDisplay, normalizeImpliedProbs } from "./PriceDisplay";
 
 interface MarketHeaderProps {
   market: MarketWithFixture;
@@ -30,6 +31,9 @@ export function MarketHeader({ market }: MarketHeaderProps) {
   const countdown = isOpen
     ? formatDistanceToNow(closesAt, { addSuffix: true })
     : format(closesAt, "MMM d, yyyy HH:mm");
+
+  // Get normalized implied probabilities
+  const { yesPct, noPct } = normalizeImpliedProbs(market.odds_yes, market.odds_no);
 
   const getStatusBadge = () => {
     if (isResolved && market.winning_outcome) {
@@ -73,7 +77,7 @@ export function MarketHeader({ market }: MarketHeaderProps) {
 
   return (
     <Card className="border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-      <CardContent className="p-5 sm:p-6 space-y-4">
+      <CardContent className="p-5 sm:p-6 space-y-5">
         {/* Badges Row */}
         <div className="flex items-center gap-2 flex-wrap">
           <Badge
@@ -101,6 +105,34 @@ export function MarketHeader({ market }: MarketHeaderProps) {
             {market.description}
           </p>
         )}
+
+        {/* Prominent YES/NO Price Display (Polymarket-style) */}
+        <div className="grid grid-cols-2 gap-4">
+          <PriceDisplay odds={market.odds_yes} outcome="yes" size="md" />
+          <PriceDisplay odds={market.odds_no} outcome="no" size="md" />
+        </div>
+
+        {/* Implied Probability Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Implied Probability (normalized)</span>
+            <span className="font-medium">
+              <span className="text-emerald-400">{yesPct}%</span>
+              {" / "}
+              <span className="text-red-400">{noPct}%</span>
+            </span>
+          </div>
+          <div className="h-2 bg-muted/60 rounded-full overflow-hidden flex">
+            <div 
+              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
+              style={{ width: `${yesPct}%` }}
+            />
+            <div 
+              className="h-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-500"
+              style={{ width: `${noPct}%` }}
+            />
+          </div>
+        </div>
 
         {/* Fixture Info */}
         {market.fixture && (

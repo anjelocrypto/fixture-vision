@@ -3,13 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Market, Position } from "./useMarkets";
 
 export interface MarketAggregates {
-  total_votes: number;
-  yes_votes: number;
-  no_votes: number;
+  total_positions: number;
+  yes_positions: number;
+  no_positions: number;
   yes_stake: number;
   no_stake: number;
   total_pool: number;
-  unique_users: number;
+  unique_traders: number;
 }
 
 export interface MarketWithFixture extends Market {
@@ -81,7 +81,7 @@ export function useMarketWithFixture(marketId: string | null) {
   });
 }
 
-// Fetch market aggregates
+// Fetch market aggregates using the optimized RPC
 export function useMarketAggregates(marketId: string | null) {
   return useQuery({
     queryKey: ["market-aggregates", marketId],
@@ -89,29 +89,39 @@ export function useMarketAggregates(marketId: string | null) {
       if (!marketId) return null;
 
       const { data, error } = await supabase
-        .from("market_positions")
-        .select("outcome, net_stake, user_id")
-        .eq("market_id", marketId);
+        .rpc("get_market_aggregates", { _market_id: marketId });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching market aggregates:", error);
+        // Fallback to client-side calculation if RPC fails
+        const { data: positions, error: posError } = await supabase
+          .from("market_positions")
+          .select("outcome, net_stake, user_id")
+          .eq("market_id", marketId);
 
-      const positions = data || [];
-      const yesPositions = positions.filter((p) => p.outcome === "yes");
-      const noPositions = positions.filter((p) => p.outcome === "no");
+        if (posError) throw posError;
 
-      const yes_stake = yesPositions.reduce((sum, p) => sum + (p.net_stake || 0), 0);
-      const no_stake = noPositions.reduce((sum, p) => sum + (p.net_stake || 0), 0);
-      const uniqueUsers = new Set(positions.map((p) => p.user_id));
+        const positionsData = positions || [];
+        const yesPositions = positionsData.filter((p) => p.outcome === "yes");
+        const noPositions = positionsData.filter((p) => p.outcome === "no");
 
-      return {
-        total_votes: positions.length,
-        yes_votes: yesPositions.length,
-        no_votes: noPositions.length,
-        yes_stake,
-        no_stake,
-        total_pool: yes_stake + no_stake,
-        unique_users: uniqueUsers.size,
-      } as MarketAggregates;
+        const yes_stake = yesPositions.reduce((sum, p) => sum + (p.net_stake || 0), 0);
+        const no_stake = noPositions.reduce((sum, p) => sum + (p.net_stake || 0), 0);
+        const uniqueUsers = new Set(positionsData.map((p) => p.user_id));
+
+        return {
+          total_positions: positionsData.length,
+          yes_positions: yesPositions.length,
+          no_positions: noPositions.length,
+          yes_stake,
+          no_stake,
+          total_pool: yes_stake + no_stake,
+          unique_traders: uniqueUsers.size,
+        } as MarketAggregates;
+      }
+
+      // Parse RPC result (returns JSON)
+      return data as unknown as MarketAggregates;
     },
     enabled: !!marketId,
   });
