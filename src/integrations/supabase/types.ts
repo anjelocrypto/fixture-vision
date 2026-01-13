@@ -2252,6 +2252,7 @@ export type Database = {
           skipped: number
         }[]
       }
+      close_expired_markets: { Args: never; Returns: Json }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
       get_cron_internal_key: { Args: never; Returns: string }
@@ -2319,6 +2320,15 @@ export type Database = {
         Returns: Json
       }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
+      resolve_market: {
+        Args: {
+          _admin_user_id?: string
+          _is_system?: boolean
+          _market_id: string
+          _winning_outcome: string
+        }
+        Returns: Json
+      }
       try_use_feature: {
         Args: { feature_key: string }
         Returns: {

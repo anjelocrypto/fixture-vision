@@ -1,9 +1,9 @@
 // ============================================================================
 // market-auto-resolve: Cron job to auto-resolve fixture-linked markets
 // ============================================================================
-// - Finds markets with fixture_id where fixture has finished
+// - Finds closed markets with fixture_id where fixture has finished
 // - Determines outcome based on market_type and fixture result
-// - Settles positions automatically
+// - Calls atomic resolve_market RPC for settlement
 // - Supports: over_goals, under_goals, btts, home_win, away_win, draw
 // ============================================================================
 
@@ -33,19 +33,11 @@ Deno.serve(async (req) => {
   try {
     console.log(`${logPrefix} Starting auto-resolve scan...`);
 
-    // Find open markets with fixture_id that should auto-resolve
+    // Find closed (or open) markets with fixture_id that should auto-resolve
     const { data: markets, error: marketsError } = await adminClient
       .from("prediction_markets")
-      .select(`
-        *,
-        fixtures:fixture_id (
-          id,
-          status,
-          teams_home,
-          teams_away
-        )
-      `)
-      .eq("status", "open")
+      .select("id, title, market_type, fixture_id")
+      .in("status", ["open", "closed"])
       .not("fixture_id", "is", null);
 
     if (marketsError) {
@@ -55,12 +47,13 @@ Deno.serve(async (req) => {
 
     let resolved = 0;
     let skipped = 0;
+    const results: { market_id: string; title: string; outcome: string | null }[] = [];
 
     for (const market of markets || []) {
       // Check if fixture has a result
       const { data: result } = await adminClient
         .from("fixture_results")
-        .select("*")
+        .select("goals_home, goals_away, status")
         .eq("fixture_id", market.fixture_id)
         .eq("status", "FT")
         .single();
@@ -76,9 +69,8 @@ Deno.serve(async (req) => {
       const goalsAway = result.goals_away;
       const totalGoals = goalsHome + goalsAway;
 
-      // Parse market type from title or market_type field
-      const marketType = market.market_type.toLowerCase();
-      const title = market.title.toLowerCase();
+      const marketType = (market.market_type || "").toLowerCase();
+      const title = (market.title || "").toLowerCase();
 
       if (marketType.includes("over_2.5") || title.includes("over 2.5")) {
         winningOutcome = totalGoals > 2.5 ? "yes" : "no";
@@ -102,72 +94,31 @@ Deno.serve(async (req) => {
 
       console.log(`${logPrefix} Auto-resolving market ${market.id}: ${market.title} → ${winningOutcome} (Score: ${goalsHome}-${goalsAway})`);
 
-      // Settle positions
-      const { data: positions } = await adminClient
-        .from("market_positions")
-        .select("*")
-        .eq("market_id", market.id)
-        .eq("status", "pending");
-
-      const now = new Date().toISOString();
-      let totalPayout = 0;
-
-      for (const pos of positions || []) {
-        const isWinner = pos.outcome === winningOutcome;
-        const payoutAmount = isWinner ? pos.potential_payout : 0;
-
-        await adminClient
-          .from("market_positions")
-          .update({
-            status: isWinner ? "won" : "lost",
-            payout_amount: payoutAmount,
-            settled_at: now,
-          })
-          .eq("id", pos.id);
-
-        if (isWinner && payoutAmount > 0) {
-          const { data: userCoins } = await adminClient
-            .from("market_coins")
-            .select("balance, total_won")
-            .eq("user_id", pos.user_id)
-            .single();
-
-          if (userCoins) {
-            await adminClient
-              .from("market_coins")
-              .update({
-                balance: userCoins.balance + payoutAmount,
-                total_won: userCoins.total_won + payoutAmount,
-              })
-              .eq("user_id", pos.user_id);
-          }
-          totalPayout += payoutAmount;
-        }
-      }
-
-      // Update market
-      await adminClient
-        .from("prediction_markets")
-        .update({
-          status: "resolved",
-          winning_outcome: winningOutcome,
-          resolved_at: now,
-        })
-        .eq("id", market.id);
-
-      // Audit log (system action)
-      await adminClient.from("admin_market_audit_log").insert({
-        admin_user_id: "00000000-0000-0000-0000-000000000000", // System user
-        market_id: market.id,
-        action: "auto_resolve",
-        details: {
-          fixture_id: market.fixture_id,
-          score: `${goalsHome}-${goalsAway}`,
-          winning_outcome: winningOutcome,
-          total_payout: totalPayout,
-        },
+      // Call atomic resolve_market RPC
+      const { data: rpcResult, error: rpcError } = await adminClient.rpc("resolve_market", {
+        _market_id: market.id,
+        _winning_outcome: winningOutcome,
+        _admin_user_id: null,
+        _is_system: true,
       });
 
+      if (rpcError) {
+        console.error(`${logPrefix} RPC error for market ${market.id}:`, rpcError);
+        skipped++;
+        continue;
+      }
+
+      if (!rpcResult.ok) {
+        console.warn(`${logPrefix} Resolution failed for market ${market.id}:`, rpcResult.error);
+        skipped++;
+        continue;
+      }
+
+      results.push({
+        market_id: market.id,
+        title: market.title,
+        outcome: winningOutcome,
+      });
       resolved++;
     }
 
@@ -177,6 +128,7 @@ Deno.serve(async (req) => {
       ok: true,
       resolved,
       skipped,
+      results,
     }, origin, 200, req);
 
   } catch (err) {
