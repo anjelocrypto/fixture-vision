@@ -1,9 +1,9 @@
 // ============================================================================
 // market-close-expired: Cron job to close markets past their closes_at time
 // ============================================================================
-// - Finds open markets where closes_at has passed
+// - Calls atomic close_expired_markets RPC
 // - Updates status to 'closed' (no more bets accepted)
-// - Does NOT resolve - resolution happens via fixture result or admin action
+// - Logs each close action with is_system=true
 // ============================================================================
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -32,43 +32,19 @@ Deno.serve(async (req) => {
   try {
     console.log(`${logPrefix} Checking for expired markets...`);
 
-    const now = new Date().toISOString();
+    // Call atomic RPC that closes markets and logs audit entries
+    const { data: result, error: rpcError } = await adminClient.rpc("close_expired_markets");
 
-    // Find and close expired markets
-    const { data: expiredMarkets, error: fetchError } = await adminClient
-      .from("prediction_markets")
-      .select("id, title, closes_at")
-      .eq("status", "open")
-      .lt("closes_at", now);
-
-    if (fetchError) {
-      console.error(`${logPrefix} Failed to fetch expired markets:`, fetchError);
-      return errorResponse("Failed to fetch markets", origin, 500, req);
+    if (rpcError) {
+      console.error(`${logPrefix} RPC error:`, rpcError);
+      return errorResponse(rpcError.message || "Failed to close expired markets", origin, 500, req);
     }
 
-    if (!expiredMarkets || expiredMarkets.length === 0) {
-      console.log(`${logPrefix} No expired markets found`);
-      return jsonResponse({ ok: true, closed: 0 }, origin, 200, req);
-    }
-
-    const marketIds = expiredMarkets.map(m => m.id);
-
-    const { error: updateError } = await adminClient
-      .from("prediction_markets")
-      .update({ status: "closed" })
-      .in("id", marketIds);
-
-    if (updateError) {
-      console.error(`${logPrefix} Failed to close markets:`, updateError);
-      return errorResponse("Failed to close markets", origin, 500, req);
-    }
-
-    console.log(`${logPrefix} Closed ${marketIds.length} expired markets:`, expiredMarkets.map(m => m.title));
+    console.log(`${logPrefix} Complete. Closed: ${result?.closed_count ?? 0} markets`);
 
     return jsonResponse({
       ok: true,
-      closed: marketIds.length,
-      markets: expiredMarkets.map(m => ({ id: m.id, title: m.title })),
+      closed: result?.closed_count ?? 0,
     }, origin, 200, req);
 
   } catch (err) {
