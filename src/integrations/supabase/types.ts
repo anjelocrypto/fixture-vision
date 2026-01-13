@@ -2244,6 +2244,7 @@ export type Database = {
           was_released: boolean
         }[]
       }
+      auto_resolve_markets: { Args: never; Returns: Json }
       backfill_optimized_selections: {
         Args: never
         Returns: {
