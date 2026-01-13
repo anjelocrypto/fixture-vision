@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, PieChart } from "lucide-react";
 import { MarketAggregates } from "@/hooks/useMarketDetail";
 
 interface YesNoDistributionProps {
@@ -12,22 +12,30 @@ interface YesNoDistributionProps {
 export function YesNoDistribution({ aggregates }: YesNoDistributionProps) {
   const [showByStake, setShowByStake] = useState(true);
 
+  // By stake (amount) or by votes (count)
   const yesValue = showByStake
     ? aggregates?.yes_stake ?? 0
-    : aggregates?.yes_votes ?? 0;
+    : aggregates?.yes_positions ?? 0;
   const noValue = showByStake
     ? aggregates?.no_stake ?? 0
-    : aggregates?.no_votes ?? 0;
+    : aggregates?.no_positions ?? 0;
   const total = yesValue + noValue;
 
   const yesPercent = total > 0 ? (yesValue / total) * 100 : 50;
   const noPercent = total > 0 ? (noValue / total) * 100 : 50;
 
+  // Labels for display
+  const yesLabel = showByStake ? "coins" : "votes";
+  const noLabel = showByStake ? "coins" : "votes";
+
   return (
     <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
       <CardHeader className="pb-3 pt-5 px-5">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-semibold">Distribution</CardTitle>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <PieChart className="h-4 w-4 text-primary" />
+            Distribution
+          </CardTitle>
           <div className="flex items-center gap-2 bg-muted/50 rounded-full px-3 py-1.5">
             <Label 
               htmlFor="stake-toggle" 
@@ -55,17 +63,20 @@ export function YesNoDistribution({ aggregates }: YesNoDistributionProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
+              <div className="p-1.5 rounded-lg bg-emerald-500/15">
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
+              </div>
               <span className="font-semibold text-emerald-500">YES</span>
             </div>
             <div className="text-sm">
               <span className="font-bold text-foreground">{yesValue.toLocaleString()}</span>
+              <span className="text-muted-foreground ml-1">{yesLabel}</span>
               <span className="text-muted-foreground ml-1.5">
                 ({yesPercent.toFixed(1)}%)
               </span>
             </div>
           </div>
-          <div className="h-3 bg-muted/60 rounded-full overflow-hidden">
+          <div className="h-3.5 bg-muted/60 rounded-full overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${yesPercent}%` }}
@@ -77,17 +88,20 @@ export function YesNoDistribution({ aggregates }: YesNoDistributionProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TrendingDown className="h-4 w-4 text-red-500" />
+              <div className="p-1.5 rounded-lg bg-red-500/15">
+                <TrendingDown className="h-4 w-4 text-red-500" />
+              </div>
               <span className="font-semibold text-red-500">NO</span>
             </div>
             <div className="text-sm">
               <span className="font-bold text-foreground">{noValue.toLocaleString()}</span>
+              <span className="text-muted-foreground ml-1">{noLabel}</span>
               <span className="text-muted-foreground ml-1.5">
                 ({noPercent.toFixed(1)}%)
               </span>
             </div>
           </div>
-          <div className="h-3 bg-muted/60 rounded-full overflow-hidden">
+          <div className="h-3.5 bg-muted/60 rounded-full overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${noPercent}%` }}
@@ -96,8 +110,11 @@ export function YesNoDistribution({ aggregates }: YesNoDistributionProps) {
         </div>
 
         {/* Summary */}
-        <div className="pt-3 border-t border-border/50 text-center text-xs text-muted-foreground">
-          {showByStake ? "Showing by stake amount" : "Showing by vote count"}
+        <div className="pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+          <span>{showByStake ? "Distribution by stake amount" : "Distribution by vote count"}</span>
+          <span className="font-medium">
+            Total: {total.toLocaleString()} {showByStake ? "coins" : "votes"}
+          </span>
         </div>
       </CardContent>
     </Card>
