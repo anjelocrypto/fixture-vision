@@ -17,6 +17,7 @@ export interface Market {
   winning_outcome: string | null;
   resolved_at: string | null;
   created_at: string;
+  resolution_rule: string | null;
 }
 
 export interface Position {

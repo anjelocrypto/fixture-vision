@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ export interface MarketCardProps {
 }
 
 export function MarketCard({ market, onBet, showBetButton = true }: MarketCardProps) {
+  const navigate = useNavigate();
   const totalStaked = market.total_staked_yes + market.total_staked_no;
   const yesPercent = totalStaked > 0 ? (market.total_staked_yes / totalStaked) * 100 : 50;
   
@@ -47,8 +49,15 @@ export function MarketCard({ market, onBet, showBetButton = true }: MarketCardPr
     return null;
   };
 
+  const handleCardClick = () => {
+    navigate(`/markets/${market.id}`);
+  };
+
   return (
-    <Card className="overflow-hidden hover:border-primary/50 transition-colors">
+    <Card 
+      className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer"
+      onClick={handleCardClick}
+    >
       <CardContent className="p-4 space-y-3">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
