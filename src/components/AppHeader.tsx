@@ -74,8 +74,22 @@ export function AppHeader() {
           </div>
         </div>
 
-        {/* Sport Tabs - Hidden on mobile */}
-        <div className="hidden md:flex items-center gap-4">
+        {/* Sport Tabs + Markets - Hidden on mobile */}
+        <div className="hidden md:flex items-center gap-3">
+          {/* Markets Button - Prominent white button */}
+          <Button
+            onClick={() => navigate("/markets")}
+            size="sm"
+            className={`rounded-full font-semibold px-5 ${
+              location.pathname === "/markets" 
+                ? "bg-white text-black hover:bg-white/90" 
+                : "bg-white text-black hover:bg-white/90"
+            }`}
+          >
+            <TrendingUp className="h-4 w-4 mr-1.5" />
+            Markets
+          </Button>
+
           <div className="flex items-center gap-2 bg-secondary/50 rounded-full p-1">
             {sports.map((sport) => {
               const isSelected = sport.name === currentSport;
@@ -106,15 +120,13 @@ export function AppHeader() {
 
         {/* Right Utils - Simplified on mobile */}
         <div className="flex items-center gap-1 sm:gap-3">
-          {/* Markets Button */}
+          {/* Markets Button - Mobile only */}
           <Button
-            variant="ghost"
-            size="sm"
             onClick={() => navigate("/markets")}
-            className={`gap-1.5 ${location.pathname === "/markets" ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            size="sm"
+            className="md:hidden rounded-full font-semibold bg-white text-black hover:bg-white/90"
           >
             <TrendingUp className="h-4 w-4" />
-            <span className="hidden sm:inline">Markets</span>
           </Button>
 
           {/* Guide Button - Only for paid users */}
