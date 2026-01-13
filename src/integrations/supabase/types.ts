@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_market_audit_log: {
+        Row: {
+          action: string
+          admin_user_id: string
+          created_at: string
+          details: Json | null
+          id: string
+          market_id: string | null
+        }
+        Insert: {
+          action: string
+          admin_user_id: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          market_id?: string | null
+        }
+        Update: {
+          action?: string
+          admin_user_id?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          market_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_market_audit_log_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analysis_cache: {
         Row: {
           computed_at: string | null
@@ -734,6 +769,146 @@ export type Database = {
           },
         ]
       }
+      market_coins: {
+        Row: {
+          balance: number
+          created_at: string
+          last_reset_at: string
+          total_fees_paid: number
+          total_wagered: number
+          total_won: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          last_reset_at?: string
+          total_fees_paid?: number
+          total_wagered?: number
+          total_won?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          last_reset_at?: string
+          total_fees_paid?: number
+          total_wagered?: number
+          total_won?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      market_leaderboard_snapshots: {
+        Row: {
+          created_at: string
+          final_balance: number
+          id: string
+          losses_count: number
+          period: string
+          positions_count: number
+          rank: number | null
+          roi: number | null
+          total_fees_paid: number
+          total_wagered: number
+          total_won: number
+          user_id: string
+          win_rate: number | null
+          wins_count: number
+        }
+        Insert: {
+          created_at?: string
+          final_balance: number
+          id?: string
+          losses_count?: number
+          period: string
+          positions_count?: number
+          rank?: number | null
+          roi?: number | null
+          total_fees_paid?: number
+          total_wagered: number
+          total_won: number
+          user_id: string
+          win_rate?: number | null
+          wins_count?: number
+        }
+        Update: {
+          created_at?: string
+          final_balance?: number
+          id?: string
+          losses_count?: number
+          period?: string
+          positions_count?: number
+          rank?: number | null
+          roi?: number | null
+          total_fees_paid?: number
+          total_wagered?: number
+          total_won?: number
+          user_id?: string
+          win_rate?: number | null
+          wins_count?: number
+        }
+        Relationships: []
+      }
+      market_positions: {
+        Row: {
+          created_at: string
+          fee_amount: number
+          id: string
+          market_id: string
+          net_stake: number
+          odds_at_placement: number
+          outcome: string
+          payout_amount: number | null
+          potential_payout: number
+          settled_at: string | null
+          stake: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          fee_amount?: number
+          id?: string
+          market_id: string
+          net_stake: number
+          odds_at_placement: number
+          outcome: string
+          payout_amount?: number | null
+          potential_payout: number
+          settled_at?: string | null
+          stake: number
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          fee_amount?: number
+          id?: string
+          market_id?: string
+          net_stake?: number
+          odds_at_placement?: number
+          outcome?: string
+          payout_amount?: number | null
+          potential_payout?: number
+          settled_at?: string | null
+          stake?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_positions_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       odds_cache: {
         Row: {
           bookmakers: string[] | null
@@ -1184,6 +1359,74 @@ export type Database = {
         }
         Relationships: []
       }
+      prediction_markets: {
+        Row: {
+          category: string
+          closes_at: string
+          created_at: string
+          created_by: string
+          description: string | null
+          fixture_id: number | null
+          id: string
+          market_type: string
+          odds_no: number
+          odds_yes: number
+          resolved_at: string | null
+          status: string
+          title: string
+          total_staked_no: number
+          total_staked_yes: number
+          updated_at: string
+          winning_outcome: string | null
+        }
+        Insert: {
+          category?: string
+          closes_at: string
+          created_at?: string
+          created_by: string
+          description?: string | null
+          fixture_id?: number | null
+          id?: string
+          market_type?: string
+          odds_no: number
+          odds_yes: number
+          resolved_at?: string | null
+          status?: string
+          title: string
+          total_staked_no?: number
+          total_staked_yes?: number
+          updated_at?: string
+          winning_outcome?: string | null
+        }
+        Update: {
+          category?: string
+          closes_at?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          fixture_id?: number | null
+          id?: string
+          market_type?: string
+          odds_no?: number
+          odds_yes?: number
+          resolved_at?: string | null
+          status?: string
+          title?: string
+          total_staked_no?: number
+          total_staked_yes?: number
+          updated_at?: string
+          winning_outcome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_markets_fixture_id_fkey"
+            columns: ["fixture_id"]
+            isOneToOne: false
+            referencedRelation: "fixtures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       predictions_cache: {
         Row: {
           advice: string | null
@@ -1225,18 +1468,21 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          display_name: string | null
           preferred_lang: string
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          display_name?: string | null
           preferred_lang?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          display_name?: string | null
           preferred_lang?: string
           updated_at?: string
           user_id?: string
@@ -1829,6 +2075,23 @@ export type Database = {
         }
         Relationships: []
       }
+      v_market_leaderboard: {
+        Row: {
+          balance: number | null
+          display_name: string | null
+          losses_count: number | null
+          positions_count: number | null
+          rank: number | null
+          roi: number | null
+          total_fees_paid: number | null
+          total_wagered: number | null
+          total_won: number | null
+          user_id: string | null
+          win_rate: number | null
+          wins_count: number | null
+        }
+        Relationships: []
+      }
       v_outcomes_prematch: {
         Row: {
           bookmaker: string | null
@@ -1983,6 +2246,7 @@ export type Database = {
           skipped: number
         }[]
       }
+      ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
@@ -1998,6 +2262,22 @@ export type Database = {
           fixture_teams_away: Json
           fixture_teams_home: Json
           fixture_timestamp: number
+        }[]
+      }
+      get_my_market_stats: {
+        Args: never
+        Returns: {
+          balance: number
+          losses_count: number
+          next_reset_at: string
+          pending_count: number
+          positions_count: number
+          roi: number
+          total_fees_paid: number
+          total_wagered: number
+          total_won: number
+          win_rate: number
+          wins_count: number
         }[]
       }
       get_scorable_pending_legs: {
