@@ -1,4 +1,4 @@
-import { Send, User, LogOut, Ticket, CreditCard, Sparkles, Activity, BookOpen } from "lucide-react";
+import { Send, User, LogOut, Ticket, CreditCard, Sparkles, Activity, BookOpen, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +106,17 @@ export function AppHeader() {
 
         {/* Right Utils - Simplified on mobile */}
         <div className="flex items-center gap-1 sm:gap-3">
+          {/* Markets Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/markets")}
+            className={`gap-1.5 ${location.pathname === "/markets" ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            <span className="hidden sm:inline">Markets</span>
+          </Button>
+
           {/* Guide Button - Only for paid users */}
           {hasAccess && (
             <Button

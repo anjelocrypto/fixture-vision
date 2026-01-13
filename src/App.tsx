@@ -20,6 +20,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Demo from "./pages/Demo";
 import Basketball from "./pages/Basketball";
+import Markets from "./pages/Markets";
 import { Navigate } from "react-router-dom";
 
 const queryClient = new QueryClient({
@@ -50,6 +51,7 @@ const App = () => {
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/demo" element={<Demo />} />
                 <Route path="/basketball" element={<ProtectedRoute><Basketball /></ProtectedRoute>} />
+                <Route path="/markets" element={<ProtectedRoute><Markets /></ProtectedRoute>} />
                 <Route
                   path="/"
                   element={
