@@ -37,17 +37,25 @@ Deno.serve(async (req) => {
     if (userError || !user) {
       return errorResponse("Invalid authentication", origin, 401, req);
     }
-
-    // Check admin role
-    const { data: isAdmin } = await userClient.rpc("has_role", {
-      _user_id: user.id,
-      _role: "admin",
-    });
+    // Check admin role (DB role OR bootstrap email)
+    const ADMIN_BOOTSTRAP_EMAIL = "lukaanjaparidzee99@gmail.com";
+    const isBootstrapAdmin = user.email?.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL.toLowerCase();
+    
+    let isAdmin = isBootstrapAdmin;
+    if (!isAdmin) {
+      const { data: hasRole } = await userClient.rpc("has_role", {
+        _user_id: user.id,
+        _role: "admin",
+      });
+      isAdmin = !!hasRole;
+    }
 
     if (!isAdmin) {
-      console.warn(`${logPrefix} Non-admin user ${user.id} attempted to resolve market`);
+      console.warn(`${logPrefix} Non-admin user ${user.id} (${user.email}) attempted to resolve market`);
       return errorResponse("Admin access required", origin, 403, req);
     }
+    
+    console.log(`${logPrefix} Admin authorized: ${user.email} (bootstrap=${isBootstrapAdmin})`)
 
     const body = await req.json();
     const { market_id, winning_outcome } = body;
