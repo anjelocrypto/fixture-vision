@@ -30,15 +30,17 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
   const yesPct = totalPool > 0 ? Math.round((yesStake / totalPool) * 100) : 50;
   const noPct = totalPool > 0 ? Math.round((noStake / totalPool) * 100) : 50;
 
+  // Normalize so yesPct + noPct = 100
+  const normalizedNoPct = 100 - yesPct;
+
   const stats = [
     {
       label: "Total Pool",
-      value: aggregates?.total_pool ?? 0,
+      value: totalPool,
       icon: Coins,
       iconBg: "bg-amber-500/15",
       iconColor: "text-amber-500",
       suffix: " coins",
-      description: "Volume",
     },
     {
       label: "Unique Traders",
@@ -46,7 +48,6 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
       icon: Users,
       iconBg: "bg-primary/15",
       iconColor: "text-primary",
-      description: "Bettors",
     },
     {
       label: "Total Bets",
@@ -54,10 +55,9 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
       icon: BarChart3,
       iconBg: "bg-primary/15",
       iconColor: "text-primary",
-      description: "Positions",
     },
     {
-      label: "YES Bets",
+      label: "YES Pool",
       value: yesStake,
       icon: TrendingUp,
       iconBg: "bg-emerald-500/15",
@@ -65,12 +65,12 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
       suffix: ` (${yesPct}%)`,
     },
     {
-      label: "NO Bets",
+      label: "NO Pool",
       value: noStake,
       icon: TrendingDown,
       iconBg: "bg-red-500/15",
       iconColor: "text-red-500",
-      suffix: ` (${noPct}%)`,
+      suffix: ` (${normalizedNoPct}%)`,
     },
   ];
 
@@ -95,11 +95,6 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
                   </span>
                 )}
               </div>
-              {stat.description && (
-                <div className="text-[10px] text-muted-foreground mt-0.5">
-                  {stat.description}
-                </div>
-              )}
             </CardContent>
           </Card>
         );
