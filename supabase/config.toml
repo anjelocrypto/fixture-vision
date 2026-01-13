@@ -192,3 +192,19 @@ verify_jwt = false
 
 [functions.score-ticket-legs]
 verify_jwt = false
+
+# Prediction Markets
+[functions.market-place-bet]
+verify_jwt = true
+
+[functions.market-create]
+verify_jwt = true
+
+[functions.market-resolve]
+verify_jwt = true
+
+[functions.market-auto-resolve]
+verify_jwt = false
+
+[functions.market-close-expired]
+verify_jwt = false
