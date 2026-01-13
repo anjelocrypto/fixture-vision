@@ -4,9 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target, CheckCircle, XCircle } from "lucide-react";
 import { Market, useMarkets, useMyCoins, useMyPositions, useLeaderboard } from "@/hooks/useMarkets";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { MarketCard } from "./MarketCard";
 import { PlaceBetDialog } from "./PlaceBetDialog";
 import { LeaderboardPanel } from "./LeaderboardPanel";
+import { AdminMarketControls } from "./AdminMarketControls";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type MarketStatus = "open" | "closed" | "resolved";
@@ -17,6 +19,7 @@ export function MarketsPanel() {
   const [betDialogOpen, setBetDialogOpen] = useState(false);
   const [marketStatusFilter, setMarketStatusFilter] = useState<MarketStatus>("open");
 
+  const { data: isAdmin } = useIsAdmin();
   const { data: markets, isLoading: marketsLoading } = useMarkets(marketStatusFilter);
   const { data: coins, isLoading: coinsLoading } = useMyCoins();
   const { data: positions } = useMyPositions();
@@ -25,7 +28,7 @@ export function MarketsPanel() {
   const pendingPositions = positions?.filter((p) => p.status === "pending") || [];
   const wonPositions = positions?.filter((p) => p.status === "won") || [];
   const lostPositions = positions?.filter((p) => p.status === "lost") || [];
-  const voidPositions = positions?.filter((p) => p.status === "void") || [];
+  const refundedPositions = positions?.filter((p) => p.status === "refunded") || [];
 
   const handleBet = (market: Market) => {
     setSelectedMarket(market);
@@ -62,6 +65,9 @@ export function MarketsPanel() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Admin Controls - only visible to admins */}
+      {isAdmin && <AdminMarketControls />}
 
       <Tabs defaultValue="markets" className="w-full">
         <TabsList className="w-full grid grid-cols-3">
@@ -132,8 +138,8 @@ export function MarketsPanel() {
           {lostPositions.length > 0 && (
             <PositionSection title="Lost" icon={<XCircle className="h-4 w-4 text-red-500" />} positions={lostPositions} />
           )}
-          {voidPositions.length > 0 && (
-            <PositionSection title="Refunded" icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={voidPositions} />
+          {refundedPositions.length > 0 && (
+            <PositionSection title="Refunded" icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={refundedPositions} />
           )}
           {!positions?.length && (
             <div className="text-center py-8 text-muted-foreground">
@@ -180,7 +186,7 @@ function PositionCard({ position }: { position: any }) {
     pending: "bg-yellow-500/20 text-yellow-600",
     won: "bg-green-500/20 text-green-600",
     lost: "bg-red-500/20 text-red-600",
-    void: "bg-gray-500/20 text-gray-600",
+    refunded: "bg-gray-500/20 text-gray-600",
   };
 
   return (

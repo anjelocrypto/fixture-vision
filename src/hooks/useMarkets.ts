@@ -213,9 +213,12 @@ export function useResolveMarket() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: { market_id: string; winning_outcome: "yes" | "no" | "void" }) => {
+    mutationFn: async (params: { market_id: string; winning_outcome: "yes" | "no" | "void" | null }) => {
+      // Convert "void" to null for the edge function
+      const outcome = params.winning_outcome === "void" ? null : params.winning_outcome;
+      
       const { data, error } = await supabase.functions.invoke("market-resolve", {
-        body: params,
+        body: { market_id: params.market_id, winning_outcome: outcome },
       });
 
       if (error) throw error;
