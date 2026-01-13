@@ -32,32 +32,32 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
 
   const stats = [
     {
-      label: "Volume",
+      label: "Total Pool",
       value: aggregates?.total_pool ?? 0,
       icon: Coins,
       iconBg: "bg-amber-500/15",
       iconColor: "text-amber-500",
       suffix: " coins",
-      description: "Total traded",
+      description: "Volume",
     },
     {
-      label: "Traders",
+      label: "Unique Traders",
       value: aggregates?.unique_traders ?? 0,
       icon: Users,
       iconBg: "bg-primary/15",
       iconColor: "text-primary",
-      description: "Unique bettors",
+      description: "Bettors",
     },
     {
-      label: "Positions",
+      label: "Total Bets",
       value: aggregates?.total_positions ?? 0,
       icon: BarChart3,
       iconBg: "bg-primary/15",
       iconColor: "text-primary",
-      description: "Total bets",
+      description: "Positions",
     },
     {
-      label: "YES Pool",
+      label: "YES Bets",
       value: yesStake,
       icon: TrendingUp,
       iconBg: "bg-emerald-500/15",
@@ -65,7 +65,7 @@ export function StatsBar({ aggregates, isLoading }: StatsBarProps) {
       suffix: ` (${yesPct}%)`,
     },
     {
-      label: "NO Pool",
+      label: "NO Bets",
       value: noStake,
       icon: TrendingDown,
       iconBg: "bg-red-500/15",

@@ -55,7 +55,7 @@ export function OddsChart({ data, resolvedAt }: OddsChartProps) {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2 font-semibold">
             <TrendingUp className="h-4 w-4 text-primary" />
-            YES % Over Time
+            YES Share of Pool
           </CardTitle>
           <div className="flex gap-1">
             {timeRanges.map((range) => (
@@ -77,7 +77,7 @@ export function OddsChart({ data, resolvedAt }: OddsChartProps) {
           <div className="h-[240px] flex flex-col items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
             <BarChart3 className="h-10 w-10 mb-3 opacity-40" />
             <p>No betting activity yet</p>
-            <p className="text-xs mt-1 text-muted-foreground/70">Chart will appear after first trade</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">Chart will appear after first bet</p>
           </div>
         ) : chartData.length === 0 ? (
           <div className="h-[240px] flex flex-col items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
@@ -122,7 +122,7 @@ export function OddsChart({ data, resolvedAt }: OddsChartProps) {
                     padding: "10px 14px",
                     boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
                   }}
-                  formatter={(value: number) => [`${value}%`, "YES %"]}
+                  formatter={(value: number) => [`${value}%`, "YES Share"]}
                   labelFormatter={(label) => label}
                   labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
                 />
