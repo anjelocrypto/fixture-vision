@@ -11,14 +11,17 @@ interface YourPositionProps {
 export function YourPosition({ positions, market }: YourPositionProps) {
   if (positions.length === 0) {
     return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Your Position</CardTitle>
+      <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
+            <Coins className="h-5 w-5 text-primary" />
+            Your Position
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="text-center py-4 text-muted-foreground text-sm">
-            <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            You have no positions on this market
+        <CardContent className="px-5 pb-5">
+          <div className="text-center py-6 text-muted-foreground text-sm">
+            <AlertCircle className="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p>You have no positions on this market</p>
           </div>
         </CardContent>
       </Card>
@@ -51,40 +54,49 @@ export function YourPosition({ positions, market }: YourPositionProps) {
       noPositions.reduce((sum, p) => sum + p.net_stake, 0)
     : 0;
 
-  const statusColors: Record<string, string> = {
-    pending: "bg-yellow-500/20 text-yellow-600",
-    won: "bg-green-500/20 text-green-600",
-    lost: "bg-red-500/20 text-red-600",
-    refunded: "bg-muted text-muted-foreground",
-  };
-
-  const statusIcons: Record<string, React.ReactNode> = {
-    pending: <Clock className="h-3 w-3" />,
-    won: <CheckCircle className="h-3 w-3" />,
-    lost: <XCircle className="h-3 w-3" />,
-    refunded: <Coins className="h-3 w-3" />,
+  const statusStyles: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+    pending: { 
+      bg: "bg-amber-500/15", 
+      text: "text-amber-400",
+      icon: <Clock className="h-3 w-3" />
+    },
+    won: { 
+      bg: "bg-emerald-500/15", 
+      text: "text-emerald-400",
+      icon: <CheckCircle className="h-3 w-3" />
+    },
+    lost: { 
+      bg: "bg-red-500/15", 
+      text: "text-red-400",
+      icon: <XCircle className="h-3 w-3" />
+    },
+    refunded: { 
+      bg: "bg-muted", 
+      text: "text-muted-foreground",
+      icon: <Coins className="h-3 w-3" />
+    },
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
+    <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+      <CardHeader className="pb-3 pt-5 px-5">
+        <CardTitle className="text-lg flex items-center gap-2 font-semibold">
           <Coins className="h-5 w-5 text-primary" />
           Your Position
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="px-5 pb-5 space-y-4">
         {/* Summary Stats */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-muted/50 rounded-lg p-3">
-            <div className="text-xs text-muted-foreground mb-1">Total Staked</div>
-            <div className="text-lg font-bold">{totalStaked.toLocaleString()}</div>
+          <div className="bg-muted/40 rounded-xl p-3.5 border border-border/30">
+            <div className="text-xs text-muted-foreground mb-1 font-medium">Total Staked</div>
+            <div className="text-xl font-bold text-foreground">{totalStaked.toLocaleString()}</div>
           </div>
-          <div className="bg-muted/50 rounded-lg p-3">
-            <div className="text-xs text-muted-foreground mb-1">
+          <div className="bg-muted/40 rounded-xl p-3.5 border border-border/30">
+            <div className="text-xs text-muted-foreground mb-1 font-medium">
               {market.status === "resolved" ? "Settled Payout" : "Potential Payout"}
             </div>
-            <div className="text-lg font-bold text-green-600">
+            <div className="text-xl font-bold text-emerald-400">
               {market.status === "resolved"
                 ? totalSettledPayout.toLocaleString()
                 : totalPotentialPayout.toLocaleString()}
@@ -95,13 +107,13 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         {/* YES/NO Split */}
         <div className="space-y-2">
           {yesStaked > 0 && (
-            <div className="flex items-center justify-between p-2 rounded-lg bg-green-500/10">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-600" />
-                <span className="font-medium text-green-600">YES</span>
+                <TrendingUp className="h-4 w-4 text-emerald-400" />
+                <span className="font-semibold text-emerald-400">YES</span>
               </div>
               <div className="text-right text-sm">
-                <div>{yesStaked.toLocaleString()} coins</div>
+                <div className="font-medium text-foreground">{yesStaked.toLocaleString()} coins</div>
                 <div className="text-xs text-muted-foreground">
                   Avg @ {avgYesOdds.toFixed(2)}
                 </div>
@@ -109,13 +121,13 @@ export function YourPosition({ positions, market }: YourPositionProps) {
             </div>
           )}
           {noStaked > 0 && (
-            <div className="flex items-center justify-between p-2 rounded-lg bg-red-500/10">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-red-500/10 border border-red-500/20">
               <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-red-600" />
-                <span className="font-medium text-red-600">NO</span>
+                <TrendingDown className="h-4 w-4 text-red-400" />
+                <span className="font-semibold text-red-400">NO</span>
               </div>
               <div className="text-right text-sm">
-                <div>{noStaked.toLocaleString()} coins</div>
+                <div className="font-medium text-foreground">{noStaked.toLocaleString()} coins</div>
                 <div className="text-xs text-muted-foreground">
                   Avg @ {avgNoOdds.toFixed(2)}
                 </div>
@@ -125,45 +137,50 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         </div>
 
         {/* Individual Positions */}
-        <div className="space-y-2">
+        <div className="space-y-2 pt-2">
           <div className="text-xs text-muted-foreground font-medium">
             Individual Bets ({positions.length})
           </div>
-          {positions.map((pos) => (
-            <div
-              key={pos.id}
-              className="flex items-center justify-between p-2 rounded-lg border border-border/50 text-sm"
-            >
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className={
-                    pos.outcome === "yes"
-                      ? "bg-green-500/20 text-green-600 border-green-500/30"
-                      : "bg-red-500/20 text-red-600 border-red-500/30"
-                  }
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {positions.map((pos) => {
+              const style = statusStyles[pos.status] || statusStyles.pending;
+              return (
+                <div
+                  key={pos.id}
+                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-muted/20 text-sm"
                 >
-                  {pos.outcome.toUpperCase()}
-                </Badge>
-                <span className="text-muted-foreground">
-                  @ {pos.odds_at_placement.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>{pos.stake.toLocaleString()}</span>
-                <Badge className={statusColors[pos.status]}>
-                  {statusIcons[pos.status]}
-                  <span className="ml-1">
-                    {pos.status === "won"
-                      ? `+${pos.payout_amount}`
-                      : pos.status === "pending"
-                      ? `→ ${pos.potential_payout}`
-                      : pos.status}
-                  </span>
-                </Badge>
-              </div>
-            </div>
-          ))}
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`px-2 py-0.5 text-xs font-medium ${
+                        pos.outcome === "yes"
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-red-500/15 text-red-400 border-red-500/30"
+                      }`}
+                    >
+                      {pos.outcome.toUpperCase()}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      @ {pos.odds_at_placement.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{pos.stake.toLocaleString()}</span>
+                    <Badge className={`${style.bg} ${style.text} border-0 gap-1`}>
+                      {style.icon}
+                      <span>
+                        {pos.status === "won"
+                          ? `→ ${pos.payout_amount}`
+                          : pos.status === "pending"
+                          ? `→ ${pos.potential_payout}`
+                          : pos.status}
+                      </span>
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </CardContent>
     </Card>

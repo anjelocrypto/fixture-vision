@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { ChartDataPoint } from "@/hooks/useMarketDetail";
 import { format } from "date-fns";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, BarChart3 } from "lucide-react";
 
 interface OddsChartProps {
   data: ChartDataPoint[];
@@ -23,33 +23,45 @@ export function OddsChart({ data, resolvedAt }: OddsChartProps) {
   }));
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
+    <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+      <CardHeader className="pb-2 pt-5 px-5">
+        <CardTitle className="text-base flex items-center gap-2 font-semibold">
           <TrendingUp className="h-4 w-4 text-primary" />
           YES % Over Time
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-5">
         {!hasData ? (
-          <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
-            No betting activity yet
+          <div className="h-[220px] flex flex-col items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
+            <BarChart3 className="h-10 w-10 mb-3 opacity-40" />
+            <p>No betting activity yet</p>
           </div>
         ) : (
-          <div className="h-[200px]">
+          <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="yesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid 
+                  strokeDasharray="3 3" 
+                  stroke="hsl(var(--border))" 
+                  strokeOpacity={0.5}
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                   tickLine={false}
                   axisLine={false}
                   interval="preserveStartEnd"
                 />
                 <YAxis
                   domain={[0, 100]}
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => `${v}%`}
@@ -58,29 +70,34 @@ export function OddsChart({ data, resolvedAt }: OddsChartProps) {
                   contentStyle={{
                     backgroundColor: "hsl(var(--card))",
                     border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
+                    borderRadius: "12px",
+                    padding: "10px 14px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
                   }}
                   formatter={(value: number) => [`${value}%`, "YES %"]}
                   labelFormatter={(label) => label}
+                  labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
                 />
                 <Line
                   type="monotone"
                   dataKey="yes_percent"
                   stroke="hsl(var(--primary))"
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                   dot={false}
-                  activeDot={{ r: 4 }}
+                  activeDot={{ r: 5, fill: 'hsl(var(--primary))', stroke: 'hsl(var(--background))', strokeWidth: 2 }}
                 />
                 {resolvedTimestamp && (
                   <ReferenceLine
                     x={chartData.find((d) => d.timestamp >= resolvedTimestamp)?.label}
                     stroke="hsl(var(--destructive))"
                     strokeDasharray="5 5"
+                    strokeWidth={2}
                     label={{
                       value: "Resolved",
                       position: "top",
                       fill: "hsl(var(--destructive))",
-                      fontSize: 10,
+                      fontSize: 11,
+                      fontWeight: 600,
                     }}
                   />
                 )}

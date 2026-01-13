@@ -31,14 +31,6 @@ export function MarketHeader({ market }: MarketHeaderProps) {
     ? formatDistanceToNow(closesAt, { addSuffix: true })
     : format(closesAt, "MMM d, yyyy HH:mm");
 
-  const categoryColors: Record<string, string> = {
-    football: "bg-green-500/20 text-green-600 border-green-500/30",
-    basketball: "bg-orange-500/20 text-orange-600 border-orange-500/30",
-    entertainment: "bg-purple-500/20 text-purple-600 border-purple-500/30",
-    politics: "bg-blue-500/20 text-blue-600 border-blue-500/30",
-    crypto: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
-  };
-
   const getStatusBadge = () => {
     if (isResolved && market.winning_outcome) {
       const isYesWon = market.winning_outcome === "yes";
@@ -47,8 +39,8 @@ export function MarketHeader({ market }: MarketHeaderProps) {
           variant="outline"
           className={
             isYesWon
-              ? "bg-green-500/20 text-green-600 border-green-500/30"
-              : "bg-red-500/20 text-red-600 border-red-500/30"
+              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 font-medium"
+              : "bg-red-500/20 text-red-400 border-red-500/40 font-medium"
           }
         >
           {isYesWon ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
@@ -58,21 +50,21 @@ export function MarketHeader({ market }: MarketHeaderProps) {
     }
     if (isResolved && !market.winning_outcome) {
       return (
-        <Badge variant="outline" className="bg-muted text-muted-foreground">
+        <Badge variant="outline" className="bg-muted text-muted-foreground font-medium">
           Voided
         </Badge>
       );
     }
     if (isClosed) {
       return (
-        <Badge variant="outline" className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">
+        <Badge variant="outline" className="bg-amber-500/20 text-amber-400 border-amber-500/40 font-medium">
           <Clock className="h-3 w-3 mr-1" />
           Closed
         </Badge>
       );
     }
     return (
-      <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
+      <Badge variant="outline" className="bg-primary/20 text-primary border-primary/40 font-medium">
         <Trophy className="h-3 w-3 mr-1" />
         Open
       </Badge>
@@ -80,51 +72,53 @@ export function MarketHeader({ market }: MarketHeaderProps) {
   };
 
   return (
-    <Card>
-      <CardContent className="p-6 space-y-4">
+    <Card className="border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+      <CardContent className="p-5 sm:p-6 space-y-4">
         {/* Badges Row */}
         <div className="flex items-center gap-2 flex-wrap">
           <Badge
             variant="outline"
-            className={categoryColors[market.category] || "bg-muted"}
+            className="bg-primary/15 text-primary border-primary/30 font-medium capitalize"
           >
             {market.category}
           </Badge>
           {getStatusBadge()}
           {market.resolution_rule && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs font-medium bg-secondary/80">
               {RESOLUTION_RULE_LABELS[market.resolution_rule] || market.resolution_rule}
             </Badge>
           )}
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl font-bold text-foreground leading-tight">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight tracking-tight">
           {market.title}
         </h1>
 
         {/* Description */}
         {market.description && (
-          <p className="text-muted-foreground">{market.description}</p>
+          <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
+            {market.description}
+          </p>
         )}
 
         {/* Fixture Info */}
         {market.fixture && (
-          <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl bg-muted/40 border border-border/30">
             <div className="flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">
+              <Calendar className="h-4 w-4 text-primary shrink-0" />
+              <span className="font-semibold text-foreground">
                 {market.fixture.home_team} vs {market.fixture.away_team}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground sm:ml-auto">
               Kickoff: {format(market.fixture.kickoff_at, "MMM d, HH:mm")}
             </div>
           </div>
         )}
 
         {/* Countdown */}
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm pt-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <span className="text-muted-foreground">
             {isOpen ? "Closes" : "Closed"} {countdown}

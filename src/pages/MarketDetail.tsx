@@ -27,9 +27,12 @@ const MarketDetail = () => {
     return (
       <div className="min-h-screen bg-background">
         <AppHeader />
-        <main className="container max-w-6xl mx-auto p-4 sm:p-6">
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          <div className="flex items-center justify-center py-24">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <span className="text-muted-foreground text-sm">Loading market...</span>
+            </div>
           </div>
         </main>
       </div>
@@ -40,11 +43,11 @@ const MarketDetail = () => {
     return (
       <div className="min-h-screen bg-background">
         <AppHeader />
-        <main className="container max-w-6xl mx-auto p-4 sm:p-6">
-          <div className="text-center py-20">
-            <h1 className="text-2xl font-bold text-foreground mb-2">Market Not Found</h1>
-            <p className="text-muted-foreground mb-4">The market you're looking for doesn't exist.</p>
-            <Button onClick={() => navigate("/markets")}>
+        <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          <div className="text-center py-24">
+            <h1 className="text-2xl font-bold text-foreground mb-3">Market Not Found</h1>
+            <p className="text-muted-foreground mb-6">The market you're looking for doesn't exist.</p>
+            <Button onClick={() => navigate("/markets")} variant="outline" size="lg">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Markets
             </Button>
@@ -59,21 +62,21 @@ const MarketDetail = () => {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
-      <main className="container max-w-6xl mx-auto p-4 sm:p-6">
+      <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Back Button */}
         <Button
           variant="ghost"
           size="sm"
           onClick={() => navigate("/markets")}
-          className="mb-4"
+          className="mb-4 sm:mb-6 -ml-2 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           All Markets
         </Button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
           {/* Left Column - Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-8 space-y-5 sm:space-y-6">
             {/* Market Header */}
             <MarketHeader market={market} />
 
@@ -94,7 +97,7 @@ const MarketDetail = () => {
           </div>
 
           {/* Right Column - Bet Panel & Position */}
-          <div className="space-y-6">
+          <div className="lg:col-span-4 space-y-5 sm:space-y-6">
             {/* Bet Panel - only if open */}
             {isOpen && (
               <BetPanel
