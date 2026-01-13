@@ -17,26 +17,29 @@ export type Database = {
       admin_market_audit_log: {
         Row: {
           action: string
-          admin_user_id: string
+          admin_user_id: string | null
           created_at: string
           details: Json | null
           id: string
+          is_system: boolean
           market_id: string | null
         }
         Insert: {
           action: string
-          admin_user_id: string
+          admin_user_id?: string | null
           created_at?: string
           details?: Json | null
           id?: string
+          is_system?: boolean
           market_id?: string | null
         }
         Update: {
           action?: string
-          admin_user_id?: string
+          admin_user_id?: string | null
           created_at?: string
           details?: Json | null
           id?: string
+          is_system?: boolean
           market_id?: string | null
         }
         Relationships: [
@@ -1371,6 +1374,7 @@ export type Database = {
           market_type: string
           odds_no: number
           odds_yes: number
+          resolution_rule: string | null
           resolved_at: string | null
           status: string
           title: string
@@ -1390,6 +1394,7 @@ export type Database = {
           market_type?: string
           odds_no: number
           odds_yes: number
+          resolution_rule?: string | null
           resolved_at?: string | null
           status?: string
           title: string
@@ -1409,6 +1414,7 @@ export type Database = {
           market_type?: string
           odds_no?: number
           odds_yes?: number
+          resolution_rule?: string | null
           resolved_at?: string | null
           status?: string
           title?: string
@@ -2308,6 +2314,10 @@ export type Database = {
       }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      place_market_bet: {
+        Args: { _market_id: string; _outcome: string; _stake: number }
+        Returns: Json
+      }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
       try_use_feature: {
         Args: { feature_key: string }
