@@ -2235,6 +2235,17 @@ export type Database = {
         Args: { p_duration_minutes?: number; p_job_name: string }
         Returns: boolean
       }
+      admin_create_market_for_fixture: {
+        Args: {
+          _close_minutes_before_kickoff?: number
+          _fixture_id: number
+          _odds_no?: number
+          _odds_yes?: number
+          _resolution_rule: string
+          _title_override?: string
+        }
+        Returns: Json
+      }
       auto_release_stuck_locks: {
         Args: { max_age_minutes?: number }
         Returns: {

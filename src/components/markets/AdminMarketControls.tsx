@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 import { Market, useMarkets, useCreateMarket, useResolveMarket } from "@/hooks/useMarkets";
+import { AdminFixturesDashboard } from "./AdminFixturesDashboard";
 
 const createMarketSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters"),
@@ -89,15 +90,20 @@ export function AdminMarketControls() {
   const allManageableMarkets = [...(openMarkets || []), ...(closedMarkets || [])];
 
   return (
-    <Card className="border-amber-500/30 bg-amber-500/5">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-amber-600">
-          <Shield className="h-5 w-5" />
-          Admin Controls
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Create Market Button */}
+    <div className="space-y-4">
+      {/* Fixtures Dashboard - Primary way to create markets */}
+      <AdminFixturesDashboard />
+
+      {/* Manual Controls */}
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-amber-600">
+            <Shield className="h-5 w-5" />
+            Manual Admin Controls
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Create Market Button */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="w-full" variant="outline">
@@ -271,9 +277,10 @@ export function AdminMarketControls() {
           <p className="text-sm text-muted-foreground text-center py-2">
             No markets pending resolution.
           </p>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
