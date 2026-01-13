@@ -214,6 +214,11 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
           )}
           Place Bet on {outcome.toUpperCase()}
         </Button>
+
+        {/* Fixed odds disclaimer */}
+        <p className="text-[10px] text-center text-muted-foreground/70 leading-tight">
+          Implied % shown are fixed odds set by admins — not live market pricing.
+        </p>
       </CardContent>
     </Card>
   );
