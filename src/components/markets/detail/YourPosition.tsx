@@ -15,7 +15,7 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="text-lg flex items-center gap-2 font-semibold">
             <DollarSign className="h-5 w-5 text-primary" />
-            Your Position
+            Your Bets
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
@@ -89,7 +89,7 @@ export function YourPosition({ positions, market }: YourPositionProps) {
       <CardHeader className="pb-3 pt-5 px-5">
         <CardTitle className="text-lg flex items-center gap-2 font-semibold">
           <DollarSign className="h-5 w-5 text-primary" />
-          Your Position
+          Your Bets
         </CardTitle>
       </CardHeader>
       <CardContent className="px-5 pb-5 space-y-4">

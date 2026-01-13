@@ -68,15 +68,17 @@ export function PriceDisplay({ odds, outcome, size = "md", showOdds = true }: Pr
 }
 
 /**
- * Normalizes YES/NO implied probabilities to sum to 100%
+ * Normalizes YES/NO implied probabilities to sum to exactly 100%
+ * Avoids rounding drift by computing NO as 100 - YES
  */
 export function normalizeImpliedProbs(oddsYes: number, oddsNo: number): { yesPct: number; noPct: number } {
   const rawYes = 1 / oddsYes;
   const rawNo = 1 / oddsNo;
   const total = rawYes + rawNo;
   
-  return {
-    yesPct: Math.round((rawYes / total) * 100),
-    noPct: Math.round((rawNo / total) * 100),
-  };
+  const yesPct = Math.round((rawYes / total) * 100);
+  // Avoid rounding drift: NO = 100 - YES
+  const noPct = 100 - yesPct;
+  
+  return { yesPct, noPct };
 }

@@ -22,7 +22,7 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
           <div className="text-center py-8 text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
             <Activity className="h-10 w-10 mx-auto mb-3 opacity-40" />
             <p>No activity yet</p>
-            <p className="text-xs mt-1 text-muted-foreground/70">Be the first to trade!</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">Be the first to bet!</p>
           </div>
         </CardContent>
       </Card>
@@ -71,7 +71,7 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
             Recent Activity
           </CardTitle>
           <Badge variant="secondary" className="text-xs">
-            {activity.filter(a => a.type === "bet").length} trades
+            {activity.filter(a => a.type === "bet").length} bets
           </Badge>
         </div>
       </CardHeader>
