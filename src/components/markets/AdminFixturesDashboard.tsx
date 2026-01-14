@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { Search, ChevronRight, Loader2, Calendar, Target, Trophy, X } from "lucide-react";
 
@@ -33,6 +33,7 @@ import {
   type Fixture,
   type League,
 } from "@/hooks/useAdminFixtures";
+import { useAutoFillOdds } from "@/hooks/useAutoFillOdds";
 
 type TimeWindow = "24" | "48";
 
@@ -382,8 +383,28 @@ function MarketBuilderDialog({
   const [oddsNo, setOddsNo] = useState(2.0);
   const [closeMinutes, setCloseMinutes] = useState(5);
   const [createdMarkets, setCreatedMarkets] = useState<string[]>([]);
+  const [manuallyEdited, setManuallyEdited] = useState(false);
 
   const createMarket = useCreateMarketFromFixture();
+
+  // Auto-fill odds when template is selected
+  const { data: autoOdds, isLoading: oddsLoading } = useAutoFillOdds(
+    fixture.id,
+    selectedRule
+  );
+
+  // Apply auto-filled odds when they change (and user hasn't manually edited)
+  useEffect(() => {
+    if (autoOdds && !manuallyEdited) {
+      setOddsYes(autoOdds.odds_yes);
+      setOddsNo(autoOdds.odds_no);
+    }
+  }, [autoOdds, manuallyEdited]);
+
+  // Reset manual edit flag when template changes
+  useEffect(() => {
+    setManuallyEdited(false);
+  }, [selectedRule]);
 
   const kickoff = fixture.timestamp
     ? new Date(fixture.timestamp * 1000)
@@ -460,28 +481,57 @@ function MarketBuilderDialog({
         </div>
 
         {/* Odds Inputs */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <Label className="text-xs">Odds YES</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="1.01"
-              value={oddsYes}
-              onChange={(e) => setOddsYes(parseFloat(e.target.value) || 1.8)}
-              className="h-9"
-            />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Odds</Label>
+            {selectedRule && (
+              <div className="flex items-center gap-1">
+                {oddsLoading ? (
+                  <Badge variant="outline" className="text-xs">
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Loading...
+                  </Badge>
+                ) : autoOdds?.source === "api_football" ? (
+                  <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-600">
+                    📊 {autoOdds.bookmaker}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    ⚙️ Default
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Odds NO</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="1.01"
-              value={oddsNo}
-              onChange={(e) => setOddsNo(parseFloat(e.target.value) || 2.0)}
-              className="h-9"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Odds YES</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="1.01"
+                value={oddsYes}
+                onChange={(e) => {
+                  setManuallyEdited(true);
+                  setOddsYes(parseFloat(e.target.value) || 1.8);
+                }}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Odds NO</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="1.01"
+                value={oddsNo}
+                onChange={(e) => {
+                  setManuallyEdited(true);
+                  setOddsNo(parseFloat(e.target.value) || 2.0);
+                }}
+                className="h-9"
+              />
+            </div>
           </div>
         </div>
 

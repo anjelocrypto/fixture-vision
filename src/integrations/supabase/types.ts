@@ -2284,6 +2284,10 @@ export type Database = {
         }[]
       }
       get_market_aggregates: { Args: { _market_id: string }; Returns: Json }
+      get_market_template_odds: {
+        Args: { _fixture_id: number; _resolution_rule: string }
+        Returns: Json
+      }
       get_my_market_stats: {
         Args: never
         Returns: {
