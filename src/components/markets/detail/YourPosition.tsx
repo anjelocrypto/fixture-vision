@@ -1,7 +1,11 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Coins, TrendingUp, TrendingDown, CheckCircle, XCircle, Clock, AlertCircle, DollarSign } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Coins, TrendingUp, TrendingDown, CheckCircle, XCircle, Clock, AlertCircle, DollarSign, LogIn } from "lucide-react";
 import { Position, Market } from "@/hooks/useMarkets";
+import { supabase } from "@/integrations/supabase/client";
 
 interface YourPositionProps {
   positions: Position[];
@@ -9,6 +13,53 @@ interface YourPositionProps {
 }
 
 export function YourPosition({ positions, market }: YourPositionProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const navigate = useNavigate();
+
+  // Check if user is authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Show login prompt for unauthenticated users
+  if (isAuthenticated === false) {
+    return (
+      <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
+            <DollarSign className="h-5 w-5 text-primary" />
+            Your Bets
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <div className="text-center py-6 bg-muted/20 rounded-xl border border-border/30 space-y-3">
+            <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">Login to track your bets</p>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate("/landing")}
+              className="mt-2"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Login
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (positions.length === 0) {
     return (
       <Card className="border-border/50 bg-card/80 backdrop-blur-sm">

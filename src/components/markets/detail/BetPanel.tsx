@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Coins, TrendingUp, TrendingDown, AlertCircle, Loader2, Clock, ArrowRight, Minus, Target } from "lucide-react";
+import { Coins, TrendingUp, TrendingDown, AlertCircle, Loader2, Clock, Minus, Target, LogIn } from "lucide-react";
 import { Market, usePlaceBet } from "@/hooks/useMarkets";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 import { normalizeImpliedProbs } from "./PriceDisplay";
+import { supabase } from "@/integrations/supabase/client";
 
 interface BetPanelProps {
   market: Market;
@@ -23,8 +25,25 @@ const MIN_STAKE = 10;
 export function BetPanel({ market, userBalance }: BetPanelProps) {
   const [outcome, setOutcome] = useState<"yes" | "no">("yes");
   const [stake, setStake] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const navigate = useNavigate();
 
   const placeBet = usePlaceBet();
+
+  // Check if user is authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const stakeNum = Number(stake) || 0;
   const fee = Math.max(MIN_FEE, Math.floor(stakeNum * FEE_RATE));
@@ -58,6 +77,64 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
       toast.error(errorMessage);
     }
   };
+
+  // Show login prompt for unauthenticated users
+  if (isAuthenticated === false) {
+    return (
+      <Card className="sticky top-4 border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
+            <Target className="h-5 w-5 text-primary" />
+            Place Bet
+          </CardTitle>
+          <div className="flex items-center gap-1.5 text-xs text-amber-500 mt-1 bg-amber-500/10 px-2 py-1 rounded-md w-fit">
+            <Clock className="h-3.5 w-3.5" />
+            <span>Closes {closesIn}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <div className="text-center py-8 space-y-4">
+            <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <LogIn className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Login to Place Bets</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Create a free account to start betting with virtual coins
+              </p>
+            </div>
+            <Button 
+              onClick={() => navigate("/landing")}
+              className="w-full"
+              size="lg"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Login / Sign Up
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show loading state while checking auth
+  if (isAuthenticated === null) {
+    return (
+      <Card className="sticky top-4 border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
+            <Target className="h-5 w-5 text-primary" />
+            Place Bet
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="sticky top-4 border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
