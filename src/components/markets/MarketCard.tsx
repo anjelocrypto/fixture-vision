@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Clock, Users, TrendingUp, CheckCircle, XCircle } from "lucide-react";
 import { Market } from "@/hooks/useMarkets";
 import { formatDistanceToNow, format } from "date-fns";
+import { normalizeImpliedProbs } from "./detail/PriceDisplay";
 
 export interface MarketCardProps {
   market: Market;
@@ -16,7 +17,10 @@ export interface MarketCardProps {
 export function MarketCard({ market, onBet, showBetButton = true }: MarketCardProps) {
   const navigate = useNavigate();
   const totalStaked = market.total_staked_yes + market.total_staked_no;
-  const yesPercent = totalStaked > 0 ? (market.total_staked_yes / totalStaked) * 100 : 50;
+  const { yesPct: impliedYesPct } = normalizeImpliedProbs(market.odds_yes, market.odds_no);
+  const yesPercent = totalStaked > 0 
+    ? (market.total_staked_yes / totalStaked) * 100 
+    : impliedYesPct;
   
   const isOpen = market.status === "open";
   const closesIn = isOpen 
