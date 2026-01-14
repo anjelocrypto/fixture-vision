@@ -45,6 +45,12 @@ All colors MUST be HSL.
     /* Success/Active states */
     --success: 155 65% 45%;
     --success-foreground: 155 10% 5%;
+
+    /* Mobile Safe Areas for Capacitor/Native apps */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
   }
 
   .dark {

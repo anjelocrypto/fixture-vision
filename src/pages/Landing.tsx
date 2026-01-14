@@ -601,7 +601,7 @@ export default function Landing() {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-border py-12">
+        <footer className="border-t border-border py-12" style={{ paddingBottom: 'calc(3rem + var(--safe-area-bottom))' }}>
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="flex items-center gap-2">
@@ -617,6 +617,15 @@ export default function Landing() {
 
               <p className="text-sm text-muted-foreground">
                 © 2025 Ticket AI. All rights reserved.
+              </p>
+            </div>
+            
+            {/* Store Compliance Disclaimer */}
+            <div className="mt-8 pt-6 border-t border-border/50 text-center">
+              <p className="text-xs text-muted-foreground max-w-2xl mx-auto">
+                <strong>No real money gambling.</strong> Ticket AI is a sports analytics platform. 
+                Prediction Markets use virtual coins only — coins cannot be purchased or exchanged for cash. 
+                For entertainment and educational purposes only.
               </p>
             </div>
           </div>
