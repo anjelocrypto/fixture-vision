@@ -1,20 +1,31 @@
 import { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAccess } from "@/hooks/useAccess";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Lock, Sparkles } from "lucide-react";
 
 interface PaywallGateProps {
   children: ReactNode;
   feature?: string;
   featureKey?: string;
   allowTrial?: boolean;
+  /** If true, renders nothing instead of paywall UI when blocked */
+  silent?: boolean;
 }
 
-export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateProps) => {
+/**
+ * PaywallGate - Conditionally renders children based on subscription status.
+ * 
+ * When user lacks access:
+ * - If silent=true: renders nothing (for use with unified upgrade hero)
+ * - If silent=false (default): renders null (parent handles upgrade UI)
+ * 
+ * Note: The actual upgrade UI should be rendered at a higher level to avoid
+ * duplicate paywall cards across the page.
+ */
+export const PaywallGate = ({ 
+  children, 
+  feature = "this feature",
+  silent = false 
+}: PaywallGateProps) => {
   const { hasAccess, loading, isWhitelisted } = useAccess();
-  const navigate = useNavigate();
 
   if (loading) {
     return (
@@ -30,44 +41,8 @@ export const PaywallGate = ({ children, feature = "this feature" }: PaywallGateP
   const hasPaidAccess = hasAccess || isWhitelisted;
 
   if (!hasPaidAccess) {
-    return (
-      <div className="p-6">
-        <Card className="border-primary/20">
-          <CardHeader className="text-center pb-4">
-            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <Lock className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-xl">Premium Feature</CardTitle>
-            <CardDescription className="text-base">
-              Unlock {feature} with a subscription
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
-                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <span>Advanced analytics & tools</span>
-              </div>
-              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
-                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <span>AI-powered insights</span>
-              </div>
-              <div className="flex items-start gap-3 p-2 rounded-lg bg-primary/5">
-                <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <span>Unlimited ticket creation</span>
-              </div>
-            </div>
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={() => navigate("/pricing")}
-            >
-              View Plans
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    // Return null - parent component should handle showing upgrade UI
+    return null;
   }
 
   return <>{children}</>;

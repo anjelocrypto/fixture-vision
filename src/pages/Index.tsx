@@ -14,7 +14,7 @@ import { SelectionsDisplay } from "@/components/SelectionsDisplay";
 import { TicketDrawer } from "@/components/TicketDrawer";
 import { TicketCreatorDialog } from "@/components/TicketCreatorDialog";
 import { AdminRefreshButton } from "@/components/AdminRefreshButton";
-import { PaywallGate } from "@/components/PaywallGate";
+import { PremiumUpgradeHero } from "@/components/PremiumUpgradeHero";
 
 import { useAccess } from "@/hooks/useAccess";
 import { supabase } from "@/integrations/supabase/client";
@@ -109,6 +109,7 @@ const Index = () => {
   const { t, i18n } = useTranslation(['common', 'fixtures', 'filterizer', 'optimizer']);
   const queryClient = useQueryClient();
   const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
+  const hasPaidAccess = hasAccess || isWhitelisted;
   const isMobile = useIsMobile();
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140); // Spain default
   const today = new Date();
@@ -1062,253 +1063,250 @@ const Index = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
-            {showFilterizer && (
-              <PaywallGate feature="Filterizer" featureKey="bet_optimizer" allowTrial={true}>
-                <FilterizerPanel
-                  onApplyFilters={handleApplyFilters}
-                  onClearFilters={handleClearFilters}
-                  isActive={!!filterCriteria}
-                />
-              </PaywallGate>
-            )}
-
-            {showWinner && (
-              <PaywallGate feature="Winner Predictions" featureKey="bet_optimizer" allowTrial={true}>
-                <WinnerPanel onClose={() => setShowWinner(false)} />
-              </PaywallGate>
-            )}
-
-            {showTeamTotals && (
-              <PaywallGate feature="Team Totals O1.5" featureKey="bet_optimizer" allowTrial={true}>
-                <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
-              </PaywallGate>
-            )}
-
-            {showWhoConcedes && (
-              <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
-            )}
-
-            {showCardWar && (
-              <CardWarPanel onClose={() => setShowCardWar(false)} />
-            )}
-
-            {showBTTSIndex && (
-              <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
-            )}
-
-            {showSafeZone && (
-              <SafeZonePanel onClose={() => setShowSafeZone(false)} />
-            )}
-
-            {filterCriteria ? (
+            {/* Show premium upgrade hero for non-subscribers */}
+            {!hasPaidAccess ? (
+              <PremiumUpgradeHero />
+            ) : (
               <>
-                <SelectionsDisplay 
-                  selections={filteredFixtures}
-                  onSelectionClick={(selection) => {
-                    console.log("Selection clicked:", selection);
-                    toast({
-                      title: "Selection Details",
-                      description: `${selection.market} ${selection.side} ${selection.line} @ ${selection.odds}`,
-                    });
-                  }}
-                />
-                {filterizerHasMore && (
-                  <div className="flex justify-center py-6">
-                    <Button
-                      variant="outline"
-                      onClick={handleLoadMoreFilterizer}
-                      disabled={loadingMoreFilterizer}
-                      className="gap-2"
-                    >
-                      {loadingMoreFilterizer ? t('common:loading_more') : `${t('common:load_more')} (${t('common:remaining', { count: filterizerTotalQualified - filteredFixtures.length })})`}
-                    </Button>
-                  </div>
+                {showFilterizer && (
+                  <FilterizerPanel
+                    onApplyFilters={handleApplyFilters}
+                    onClearFilters={handleClearFilters}
+                    isActive={!!filterCriteria}
+                  />
+                )}
+
+                {showWinner && (
+                  <WinnerPanel onClose={() => setShowWinner(false)} />
+                )}
+
+                {showTeamTotals && (
+                  <TeamTotalsPanel onClose={() => setShowTeamTotals(false)} />
+                )}
+
+                {showWhoConcedes && (
+                  <WhoConcedesPanel onClose={() => setShowWhoConcedes(false)} />
+                )}
+
+                {showCardWar && (
+                  <CardWarPanel onClose={() => setShowCardWar(false)} />
+                )}
+
+                {showBTTSIndex && (
+                  <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />
+                )}
+
+                {showSafeZone && (
+                  <SafeZonePanel onClose={() => setShowSafeZone(false)} />
+                )}
+
+                {filterCriteria ? (
+                  <>
+                    <SelectionsDisplay 
+                      selections={filteredFixtures}
+                      onSelectionClick={(selection) => {
+                        console.log("Selection clicked:", selection);
+                        toast({
+                          title: "Selection Details",
+                          description: `${selection.market} ${selection.side} ${selection.line} @ ${selection.odds}`,
+                        });
+                      }}
+                    />
+                    {filterizerHasMore && (
+                      <div className="flex justify-center py-6">
+                        <Button
+                          variant="outline"
+                          onClick={handleLoadMoreFilterizer}
+                          disabled={loadingMoreFilterizer}
+                          className="gap-2"
+                        >
+                          {loadingMoreFilterizer ? t('common:loading_more') : `${t('common:load_more')} (${t('common:remaining', { count: filterizerTotalQualified - filteredFixtures.length })})`}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <CenterRail
+                    selectedDate={selectedDate}
+                    onSelectDate={setSelectedDate}
+                    league={selectedLeague}
+                    fixtures={displayFixtures}
+                    loading={loadingFixtures}
+                    onAnalyze={handleAnalyze}
+                  />
                 )}
               </>
-            ) : (
-              <CenterRail
-                selectedDate={selectedDate}
-                onSelectDate={setSelectedDate}
-                league={selectedLeague}
-                fixtures={displayFixtures}
-                loading={loadingFixtures}
-                onAnalyze={handleAnalyze}
-              />
             )}
           </div>
         </div>
 
-        {/* Desktop Right Rail */}
-        <div className="hidden lg:flex w-[360px] flex-col overflow-hidden border-l border-border">
-          <PaywallGate feature="advanced betting tools and AI analysis">
-            <>
-              {/* AI Ticket Creator (Advanced) */}
-              <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-                <Button
-                  className="w-full gap-2"
-                  variant="default"
-                  onClick={() => setTicketCreatorOpen(true)}
-                  data-tutorial="ticket-creator-btn"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {t('common:ai_ticket_creator')}
-                </Button>
-              </div>
+        {/* Desktop Right Rail - Only show for paid users */}
+        {hasPaidAccess && (
+          <div className="hidden lg:flex w-[360px] flex-col overflow-hidden border-l border-border">
+            {/* AI Ticket Creator (Advanced) */}
+            <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+              <Button
+                className="w-full gap-2"
+                variant="default"
+                onClick={() => setTicketCreatorOpen(true)}
+                data-tutorial="ticket-creator-btn"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t('common:ai_ticket_creator')}
+              </Button>
+            </div>
 
-              {/* Filterizer, Winner & Team Totals Toggles */}
-              <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-                <Button
-                  className="w-full gap-2 mb-2"
-                  variant={showFilterizer ? "default" : "outline"}
-                  onClick={() => {
-                    setShowFilterizer(!showFilterizer);
-                    if (!showFilterizer) {
-                      setShowWinner(false);
-                      setShowTeamTotals(false);
-                      setShowWhoConcedes(false);
-                      setShowCardWar(false);
-                    }
-                  }}
-                  data-tutorial="filterizer-btn"
-                >
-                  <Filter className="h-4 w-4" />
-                  {t('common:filterizer')}
-                </Button>
-                <Button
-                  className="w-full gap-2 mb-2"
-                  variant={showWinner ? "default" : "outline"}
-                  onClick={() => {
-                    setShowWinner(!showWinner);
-                    if (!showWinner) {
-                      setShowFilterizer(false);
-                      setShowTeamTotals(false);
-                      setShowWhoConcedes(false);
-                      setShowCardWar(false);
-                    }
-                  }}
-                  data-tutorial="winner-btn"
-                >
-                  <Trophy className="h-4 w-4" />
-                  {t('common:winner_1x2')}
-                </Button>
-                <Button
-                  className="w-full gap-2 mb-2"
-                  variant={showTeamTotals ? "default" : "outline"}
-                  onClick={() => {
-                    setShowTeamTotals(!showTeamTotals);
-                    if (!showTeamTotals) {
-                      setShowFilterizer(false);
-                      setShowWinner(false);
-                      setShowWhoConcedes(false);
-                      setShowCardWar(false);
-                      setShowBTTSIndex(false);
-                    }
-                  }}
-                  data-tutorial="team-totals-btn"
-                >
-                  <Target className="h-4 w-4" />
-                  {t('common:team_totals')}
-                </Button>
-                <Button
-                  className="w-full gap-2 mb-2"
-                  variant={showWhoConcedes ? "default" : "outline"}
-                  onClick={() => {
-                    setShowWhoConcedes(!showWhoConcedes);
-                    if (!showWhoConcedes) {
-                      setShowFilterizer(false);
-                      setShowWinner(false);
-                      setShowTeamTotals(false);
-                      setShowCardWar(false);
-                      setShowBTTSIndex(false);
-                    }
-                  }}
-                  data-tutorial="who-concedes-btn"
-                >
-                  <ShieldAlert className="h-4 w-4" />
-                  {t('common:who_concedes')}
-                </Button>
-                <Button
-                  className="w-full gap-2"
-                  variant={showCardWar ? "default" : "outline"}
-                  onClick={() => {
-                    setShowCardWar(!showCardWar);
-                    if (!showCardWar) {
-                      setShowFilterizer(false);
-                      setShowWinner(false);
-                      setShowTeamTotals(false);
-                      setShowWhoConcedes(false);
-                      setShowBTTSIndex(false);
-                    }
-                  }}
-                  data-tutorial="card-war-btn"
-                >
-                  <Swords className="h-4 w-4" />
-                  {t('common:card_war')}
-                </Button>
-                <Button
-                  className="w-full gap-2 mb-2"
-                  variant={showBTTSIndex ? "default" : "outline"}
-                  onClick={() => {
-                    setShowBTTSIndex(!showBTTSIndex);
-                    if (!showBTTSIndex) {
-                      setShowFilterizer(false);
-                      setShowWinner(false);
-                      setShowTeamTotals(false);
-                      setShowWhoConcedes(false);
-                      setShowCardWar(false);
-                      setShowSafeZone(false);
-                    }
-                  }}
-                  data-tutorial="btts-index-btn"
-                >
-                  <Users className="h-4 w-4" />
-                  {t('common:btts_index')}
-                </Button>
-                <Button
-                  className="w-full gap-2"
-                  variant={showSafeZone ? "default" : "outline"}
-                  onClick={() => {
-                    setShowSafeZone(!showSafeZone);
-                    if (!showSafeZone) {
-                      setShowFilterizer(false);
-                      setShowWinner(false);
-                      setShowTeamTotals(false);
-                      setShowWhoConcedes(false);
-                      setShowCardWar(false);
-                      setShowBTTSIndex(false);
-                    }
-                  }}
-                  data-tutorial="safe-zone-btn"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Safe Zone
-                </Button>
-              </div>
+            {/* Filterizer, Winner & Team Totals Toggles */}
+            <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
+              <Button
+                className="w-full gap-2 mb-2"
+                variant={showFilterizer ? "default" : "outline"}
+                onClick={() => {
+                  setShowFilterizer(!showFilterizer);
+                  if (!showFilterizer) {
+                    setShowWinner(false);
+                    setShowTeamTotals(false);
+                    setShowWhoConcedes(false);
+                    setShowCardWar(false);
+                  }
+                }}
+                data-tutorial="filterizer-btn"
+              >
+                <Filter className="h-4 w-4" />
+                {t('common:filterizer')}
+              </Button>
+              <Button
+                className="w-full gap-2 mb-2"
+                variant={showWinner ? "default" : "outline"}
+                onClick={() => {
+                  setShowWinner(!showWinner);
+                  if (!showWinner) {
+                    setShowFilterizer(false);
+                    setShowTeamTotals(false);
+                    setShowWhoConcedes(false);
+                    setShowCardWar(false);
+                  }
+                }}
+                data-tutorial="winner-btn"
+              >
+                <Trophy className="h-4 w-4" />
+                {t('common:winner_1x2')}
+              </Button>
+              <Button
+                className="w-full gap-2 mb-2"
+                variant={showTeamTotals ? "default" : "outline"}
+                onClick={() => {
+                  setShowTeamTotals(!showTeamTotals);
+                  if (!showTeamTotals) {
+                    setShowFilterizer(false);
+                    setShowWinner(false);
+                    setShowWhoConcedes(false);
+                    setShowCardWar(false);
+                    setShowBTTSIndex(false);
+                  }
+                }}
+                data-tutorial="team-totals-btn"
+              >
+                <Target className="h-4 w-4" />
+                {t('common:team_totals')}
+              </Button>
+              <Button
+                className="w-full gap-2 mb-2"
+                variant={showWhoConcedes ? "default" : "outline"}
+                onClick={() => {
+                  setShowWhoConcedes(!showWhoConcedes);
+                  if (!showWhoConcedes) {
+                    setShowFilterizer(false);
+                    setShowWinner(false);
+                    setShowTeamTotals(false);
+                    setShowCardWar(false);
+                    setShowBTTSIndex(false);
+                  }
+                }}
+                data-tutorial="who-concedes-btn"
+              >
+                <ShieldAlert className="h-4 w-4" />
+                {t('common:who_concedes')}
+              </Button>
+              <Button
+                className="w-full gap-2"
+                variant={showCardWar ? "default" : "outline"}
+                onClick={() => {
+                  setShowCardWar(!showCardWar);
+                  if (!showCardWar) {
+                    setShowFilterizer(false);
+                    setShowWinner(false);
+                    setShowTeamTotals(false);
+                    setShowWhoConcedes(false);
+                    setShowBTTSIndex(false);
+                  }
+                }}
+                data-tutorial="card-war-btn"
+              >
+                <Swords className="h-4 w-4" />
+                {t('common:card_war')}
+              </Button>
+              <Button
+                className="w-full gap-2 mb-2"
+                variant={showBTTSIndex ? "default" : "outline"}
+                onClick={() => {
+                  setShowBTTSIndex(!showBTTSIndex);
+                  if (!showBTTSIndex) {
+                    setShowFilterizer(false);
+                    setShowWinner(false);
+                    setShowTeamTotals(false);
+                    setShowWhoConcedes(false);
+                    setShowCardWar(false);
+                    setShowSafeZone(false);
+                  }
+                }}
+                data-tutorial="btts-index-btn"
+              >
+                <Users className="h-4 w-4" />
+                {t('common:btts_index')}
+              </Button>
+              <Button
+                className="w-full gap-2"
+                variant={showSafeZone ? "default" : "outline"}
+                onClick={() => {
+                  setShowSafeZone(!showSafeZone);
+                  if (!showSafeZone) {
+                    setShowFilterizer(false);
+                    setShowWinner(false);
+                    setShowTeamTotals(false);
+                    setShowWhoConcedes(false);
+                    setShowCardWar(false);
+                    setShowBTTSIndex(false);
+                  }
+                }}
+                data-tutorial="safe-zone-btn"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Safe Zone
+              </Button>
+            </div>
 
-              {/* Tool Panels */}
-              {/* Safe Zone panel is now in center rail */}
+            {/* Tool Panels */}
+            <div className="flex-1 overflow-y-auto">
+              <RightRail
+                analysis={analysis}
+                loading={loadingAnalysis}
+                suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+                onAddToTicket={(market) => {
+                  toast({
+                    title: "Market added",
+                    description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                  });
+                }}
+              />
+            </div>
+          </div>
+        )}
 
-              <div className="flex-1 overflow-y-auto">
-                <RightRail
-                  analysis={analysis}
-                  loading={loadingAnalysis}
-                  suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
-                  onAddToTicket={(market) => {
-                    toast({
-                      title: "Market added",
-                      description: `${market.market} ${market.side} ${market.line} added to considerations`,
-                    });
-                  }}
-                />
-              </div>
-            </>
-          </PaywallGate>
-        </div>
-
-        {/* Mobile Right Sheet */}
+        {/* Mobile Right Sheet - Only show content for paid users */}
         <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
           <SheetContent side="right" className="w-full sm:w-[380px] p-0">
-            <PaywallGate feature="advanced betting tools and AI analysis" allowTrial={true}>
+            {hasPaidAccess ? (
               <div className="flex flex-col h-full">
                 {/* AI Ticket Creator (Advanced) */}
                 <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
@@ -1470,7 +1468,11 @@ const Index = () => {
                   />
                 </div>
               </div>
-            </PaywallGate>
+            ) : (
+              <div className="p-6">
+                <PremiumUpgradeHero />
+              </div>
+            )}
           </SheetContent>
         </Sheet>
 
@@ -1483,27 +1485,26 @@ const Index = () => {
           <BarChart3 className="h-6 w-6" />
         </Button>
 
-        {/* Mobile AI Ticket Creator FAB - Hidden when dialog is open */}
-        {!ticketCreatorOpen && (
-          <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
-            <Button
-              className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
-              onClick={() => setTicketCreatorOpen(true)}
-            >
-              <Sparkles className="h-5 w-5" />
-              <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
-            </Button>
-          </PaywallGate>
+        {/* Mobile AI Ticket Creator FAB - Only show for paid users */}
+        {!ticketCreatorOpen && hasPaidAccess && (
+          <Button
+            className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
+            onClick={() => setTicketCreatorOpen(true)}
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
+          </Button>
         )}
       </div>
 
-      <PaywallGate feature="AI Ticket Creator" featureKey="bet_optimizer" allowTrial={true}>
+      {/* Ticket Creator Dialog - Only render for paid users */}
+      {hasPaidAccess && (
         <TicketCreatorDialog
           open={ticketCreatorOpen}
           onOpenChange={setTicketCreatorOpen}
           onGenerate={generateAITicket}
         />
-      </PaywallGate>
+      )}
 
       <TicketDrawer
         open={ticketDrawerOpen}
