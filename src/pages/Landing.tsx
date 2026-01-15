@@ -371,7 +371,7 @@ export default function Landing() {
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
-                className="space-y-8"
+                className="space-y-8 text-center lg:text-left flex flex-col items-center lg:items-start"
               >
                 {/* Badge */}
                 <motion.div
@@ -389,7 +389,7 @@ export default function Landing() {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3, duration: 0.8 }}
-                    className="text-5xl sm:text-6xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
                   >
                     Where Your
                   </motion.h1>
@@ -397,7 +397,7 @@ export default function Landing() {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4, duration: 0.8 }}
-                    className="text-5xl sm:text-6xl lg:text-7xl font-black leading-[0.95] tracking-tight"
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black leading-[0.95] tracking-tight"
                   >
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-400">
                       Winning
@@ -407,7 +407,7 @@ export default function Landing() {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5, duration: 0.8 }}
-                    className="text-5xl sm:text-6xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
                   >
                     Starts
                   </motion.h1>
@@ -418,7 +418,7 @@ export default function Landing() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6 }}
-                  className="text-lg text-muted-foreground max-w-lg"
+                  className="text-base sm:text-lg text-muted-foreground max-w-lg"
                 >
                   AI-powered sports analytics and prediction markets. 
                   Real-time odds across 100+ leagues.
@@ -429,11 +429,11 @@ export default function Landing() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.7 }}
-                  className="flex flex-wrap gap-4"
+                  className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto"
                 >
                   <Button 
                     size="lg" 
-                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold"
+                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold w-full sm:w-auto"
                     onClick={() => document.getElementById('register-email')?.focus()}
                   >
                     Start Winning
@@ -442,7 +442,7 @@ export default function Landing() {
                   <Button 
                     size="lg" 
                     variant="outline"
-                    className="rounded-full px-8 py-6 text-base font-semibold border-border/50 hover:bg-primary/5"
+                    className="rounded-full px-8 py-6 text-base font-semibold border-border/50 hover:bg-primary/5 w-full sm:w-auto"
                     onClick={() => navigate('/demo')}
                   >
                     <Play className="mr-2 h-5 w-5" />
@@ -455,11 +455,11 @@ export default function Landing() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.9 }}
-                  className="flex items-center gap-8 pt-4"
+                  className="flex items-center justify-center lg:justify-start gap-6 sm:gap-8 pt-4 w-full"
                 >
                   {stats.map((stat, i) => (
                     <div key={stat.label} className="text-center">
-                      <p className="text-2xl font-bold text-foreground">
+                      <p className="text-xl sm:text-2xl font-bold text-foreground">
                         <AnimatedCounter value={stat.value} suffix={stat.suffix} />
                       </p>
                       <p className="text-xs text-muted-foreground">{stat.label}</p>
