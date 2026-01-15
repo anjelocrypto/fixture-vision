@@ -77,17 +77,21 @@ export function LiveMarketDemo() {
         <div className="bg-background/50 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-xs font-bold">
-                ARS
-              </div>
+              <img 
+                src="https://media.api-sports.io/football/teams/42.png" 
+                alt="Arsenal" 
+                className="w-8 h-8 object-contain"
+              />
               <span className="font-semibold">Arsenal</span>
             </div>
             <span className="text-muted-foreground text-sm">vs</span>
             <div className="flex items-center gap-3">
               <span className="font-semibold">Chelsea</span>
-              <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center text-xs font-bold">
-                CHE
-              </div>
+              <img 
+                src="https://media.api-sports.io/football/teams/49.png" 
+                alt="Chelsea" 
+                className="w-8 h-8 object-contain"
+              />
             </div>
           </div>
           <p className="text-center text-sm text-muted-foreground">
