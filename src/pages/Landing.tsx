@@ -7,10 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Loader2, Mail, ArrowRight, Zap, Target, TrendingUp, Shield, ChevronRight, 
-  BarChart3, Filter, Ticket, Trophy, Swords, Users, Brain, 
-  LineChart, Clock, Globe, CheckCircle2, Play, Rocket, ArrowDown,
-  Coins, Activity, PieChart, Goal, Crown
+  Loader2, Mail, ArrowRight, Shield, ChevronRight, 
+  Play, Rocket, ArrowDown, Zap, Clock, Globe
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motion, useScroll, useTransform, useSpring, useInView } from "framer-motion";
@@ -25,6 +23,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  LiveMarketDemo,
+  OddsTickerDemo,
+  FeatureDemoCards,
+  TerminalDashboardDemo,
+  AnalyticsFeatureTiles,
+  EngineFlowAnimation,
+  ComparisonTable,
+  HowItWorksDemo,
+  TrustBlock,
+} from "@/components/landing";
 
 // Animated Counter Component
 function AnimatedCounter({ value, suffix = "", duration = 2 }: { value: number; suffix?: string; duration?: number }) {
@@ -218,82 +227,6 @@ export default function Landing() {
       setLoading(false);
     }
   };
-
-  // Prediction Marketplace Features
-  const marketplaceFeatures = [
-    {
-      icon: TrendingUp,
-      title: "Trade Predictions",
-      description: "Place bets on match outcomes using virtual Ticket Coins. No real money involved.",
-    },
-    {
-      icon: PieChart,
-      title: "Live Odds Display",
-      description: "Watch implied probabilities update as the market moves. YES/NO pricing in real-time.",
-    },
-    {
-      icon: Crown,
-      title: "Leaderboard",
-      description: "Compete for top spots. Track your ROI, win rate, and climb the monthly rankings.",
-    },
-    {
-      icon: Activity,
-      title: "Activity Feed",
-      description: "See every bet placed. Full transparency on market movements and trader activity.",
-    },
-  ];
-
-  // Analytics Engine Features
-  const analyticsFeatures = [
-    {
-      icon: Ticket,
-      title: "AI Ticket Creator",
-      description: "Generate optimized 5-15 leg betting tickets. AI finds the best combinations within your odds target.",
-      tag: "Core",
-    },
-    {
-      icon: Filter,
-      title: "Filterizer",
-      description: "Advanced filtering for value bets. Filter by corners, goals, cards with precision controls.",
-      tag: "Core",
-    },
-    {
-      icon: BarChart3,
-      title: "Fixture Analyzer",
-      description: "Deep match analysis with H2H history, team form, injury impact, and combined metrics.",
-      tag: "Core",
-    },
-    {
-      icon: Shield,
-      title: "Safe Zone",
-      description: "Fixtures ranked by probability for O2.5 Goals, BTTS, High Corners, and High Fouls.",
-      tag: "Analytics",
-    },
-    {
-      icon: Goal,
-      title: "BTTS Index",
-      description: "Teams ranked by Both Teams To Score percentage over 5, 10, or 15 matches.",
-      tag: "Analytics",
-    },
-    {
-      icon: Target,
-      title: "Who Scores / Concedes",
-      description: "League rankings showing the most prolific attacks and leakiest defenses.",
-      tag: "Analytics",
-    },
-    {
-      icon: Swords,
-      title: "Card Wars",
-      description: "Track teams with highest card and foul counts for disciplinary markets.",
-      tag: "Analytics",
-    },
-    {
-      icon: Trophy,
-      title: "Team Totals",
-      description: "Find teams likely to score 2+ goals based on form and opponent weakness.",
-      tag: "Analytics",
-    },
-  ];
 
   const stats = [
     { value: 100, suffix: "+", label: "Leagues", icon: Globe },
@@ -671,11 +604,12 @@ export default function Landing() {
           </motion.div>
         </section>
 
-        {/* Prediction Marketplace Section */}
+        {/* ========== PREDICTION MARKETPLACE SECTION ========== */}
         <section id="marketplace" className="py-32 relative">
           <GradientBackground />
           
           <div className="max-w-7xl mx-auto px-6 relative z-10">
+            {/* Section Header */}
             <motion.div 
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -683,7 +617,6 @@ export default function Landing() {
               transition={{ duration: 0.6 }}
               className="mb-20"
             >
-              {/* Section Label */}
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-px flex-1 max-w-[60px] bg-gradient-to-r from-primary/50 to-transparent" />
                 <span className="text-xs font-semibold text-primary tracking-widest uppercase">
@@ -691,7 +624,7 @@ export default function Landing() {
                 </span>
               </div>
               
-              <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div className="grid lg:grid-cols-2 gap-12 items-start">
                 <div>
                   <h2 className="text-4xl md:text-5xl font-black text-foreground mb-6 leading-tight">
                     Trade on What
@@ -705,37 +638,34 @@ export default function Landing() {
                     Test your sports knowledge, compete on leaderboards, and experience trading without risk.
                   </p>
                   
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-card/50 border border-border/30">
-                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Coins className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Currently in Beta</p>
-                      <p className="text-xs text-muted-foreground">Virtual coins only. Live trading coming soon.</p>
-                    </div>
-                  </div>
+                  <TrustBlock />
                 </div>
 
-                {/* Marketplace Feature Cards */}
-                <div className="grid grid-cols-2 gap-4">
-                  {marketplaceFeatures.map((feature, index) => (
-                    <motion.div
-                      key={feature.title}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.4, delay: index * 0.1 }}
-                      className="group p-5 rounded-2xl bg-card/40 border border-border/30 hover:border-primary/30 hover:bg-card/60 transition-all duration-300"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                        <feature.icon className="h-5 w-5 text-primary" />
-                      </div>
-                      <h3 className="font-semibold text-foreground text-sm mb-1">{feature.title}</h3>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
-                    </motion.div>
-                  ))}
-                </div>
+                {/* Live Market Demo Widget */}
+                <LiveMarketDemo />
               </div>
+            </motion.div>
+
+            {/* Live Odds Ticker */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="mb-20"
+            >
+              <OddsTickerDemo />
+            </motion.div>
+
+            {/* Feature Demo Cards */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="mb-16"
+            >
+              <FeatureDemoCards />
             </motion.div>
 
             {/* CTA to Markets */}
@@ -747,20 +677,26 @@ export default function Landing() {
             >
               <Button 
                 size="lg"
-                variant="outline"
-                className="rounded-full px-8 border-primary/30 hover:bg-primary/10"
+                className="rounded-full px-10 py-6 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold group"
                 onClick={() => navigate('/markets')}
               >
                 Explore Markets
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <motion.span
+                  className="ml-2"
+                  animate={{ x: [0, 4, 0] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </motion.span>
               </Button>
             </motion.div>
           </div>
         </section>
 
-        {/* Analytics Engine Section */}
+        {/* ========== ANALYTICS ENGINE SECTION ========== */}
         <section id="analytics" className="py-32 relative bg-gradient-to-b from-transparent via-card/20 to-transparent">
           <div className="max-w-7xl mx-auto px-6">
+            {/* Section Header */}
             <motion.div 
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -768,7 +704,6 @@ export default function Landing() {
               transition={{ duration: 0.6 }}
               className="mb-16"
             >
-              {/* Section Label */}
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-px flex-1 max-w-[60px] bg-gradient-to-r from-primary/50 to-transparent" />
                 <span className="text-xs font-semibold text-primary tracking-widest uppercase">
@@ -791,36 +726,56 @@ export default function Landing() {
               </div>
             </motion.div>
 
-            {/* Analytics Feature Grid */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {analyticsFeatures.map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: index * 0.05 }}
-                  className="group p-5 rounded-2xl bg-card/40 border border-border/30 hover:border-primary/30 hover:bg-card/60 transition-all duration-300"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <feature.icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">
-                      {feature.tag}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-foreground text-sm mb-2">{feature.title}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
-                </motion.div>
-              ))}
-            </div>
+            {/* Terminal Dashboard Demo */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="mb-20"
+            >
+              <TerminalDashboardDemo />
+            </motion.div>
+
+            {/* Analytics Feature Tiles */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="mb-20"
+            >
+              <AnalyticsFeatureTiles />
+            </motion.div>
+
+            {/* Engine Flow Animation */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="mb-20"
+            >
+              <EngineFlowAnimation />
+            </motion.div>
+
+            {/* Comparison Table */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+            >
+              <ComparisonTable />
+            </motion.div>
           </div>
         </section>
 
-        {/* How It Works - Minimal */}
+        {/* ========== HOW IT WORKS SECTION ========== */}
         <section className="py-32 relative">
-          <div className="max-w-5xl mx-auto px-6">
+          <GradientBackground />
+          
+          <div className="max-w-6xl mx-auto px-6">
             <motion.div 
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -830,35 +785,10 @@ export default function Landing() {
               <h2 className="text-3xl md:text-4xl font-black text-foreground mb-4">
                 How It Works
               </h2>
-              <p className="text-muted-foreground">Three simple steps to smarter betting</p>
+              <p className="text-muted-foreground">Three simple steps to smarter predictions</p>
             </motion.div>
 
-            <div className="grid md:grid-cols-3 gap-8 relative">
-              {/* Connecting Line */}
-              <div className="hidden md:block absolute top-12 left-1/4 right-1/4 h-px bg-gradient-to-r from-border via-primary/30 to-border" />
-              
-              {[
-                { step: "01", title: "Sign Up", desc: "Create your free account in seconds", icon: Users },
-                { step: "02", title: "Analyze", desc: "Use AI tools to find value bets", icon: Brain },
-                { step: "03", title: "Win", desc: "Make informed betting decisions", icon: Trophy },
-              ].map((item, index) => (
-                <motion.div
-                  key={item.step}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                  className="text-center"
-                >
-                  <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 mb-6">
-                    <span className="text-lg font-black text-primary">{item.step}</span>
-                  </div>
-                  
-                  <h3 className="text-lg font-bold text-foreground mb-2">{item.title}</h3>
-                  <p className="text-sm text-muted-foreground">{item.desc}</p>
-                </motion.div>
-              ))}
-            </div>
+            <HowItWorksDemo />
           </div>
         </section>
 
@@ -869,35 +799,46 @@ export default function Landing() {
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="bg-card/50 backdrop-blur-xl border border-border/30 rounded-3xl p-12 text-center"
+              className="bg-card/50 backdrop-blur-xl border border-border/30 rounded-3xl p-12 text-center relative overflow-hidden"
             >
-              <h2 className="text-3xl md:text-4xl font-black text-foreground mb-4">
-                Ready to Start?
-              </h2>
-              <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                Join thousands making smarter betting decisions with Ticket AI.
-              </p>
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 opacity-50" />
               
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button 
-                  size="lg" 
-                  className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8"
-                  onClick={() => {
-                    setIsSignUp(true);
-                    document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Create Free Account
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-                <Button 
-                  size="lg"
-                  variant="outline" 
-                  className="rounded-full px-8 border-border/50 hover:bg-primary/5"
-                  onClick={() => navigate('/pricing')}
-                >
-                  View Pricing
-                </Button>
+              <div className="relative z-10">
+                <h2 className="text-3xl md:text-4xl font-black text-foreground mb-4">
+                  Ready to Start?
+                </h2>
+                <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
+                  Join thousands making smarter betting decisions with Ticket AI.
+                </p>
+                
+                <div className="flex flex-wrap justify-center gap-4">
+                  <Button 
+                    size="lg" 
+                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 group"
+                    onClick={() => {
+                      setIsSignUp(true);
+                      document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  >
+                    Create Free Account
+                    <motion.span
+                      className="ml-2"
+                      animate={{ x: [0, 4, 0] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                    </motion.span>
+                  </Button>
+                  <Button 
+                    size="lg"
+                    variant="outline" 
+                    className="rounded-full px-8 border-border/50 hover:bg-primary/5"
+                    onClick={() => navigate('/pricing')}
+                  >
+                    View Pricing
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </div>
