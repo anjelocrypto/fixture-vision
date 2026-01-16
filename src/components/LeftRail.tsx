@@ -109,13 +109,14 @@ export function LeftRail({
 
   return (
     <div className="w-full sm:w-[280px] border-r border-border bg-card/30 backdrop-blur-sm flex flex-col h-full">
+      {/* Header with safe area padding applied via sheet parent */}
       <div className="p-3 sm:p-4 border-b border-border shrink-0">
         <h2 className="text-base sm:text-lg font-semibold mb-3">{t('filters:title')}</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder={t('filters:search_placeholder')}
-            className="pl-9 bg-secondary/50 text-sm"
+            className="pl-9 bg-secondary/50 text-sm h-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -127,7 +128,7 @@ export function LeftRail({
       </div>
 
       {/* Countries Section - Fixed height with scroll */}
-      <div className="shrink-0 max-h-[280px] overflow-y-auto">
+      <div className="shrink-0 max-h-[240px] sm:max-h-[280px] overflow-y-auto">
         <div className="p-2 space-y-1">
           {filteredCountries.length === 0 ? (
             <div className="px-3 py-2 text-xs text-muted-foreground text-center">
@@ -144,10 +145,10 @@ export function LeftRail({
                   key={country.id}
                   onClick={() => onSelectCountry(country.id)}
                   onMouseEnter={() => onCountryHover?.(country.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors touch-manipulation ${
                     selectedCountry === country.id
                       ? "bg-primary/10 text-primary border border-primary/20"
-                      : "hover:bg-secondary/50 text-foreground"
+                      : "hover:bg-secondary/50 text-foreground active:bg-secondary/70"
                   }`}
                 >
                   {(() => {
@@ -201,10 +202,10 @@ export function LeftRail({
                   <button
                     key={league.id}
                     onClick={() => onSelectLeague(league)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left ${
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors text-left touch-manipulation ${
                       selectedLeague?.id === league.id
                         ? "bg-primary/10 text-primary border border-primary/20"
-                        : "hover:bg-secondary/50 text-foreground"
+                        : "hover:bg-secondary/50 text-foreground active:bg-secondary/70"
                     }`}
                   >
                     {league.logo && (
