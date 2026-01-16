@@ -21,9 +21,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+// IMPORTANT: Plan keys must match backend (user_entitlements.plan)
+// See memory: payments/plan-key-naming-convention
 const PLAN_NAMES: Record<string, string> = {
   day_pass: "Day Pass",
-  premium_monthly: "Premium Monthly",
+  monthly: "Premium Monthly", // Changed from "premium_monthly"
+  three_month: "3-Month Plan",
   annual: "Annual Plan",
 };
 
@@ -43,7 +46,7 @@ const PLANS = [
     ],
   },
   {
-    id: "premium_monthly",
+    id: "monthly", // Changed from "premium_monthly" to match DB
     name: "Premium Monthly",
     price: "$14.99",
     interval: "per month",

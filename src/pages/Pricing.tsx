@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ArrowLeft, Sparkles, Zap, Crown, Star } from "lucide-react";
+import { useAccess } from "@/hooks/useAccess";
+import { Check, ArrowLeft, Sparkles, Zap, Crown, Star, CreditCard } from "lucide-react";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 
+// IMPORTANT: Plan IDs must match backend keys (user_entitlements.plan)
+// See memory: payments/plan-key-naming-convention
 const PLANS = [
   {
     id: "day_pass",
@@ -25,7 +28,7 @@ const PLANS = [
     ],
   },
   {
-    id: "premium_monthly",
+    id: "monthly", // Changed from "premium_monthly" to match DB
     name: "Premium Monthly",
     price: "$14.99",
     interval: "per month",
@@ -77,8 +80,10 @@ const Pricing = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { hasAccess, entitlement, loading: accessLoading } = useAccess();
 
   const handleSelectPlan = async (planId: string) => {
+    // Global lock - disable all buttons while any checkout is in progress
     if (loading) return;
     
     setLoading(planId);
@@ -103,6 +108,16 @@ const Pricing = () => {
         throw new Error(detail);
       }
 
+      // Backend may return already_subscribed error
+      if (data?.error === "already_subscribed") {
+        toast({
+          title: "Already Subscribed",
+          description: "You already have an active subscription. Manage your billing instead.",
+        });
+        navigate("/account");
+        return;
+      }
+
       if (!data?.url) {
         const detail = (data as any)?.error || "Checkout URL not returned";
         throw new Error(detail);
@@ -114,6 +129,23 @@ const Pricing = () => {
       toast({
         title: "Checkout error",
         description: error?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    setLoading("billing");
+    try {
+      const { data, error } = await supabase.functions.invoke("billing-portal");
+      if (error) throw error;
+      window.open(data.url, "_blank");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to open billing portal",
         variant: "destructive",
       });
     } finally {
@@ -225,25 +257,59 @@ const Pricing = () => {
                       </div>
                       
                       {/* CTA Button */}
-                      <Button
-                        className={`w-full mb-6 h-12 text-base font-semibold transition-all duration-300 ${
-                          plan.recommended 
-                            ? "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40" 
-                            : "bg-muted hover:bg-primary hover:text-primary-foreground"
-                        }`}
-                        size="lg"
-                        onClick={() => handleSelectPlan(plan.id)}
-                        disabled={loading === plan.id}
-                      >
-                        {loading === plan.id ? (
-                          <span className="flex items-center gap-2">
-                            <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            Processing...
-                          </span>
-                        ) : (
-                          "Get Started"
-                        )}
-                      </Button>
+                      {/* Show "Current Plan" / "Manage Billing" if user has this plan */}
+                      {hasAccess && entitlement?.plan === plan.id ? (
+                        <Button
+                          className="w-full mb-6 h-12 text-base font-semibold bg-muted cursor-default"
+                          size="lg"
+                          disabled
+                        >
+                          Current Plan
+                        </Button>
+                      ) : hasAccess ? (
+                        <Button
+                          className={`w-full mb-6 h-12 text-base font-semibold transition-all duration-300 ${
+                            plan.recommended 
+                              ? "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30" 
+                              : "bg-muted hover:bg-primary hover:text-primary-foreground"
+                          }`}
+                          size="lg"
+                          onClick={handleManageBilling}
+                          disabled={loading !== null}
+                        >
+                          {loading === "billing" ? (
+                            <span className="flex items-center gap-2">
+                              <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              Opening...
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <CreditCard className="w-4 h-4" />
+                              Manage Billing
+                            </span>
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          className={`w-full mb-6 h-12 text-base font-semibold transition-all duration-300 ${
+                            plan.recommended 
+                              ? "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40" 
+                              : "bg-muted hover:bg-primary hover:text-primary-foreground"
+                          }`}
+                          size="lg"
+                          onClick={() => handleSelectPlan(plan.id)}
+                          disabled={loading !== null || accessLoading}
+                        >
+                          {loading === plan.id ? (
+                            <span className="flex items-center gap-2">
+                              <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              Processing...
+                            </span>
+                          ) : (
+                            "Get Started"
+                          )}
+                        </Button>
+                      )}
                       
                       {/* Features */}
                       <ul className="space-y-3 text-left">
