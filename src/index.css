@@ -51,6 +51,10 @@ All colors MUST be HSL.
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
+    
+    /* Mobile-specific spacing */
+    --header-height-mobile: 48px;
+    --header-height-desktop: 64px;
   }
 
   .dark {
@@ -111,6 +115,23 @@ All colors MUST be HSL.
   button:not(:disabled) {
     -webkit-user-select: none;
     user-select: none;
+  }
+  
+  /* Improve mobile text rendering */
+  @media (max-width: 640px) {
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+    
+    /* Reduce motion for mobile performance */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   }
 }
 

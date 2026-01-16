@@ -1040,29 +1040,30 @@ const Index = () => {
         </Sheet>
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-between shrink-0 gap-2">
+          <div className="border-b border-border bg-card/30 backdrop-blur-sm p-2 sm:p-4 flex items-center justify-between shrink-0 gap-2">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden shrink-0"
+              className="lg:hidden shrink-0 h-9 w-9"
               onClick={() => setLeftSheetOpen(true)}
             >
               <Menu className="h-5 w-5" />
             </Button>
             
-            <h2 className="text-base sm:text-xl font-semibold truncate">
+            <h2 className="text-sm sm:text-xl font-semibold truncate flex-1 text-center lg:text-left">
               {filterCriteria 
                 ? `${t('optimizer:title')}: ${formatMarketLabel(filterCriteria.market, i18n.language)} ${t('filterizer:select_line').split('(')[0].trim()} ${filterCriteria.line}` 
                 : t('fixtures:all_fixtures')}
             </h2>
             
-            <div className="flex gap-2 shrink-0 items-center max-w-full flex-wrap justify-end">
+            {/* Admin controls - hidden on mobile */}
+            <div className="hidden sm:flex gap-2 shrink-0 items-center">
               {isAdmin && <AdminRefreshButton />}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4" style={{ paddingBottom: 'calc(var(--safe-area-bottom) + 100px)' }}>
             {/* Show premium upgrade hero for non-subscribers */}
             {!hasPaidAccess ? (
               <PremiumUpgradeHero />
@@ -1476,25 +1477,31 @@ const Index = () => {
           </SheetContent>
         </Sheet>
 
-        {/* Mobile Floating Action Button */}
-        <Button
-          className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg"
-          size="icon"
-          onClick={() => setRightSheetOpen(true)}
+        {/* Mobile Floating Action Buttons - with safe area support */}
+        <div 
+          className="lg:hidden fixed right-4 z-40 flex flex-col gap-3"
+          style={{ bottom: 'calc(var(--safe-area-bottom) + 16px)' }}
         >
-          <BarChart3 className="h-6 w-6" />
-        </Button>
-
-        {/* Mobile AI Ticket Creator FAB - Only show for paid users */}
-        {!ticketCreatorOpen && hasPaidAccess && (
+          {/* Analytics FAB */}
           <Button
-            className="lg:hidden fixed bottom-4 right-4 z-40 h-14 gap-2 rounded-full shadow-lg"
-            onClick={() => setTicketCreatorOpen(true)}
+            className="h-12 w-12 rounded-full shadow-lg"
+            size="icon"
+            onClick={() => setRightSheetOpen(true)}
           >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-sm font-semibold">{t('common:ai_ticket_creator')}</span>
+            <BarChart3 className="h-5 w-5" />
           </Button>
-        )}
+
+          {/* AI Ticket Creator FAB - Only show for paid users */}
+          {!ticketCreatorOpen && hasPaidAccess && (
+            <Button
+              className="h-12 gap-2 rounded-full shadow-lg px-4"
+              onClick={() => setTicketCreatorOpen(true)}
+            >
+              <Sparkles className="h-4 w-4" />
+              <span className="text-xs font-semibold">{t('common:ai_ticket_creator')}</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Ticket Creator Dialog - Only render for paid users */}
