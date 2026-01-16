@@ -69,11 +69,11 @@ export function AppHeader() {
       className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50"
       style={{ paddingTop: 'var(--safe-area-top)' }}
     >
-      <div className="flex items-center justify-between px-3 sm:px-6 h-14 sm:h-16">
+      <div className="flex items-center justify-between px-2 sm:px-6 h-12 sm:h-16">
         {/* Logo */}
-        <div className="flex items-center gap-2">
-          <div className="text-lg sm:text-2xl font-bold text-primary animate-glow">
-            TICKET 1.0 BETA
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="text-sm sm:text-2xl font-bold text-primary animate-glow whitespace-nowrap">
+            TICKET AI
           </div>
         </div>
 
@@ -122,46 +122,48 @@ export function AppHeader() {
         </div>
 
         {/* Right Utils - Simplified on mobile */}
-        <div className="flex items-center gap-1 sm:gap-3">
+        <div className="flex items-center gap-0.5 sm:gap-3">
           {/* Markets Button - Mobile only */}
           <Button
             onClick={() => navigate("/markets")}
             size="sm"
-            className="md:hidden rounded-full font-semibold bg-white text-black hover:bg-white/90"
+            className="md:hidden rounded-full font-semibold bg-white text-black hover:bg-white/90 h-8 w-8 p-0"
           >
             <TrendingUp className="h-4 w-4" />
           </Button>
 
-          {/* Guide Button - Only for paid users */}
+          {/* Guide Button - Only for paid users, hidden on mobile */}
           {hasAccess && (
             <Button
               variant="ghost"
               size="sm"
               onClick={startTutorial}
-              className="gap-1.5 text-primary hover:text-primary/80"
+              className="hidden sm:flex gap-1.5 text-primary hover:text-primary/80"
               data-tutorial="guide-button"
             >
               <BookOpen className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('tutorial:guide_button', 'Guide')}</span>
+              <span>{t('tutorial:guide_button', 'Guide')}</span>
             </Button>
           )}
           
-          {/* Language Switcher */}
-          <LanguageSwitcher />
+          {/* Language Switcher - Compact on mobile */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
           
           {/* My Ticket Button */}
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => setTicketDrawerOpen(true)}
-            className="relative"
+            className="relative h-8 w-8 sm:h-10 sm:w-10"
             data-tutorial="my-ticket"
           >
-            <Ticket className="h-5 w-5" />
+            <Ticket className="h-4 w-4 sm:h-5 sm:w-5" />
             {legs.length > 0 && (
               <Badge 
                 variant="destructive" 
-                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[10px] sm:text-xs"
               >
                 {legs.length}
               </Badge>
@@ -182,8 +184,8 @@ export function AppHeader() {
           {session ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <User className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="relative h-8 w-8 sm:h-10 sm:w-10">
+                  <User className="h-4 w-4 sm:h-5 sm:w-5" />
                   {hasAccess && (
                     <Badge 
                       variant="default" 
@@ -230,7 +232,7 @@ export function AppHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button variant="default" size="sm" onClick={() => navigate("/auth")}>
+            <Button variant="default" size="sm" className="h-8 text-xs sm:text-sm px-2 sm:px-3" onClick={() => navigate("/auth")}>
               {t('common:sign_in')}
             </Button>
           )}
