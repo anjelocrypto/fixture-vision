@@ -3,10 +3,18 @@
 // ============================================================================
 // Redesigned 2025-11-22: Batch processing to avoid Edge function timeouts
 // Deployment trigger: 2025-11-22 16:24:45 UTC
+// FIX 2026-01-16: Added league prioritization - major leagues processed FIRST
 //
 // Processes BATCH_SIZE fixtures per invocation (default: 30 fixtures).
 // Selects fixtures with missing or stale odds (>45 min old).
 // Cron calls this every 30 minutes to maintain fresh odds coverage.
+// 
+// PRIORITY ORDER:
+// 1. Major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Championship)
+// 2. UEFA competitions (Champions League, Europa League, Conference League)
+// 3. Domestic cups (FA Cup, Copa del Rey, etc.)
+// 4. Other supported leagues
+// 5. Everything else (friendlies last)
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -26,6 +34,15 @@ const BATCH_SIZE = 30;
 
 // Odds TTL: fixtures need odds refresh after this many minutes
 const ODDS_STALE_MINUTES = 45;
+
+// League priority tiers for odds backfill
+// Priority 1: Major European leagues (most valuable for users)
+const TIER_1_LEAGUES = [39, 40, 78, 140, 135, 61]; // EPL, Championship, Bundesliga, La Liga, Serie A, Ligue 1
+// Priority 2: UEFA competitions
+const TIER_2_LEAGUES = [2, 3, 848]; // Champions League, Europa League, Conference League
+// Priority 3: Domestic cups
+const TIER_3_LEAGUES = [45, 48, 66, 81, 137, 143]; // FA Cup, League Cup, Coupe de France, DFB-Pokal, Coppa Italia, Copa del Rey
+// Priority 4: Other supported leagues (will be processed after tiers 1-3)
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -97,16 +114,16 @@ serve(async (req) => {
 
     // ========================================================================
     // BATCH SELECTION: Get fixtures with missing or stale odds
+    // PRIORITY: Major leagues → UEFA → Cups → Other (friendlies last)
     // ========================================================================
-    // Select upcoming fixtures with missing or stale odds
     const nowTimestamp = Math.floor(now.getTime() / 1000);
     const endTimestamp = Math.floor(endDate.getTime() / 1000);
     const staleThreshold = new Date(Date.now() - ODDS_STALE_MINUTES * 60 * 1000).toISOString();
     
-    // Get all upcoming fixtures first
+    // Get all upcoming fixtures WITH league_id for prioritization
     const { data: upcomingFixtures, error: fixturesError } = await supabaseClient
       .from("fixtures")
-      .select("id")
+      .select("id, league_id")
       .gte("timestamp", nowTimestamp)
       .lte("timestamp", endTimestamp)
       .in("status", ["NS", "TBD"]);
@@ -158,6 +175,17 @@ serve(async (req) => {
       oddsMap.set(o.fixture_id, o.captured_at);
     });
     
+    // Helper function to get league priority tier (lower = higher priority)
+    const getLeaguePriority = (leagueId: number | null): number => {
+      if (!leagueId) return 999; // No league = lowest priority
+      if (TIER_1_LEAGUES.includes(leagueId)) return 1;
+      if (TIER_2_LEAGUES.includes(leagueId)) return 2;
+      if (TIER_3_LEAGUES.includes(leagueId)) return 3;
+      // Skip friendlies entirely (league_id 667) - they rarely have odds
+      if (leagueId === 667) return 1000;
+      return 4; // Other supported leagues
+    };
+    
     const batchFixtures = upcomingFixtures
       .filter((f: any) => {
         const capturedAt = oddsMap.get(f.id);
@@ -165,13 +193,27 @@ serve(async (req) => {
         return new Date(capturedAt) < new Date(staleThreshold); // Stale odds
       })
       .sort((a: any, b: any) => {
-        // Prioritize fixtures with oldest odds (or no odds)
+        // PRIMARY: Sort by league priority (major leagues first)
+        const aPriority = getLeaguePriority(a.league_id);
+        const bPriority = getLeaguePriority(b.league_id);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        
+        // SECONDARY: Within same priority, prefer older/missing odds
         const aDate = oddsMap.get(a.id) ? new Date(oddsMap.get(a.id)).getTime() : 0;
         const bDate = oddsMap.get(b.id) ? new Date(oddsMap.get(b.id)).getTime() : 0;
         return aDate - bDate;
       })
       .slice(0, BATCH_SIZE)
-      .map((f: any) => ({ fixture_id: f.id }));
+      .map((f: any) => ({ fixture_id: f.id, league_id: f.league_id }));
+    
+    // Log priority distribution for debugging
+    const priorityDist: Record<number, number> = {};
+    batchFixtures.forEach((f: any) => {
+      const p = getLeaguePriority(f.league_id);
+      priorityDist[p] = (priorityDist[p] || 0) + 1;
+    });
+    console.log(`[backfill-odds] Batch priority distribution: ${JSON.stringify(priorityDist)}`);
+    console.log(`[backfill-odds] First 5 fixtures: ${batchFixtures.slice(0, 5).map((f: any) => `${f.fixture_id}(L${f.league_id})`).join(", ")}`);
     
     const batchError = null;
 
