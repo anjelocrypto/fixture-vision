@@ -1,6 +1,8 @@
 // Stripe price IDs for all plans
+// IMPORTANT: Keys must match what's stored in user_entitlements.plan
+// See memory: payments/plan-key-naming-convention
 export const STRIPE_PLANS = {
-  premium_monthly: {
+  monthly: {
     priceId: "price_1SRlmOKAifASkGDzgavNBNlQ",
     name: "Premium Monthly",
     amount: 14_99,
@@ -43,6 +45,15 @@ export const STRIPE_PLANS = {
 } as const;
 
 export type PlanType = keyof typeof STRIPE_PLANS;
+
+// Maps Stripe price IDs back to our plan keys (for webhook processing)
+export const PRICE_ID_TO_PLAN: Record<string, PlanType> = {
+  "price_1SRlmOKAifASkGDzgavNBNlQ": "monthly",
+  "price_1SS7L9KAifASkGDzgZL5PPOj": "day_pass",
+  "price_1SS8ONKAifASkGDzSwzZLLW2": "test_pass",
+  "price_1SSIuZKAifASkGDzWZxgNYZX": "three_month",
+  "price_1SRlocKAifASkGDzemzpW2xL": "annual",
+};
 
 export const getPlanConfig = (plan: string) => {
   if (!(plan in STRIPE_PLANS)) {

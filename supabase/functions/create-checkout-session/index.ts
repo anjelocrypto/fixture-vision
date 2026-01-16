@@ -100,7 +100,6 @@ serve(async (req) => {
     }
 
     console.log(`[checkout] Creating session for ${planConfig.name}, user ${user.id}`);
-    console.log(`[checkout] Success URL will be: ${appUrl}/payment-success`);
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
@@ -117,12 +116,47 @@ serve(async (req) => {
       console.log(`[checkout] Created customer ${customerId} for user ${user.id}`);
     }
 
-    // Create checkout session
+    // === DUPLICATE SUBSCRIPTION PREVENTION ===
+    // Check for existing active/trialing/past_due subscriptions BEFORE creating new checkout
+    // This prevents users from accidentally purchasing multiple subscriptions
     const mode = (plan === 'day_pass' || plan === 'test_pass') ? 'payment' : 'subscription';
     
-    // Fix: Redirect directly to /account to avoid race condition with session restoration
-    // Previously redirected to /payment-success which then redirected to /account,
-    // causing the ProtectedRoute to not find the session in time and logging user out
+    if (mode === 'subscription') {
+      const existingSubs = await stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all', // Get all to check active, trialing, past_due
+        limit: 10,
+      });
+
+      // Filter for active recurring subscriptions (not day passes which are one-time)
+      const activeRecurringSubs = existingSubs.data.filter((sub: Stripe.Subscription) => 
+        ['active', 'trialing', 'past_due'].includes(sub.status)
+      );
+
+      if (activeRecurringSubs.length > 0) {
+        console.log(`[checkout] BLOCKED: User ${user.id} already has ${activeRecurringSubs.length} active subscription(s)`);
+        console.log(`[checkout] Existing subs: ${activeRecurringSubs.map((s: Stripe.Subscription) => s.id).join(', ')}`);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: "already_subscribed", 
+            detail: "You already have an active subscription. Please manage your existing subscription via the billing portal.",
+            action: "billing_portal"
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
+      }
+    }
+
+    // Generate idempotency key to prevent duplicate sessions from double-clicks/retries
+    // Format: userId:priceId:YYYY-MM-DD (allows one session per user per plan per day)
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const idempotencyKey = `checkout_${user.id}:${planConfig.priceId}:${today}`;
+
+    console.log(`[checkout] Success URL will be: ${appUrl}/payment-success`);
+    console.log(`[checkout] Using idempotency key: ${idempotencyKey}`);
+
+    // Create checkout session with idempotency key
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
@@ -134,10 +168,27 @@ serve(async (req) => {
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
       metadata: { user_id: user.id, plan },
     };
+    
     let session;
     try {
-      session = await stripe.checkout.sessions.create(sessionParams);
+      session = await stripe.checkout.sessions.create(
+        sessionParams,
+        { idempotencyKey } // Prevents duplicate sessions from rapid clicks
+      );
     } catch (err: any) {
+      // If idempotency error, it means session was already created - try to retrieve it
+      if (err?.code === 'idempotency_key_in_use' || err?.type === 'idempotency_error') {
+        console.log(`[checkout] Idempotency conflict - session already created for key: ${idempotencyKey}`);
+        // Return a friendly message rather than error
+        return new Response(
+          JSON.stringify({ 
+            error: "session_in_progress", 
+            detail: "A checkout session is already in progress. Please complete or cancel the existing checkout."
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
+      }
+      
       console.error("[checkout] Stripe create session failed:", err?.message || err);
       return new Response(
         JSON.stringify({ error: "stripe_session_create_failed", detail: err?.message || "Unknown Stripe error" }),
