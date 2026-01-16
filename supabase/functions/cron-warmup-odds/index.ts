@@ -112,6 +112,13 @@ serve(async (req) => {
       console.error('[cron-warmup-odds]', backfillError);
     }
 
+    // CRITICAL FIX: Wait 15 seconds after backfill completes for odds_cache writes to propagate
+    // This ensures optimize-selections-refresh sees the newly fetched odds
+    if (backfillOk && backfillFetched > 0) {
+      console.log(`[cron-warmup-odds] Waiting 15s for odds_cache writes to propagate...`);
+      await new Promise(resolve => setTimeout(resolve, 15000));
+    }
+
     // 6. Call optimize-selections-refresh once (uses latest stats + odds)
     console.log(`[cron-warmup-odds] Step 2: Calling optimize-selections-refresh (window=${window_hours}h)...`);
     let optimizeOk = false;

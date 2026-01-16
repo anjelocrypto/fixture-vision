@@ -816,6 +816,30 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (droppedNotQualified > 0) logs.push(`[Global Mode] Dropped ${droppedNotQualified} selections not meeting v2 combined qualification`);
       if (suspiciousDropped > 0) logs.push(`[Global Mode] Dropped ${suspiciousDropped} suspicious odds selections`);
       
+      // === FUNNEL DEBUG: Structured filter stage breakdown for QA ===
+      const withOdds = selections.filter((s: any) => (s as any).odds != null).length;
+      const funnelSummary = {
+        stage1_raw: rawCount,
+        stage2_has_odds: withOdds,
+        stage3_in_band: bandKept,
+        stage4_qualified: qualifiedKept,
+        stage5_edge_kept: edgeFilterStats.kept_with_edge,
+        stage6_max_win_kept: isMaxWinRateMode ? maxWinRateStats.kept : 'N/A (not max_win mode)',
+        stage7_dedupe: deduped.length,
+        final_pool: candidatePool.length,
+        drop_reasons: {
+          no_odds: rawCount - withOdds,
+          out_of_band: droppedOutOfBand,
+          not_qualified: droppedNotQualified,
+          suspicious: suspiciousDropped,
+          edge_negative: edgeFilterStats.dropped_negative_edge,
+          edge_marginal: edgeFilterStats.dropped_marginal_edge,
+          max_win_filtered: isMaxWinRateMode ? (maxWinRateStats.rejected_not_over + maxWinRateStats.rejected_by_avoid + maxWinRateStats.rejected_by_league_weight) : 0,
+          dedup_removed: tempCandidates.length - deduped.length,
+        }
+      };
+      console.log(`[ticket] FUNNEL: ${JSON.stringify(funnelSummary)}`);
+      logs.push(`[ticket] FUNNEL: raw=${rawCount} → has_odds=${withOdds} → in_band=${bandKept} → qualified=${qualifiedKept} → edge_kept=${edgeFilterStats.kept_with_edge} → deduped=${deduped.length} → final=${candidatePool.length}`);
       logs.push(`[ticket] stages raw=${rawCount}; band_kept=${bandKept}; qualified_kept=${qualifiedKept}; suspicious_dropped=${suspiciousDropped}; de_dupe_kept=${deduped.length}; final_pool=${candidatePool.length}`);
       
       usedLive = selections.some((s: any) => s.is_live);
