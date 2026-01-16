@@ -70,10 +70,30 @@ export function AppHeader() {
       style={{ paddingTop: 'var(--safe-area-top)' }}
     >
       <div className="flex items-center justify-between px-2 sm:px-6 h-12 sm:h-16">
-        {/* Logo */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Logo + Mobile Sport Toggle */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="text-sm sm:text-2xl font-bold text-primary animate-glow whitespace-nowrap">
             TICKET AI
+          </div>
+          
+          {/* Mobile Sport Toggle */}
+          <div className="flex md:hidden items-center bg-secondary/50 rounded-full p-0.5">
+            <Button
+              variant={currentSport === "Football" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => navigate("/")}
+              className={`rounded-full h-7 px-2.5 text-xs ${currentSport === "Football" ? "" : "text-muted-foreground/60"}`}
+            >
+              ⚽
+            </Button>
+            <Button
+              variant={currentSport === "Basketball" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => navigate("/basketball")}
+              className={`rounded-full h-7 px-2.5 text-xs ${currentSport === "Basketball" ? "" : "text-muted-foreground/60"}`}
+            >
+              🏀
+            </Button>
           </div>
         </div>
 
