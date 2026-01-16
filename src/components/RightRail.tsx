@@ -141,17 +141,17 @@ export function RightRail({ analysis, loading, suggested_markets = [], onAddToTi
   }
 
   return (
-    <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto overflow-x-hidden">
+    <div className="w-full sm:w-[380px] border-l border-border bg-card/30 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto overflow-x-hidden">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : analysis ? (
-        <div className="space-y-4 min-w-0">
+        <div className="space-y-3 sm:space-y-4 min-w-0">
           {/* Header */}
-          <Card className="p-4 bg-primary/5 border-primary/20 min-w-0">
-            <div className="flex items-center justify-between mb-3 min-w-0">
-              <h3 className="text-lg font-semibold truncate">AI Analysis</h3>
+          <Card className="p-3 sm:p-4 bg-primary/5 border-primary/20 min-w-0">
+            <div className="flex items-center justify-between mb-2 sm:mb-3 min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold truncate">AI Analysis</h3>
               <Badge variant="outline" className="border-primary/30 text-primary shrink-0 ml-2">
                 BETAI 0.2
               </Badge>

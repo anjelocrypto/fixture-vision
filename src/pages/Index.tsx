@@ -1016,26 +1016,28 @@ const Index = () => {
 
         {/* Mobile Left Sheet */}
         <Sheet open={leftSheetOpen} onOpenChange={setLeftSheetOpen}>
-          <SheetContent side="left" className="w-[280px] p-0 lg:hidden overflow-y-auto">
-            <LeftRail
-              countries={actualCountries}
-              selectedCountry={selectedCountry}
-              onSelectCountry={(id) => {
-                console.log(`[Index] Mobile: Selected country ${id}`);
-                setSelectedCountry(id);
-                setLeftSheetOpen(false);
-              }}
-              leagues={leagues}
-              selectedLeague={selectedLeague}
-              onSelectLeague={(league) => {
-                console.log(`[Index] Mobile: Selected league ${league.id} (${league.name})`);
-                setSelectedLeague(league);
-                setLeftSheetOpen(false);
-              }}
-              leaguesLoading={leaguesLoading}
-              leaguesError={leaguesError}
-              onCountryHover={prefetchLeagues}
-            />
+          <SheetContent side="left" className="p-0 lg:hidden overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              <LeftRail
+                countries={actualCountries}
+                selectedCountry={selectedCountry}
+                onSelectCountry={(id) => {
+                  console.log(`[Index] Mobile: Selected country ${id}`);
+                  setSelectedCountry(id);
+                  setLeftSheetOpen(false);
+                }}
+                leagues={leagues}
+                selectedLeague={selectedLeague}
+                onSelectLeague={(league) => {
+                  console.log(`[Index] Mobile: Selected league ${league.id} (${league.name})`);
+                  setSelectedLeague(league);
+                  setLeftSheetOpen(false);
+                }}
+                leaguesLoading={leaguesLoading}
+                leaguesError={leaguesError}
+                onCountryHover={prefetchLeagues}
+              />
+            </div>
           </SheetContent>
         </Sheet>
 
@@ -1306,171 +1308,180 @@ const Index = () => {
 
         {/* Mobile Right Sheet - Only show content for paid users */}
         <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
-          <SheetContent side="right" className="w-full sm:w-[380px] p-0">
+          <SheetContent side="right" className="p-0 flex flex-col">
             {hasPaidAccess ? (
-              <div className="flex flex-col h-full">
-                {/* AI Ticket Creator (Advanced) */}
-                <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-                  <Button
-                    className="w-full gap-2"
-                    variant="default"
-                    onClick={() => {
-                      setTicketCreatorOpen(true);
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {t('common:ai_ticket_creator')}
-                  </Button>
+              <div className="flex flex-col h-full overflow-hidden">
+                {/* Mobile Sheet Header */}
+                <div className="px-4 pt-2 pb-3 border-b bg-card/50 backdrop-blur-sm shrink-0">
+                  <h2 className="text-lg font-semibold text-primary">{t('common:analytics_tools')}</h2>
                 </div>
 
-                {/* Filterizer, Winner, Team Totals, Who Concedes & Card War Toggles */}
-                <div className="p-4 border-b bg-card/30 backdrop-blur-sm shrink-0">
-                  <Button
-                    className="w-full gap-2 mb-2"
-                    variant={showFilterizer ? "default" : "outline"}
-                    onClick={() => {
-                      setShowFilterizer(!showFilterizer);
-                      if (!showFilterizer) {
-                        setShowWinner(false);
-                        setShowTeamTotals(false);
-                        setShowWhoConcedes(false);
-                        setShowCardWar(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Filter className="h-4 w-4" />
-                    {t('common:filterizer')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2 mb-2"
-                    variant={showWinner ? "default" : "outline"}
-                    onClick={() => {
-                      setShowWinner(!showWinner);
-                      if (!showWinner) {
-                        setShowFilterizer(false);
-                        setShowTeamTotals(false);
-                        setShowWhoConcedes(false);
-                        setShowCardWar(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Trophy className="h-4 w-4" />
-                    {t('common:winner_1x2')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2 mb-2"
-                    variant={showTeamTotals ? "default" : "outline"}
-                    onClick={() => {
-                      setShowTeamTotals(!showTeamTotals);
-                      if (!showTeamTotals) {
-                        setShowFilterizer(false);
-                        setShowWinner(false);
-                        setShowWhoConcedes(false);
-                        setShowCardWar(false);
-                        setShowBTTSIndex(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Target className="h-4 w-4" />
-                    {t('common:team_totals')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2 mb-2"
-                    variant={showWhoConcedes ? "default" : "outline"}
-                    onClick={() => {
-                      setShowWhoConcedes(!showWhoConcedes);
-                      if (!showWhoConcedes) {
-                        setShowFilterizer(false);
-                        setShowWinner(false);
-                        setShowTeamTotals(false);
-                        setShowCardWar(false);
-                        setShowBTTSIndex(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <ShieldAlert className="h-4 w-4" />
-                    {t('common:who_concedes')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2"
-                    variant={showCardWar ? "default" : "outline"}
-                    onClick={() => {
-                      setShowCardWar(!showCardWar);
-                      if (!showCardWar) {
-                        setShowFilterizer(false);
-                        setShowWinner(false);
-                        setShowTeamTotals(false);
-                        setShowWhoConcedes(false);
-                        setShowBTTSIndex(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Swords className="h-4 w-4" />
-                    {t('common:card_war')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2 mb-2"
-                    variant={showBTTSIndex ? "default" : "outline"}
-                    onClick={() => {
-                      setShowBTTSIndex(!showBTTSIndex);
-                      if (!showBTTSIndex) {
-                        setShowFilterizer(false);
-                        setShowWinner(false);
-                        setShowTeamTotals(false);
-                        setShowWhoConcedes(false);
-                        setShowCardWar(false);
-                        setShowSafeZone(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <Users className="h-4 w-4" />
-                    {t('common:btts_index')}
-                  </Button>
-                  <Button
-                    className="w-full gap-2"
-                    variant={showSafeZone ? "default" : "outline"}
-                    onClick={() => {
-                      setShowSafeZone(!showSafeZone);
-                      if (!showSafeZone) {
-                        setShowFilterizer(false);
-                        setShowWinner(false);
-                        setShowTeamTotals(false);
-                        setShowWhoConcedes(false);
-                        setShowCardWar(false);
-                        setShowBTTSIndex(false);
-                      }
-                      setRightSheetOpen(false);
-                    }}
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    {t('common:safe_zone', 'Safe Zone')}
-                  </Button>
-                </div>
-
+                {/* Scrollable content area */}
                 <div className="flex-1 overflow-y-auto">
-                  <RightRail
-                    analysis={analysis}
-                    loading={loadingAnalysis}
-                    suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
-                    onAddToTicket={(market) => {
-                      toast({
-                        title: "Market added",
-                        description: `${market.market} ${market.side} ${market.line} added to considerations`,
-                      });
-                      setRightSheetOpen(false);
-                    }}
-                  />
+                  {/* AI Ticket Creator Button */}
+                  <div className="px-4 py-3 border-b bg-card/30">
+                    <Button
+                      className="w-full gap-2 h-11"
+                      variant="default"
+                      onClick={() => {
+                        setTicketCreatorOpen(true);
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {t('common:ai_ticket_creator')}
+                    </Button>
+                  </div>
+
+                  {/* Tool Buttons Grid */}
+                  <div className="px-4 py-3 border-b bg-card/30 space-y-2">
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showFilterizer ? "default" : "outline"}
+                      onClick={() => {
+                        setShowFilterizer(!showFilterizer);
+                        if (!showFilterizer) {
+                          setShowWinner(false);
+                          setShowTeamTotals(false);
+                          setShowWhoConcedes(false);
+                          setShowCardWar(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Filter className="h-4 w-4" />
+                      {t('common:filterizer')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showWinner ? "default" : "outline"}
+                      onClick={() => {
+                        setShowWinner(!showWinner);
+                        if (!showWinner) {
+                          setShowFilterizer(false);
+                          setShowTeamTotals(false);
+                          setShowWhoConcedes(false);
+                          setShowCardWar(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Trophy className="h-4 w-4" />
+                      {t('common:winner_1x2')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showTeamTotals ? "default" : "outline"}
+                      onClick={() => {
+                        setShowTeamTotals(!showTeamTotals);
+                        if (!showTeamTotals) {
+                          setShowFilterizer(false);
+                          setShowWinner(false);
+                          setShowWhoConcedes(false);
+                          setShowCardWar(false);
+                          setShowBTTSIndex(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Target className="h-4 w-4" />
+                      {t('common:team_totals')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showWhoConcedes ? "default" : "outline"}
+                      onClick={() => {
+                        setShowWhoConcedes(!showWhoConcedes);
+                        if (!showWhoConcedes) {
+                          setShowFilterizer(false);
+                          setShowWinner(false);
+                          setShowTeamTotals(false);
+                          setShowCardWar(false);
+                          setShowBTTSIndex(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <ShieldAlert className="h-4 w-4" />
+                      {t('common:who_concedes')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showCardWar ? "default" : "outline"}
+                      onClick={() => {
+                        setShowCardWar(!showCardWar);
+                        if (!showCardWar) {
+                          setShowFilterizer(false);
+                          setShowWinner(false);
+                          setShowTeamTotals(false);
+                          setShowWhoConcedes(false);
+                          setShowBTTSIndex(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Swords className="h-4 w-4" />
+                      {t('common:card_war')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showBTTSIndex ? "default" : "outline"}
+                      onClick={() => {
+                        setShowBTTSIndex(!showBTTSIndex);
+                        if (!showBTTSIndex) {
+                          setShowFilterizer(false);
+                          setShowWinner(false);
+                          setShowTeamTotals(false);
+                          setShowWhoConcedes(false);
+                          setShowCardWar(false);
+                          setShowSafeZone(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <Users className="h-4 w-4" />
+                      {t('common:btts_index')}
+                    </Button>
+                    <Button
+                      className="w-full gap-2 h-11 justify-start"
+                      variant={showSafeZone ? "default" : "outline"}
+                      onClick={() => {
+                        setShowSafeZone(!showSafeZone);
+                        if (!showSafeZone) {
+                          setShowFilterizer(false);
+                          setShowWinner(false);
+                          setShowTeamTotals(false);
+                          setShowWhoConcedes(false);
+                          setShowCardWar(false);
+                          setShowBTTSIndex(false);
+                        }
+                        setRightSheetOpen(false);
+                      }}
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      {t('common:safe_zone', 'Safe Zone')}
+                    </Button>
+                  </div>
+
+                  {/* Analysis Results */}
+                  <div className="pb-4">
+                    <RightRail
+                      analysis={analysis}
+                      loading={loadingAnalysis}
+                      suggested_markets={valueAnalysis?.edges?.slice(0, 4) || []}
+                      onAddToTicket={(market) => {
+                        toast({
+                          title: "Market added",
+                          description: `${market.market} ${market.side} ${market.line} added to considerations`,
+                        });
+                        setRightSheetOpen(false);
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="p-6">
+              <div className="flex-1 flex items-center justify-center p-6">
                 <PremiumUpgradeHero />
               </div>
             )}

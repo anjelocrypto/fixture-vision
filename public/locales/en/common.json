@@ -195,5 +195,6 @@
   "safe_zone_prob": "Prob",
   "safe_zone_xc": "xCorners",
   "safe_zone_xf": "xFouls",
-  "safe_zone_over_rate": "Over%"
+  "safe_zone_over_rate": "Over%",
+  "analytics_tools": "Analytics Tools"
 }

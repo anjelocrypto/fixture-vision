@@ -55,6 +55,16 @@ All colors MUST be HSL.
     /* Mobile-specific spacing */
     --header-height-mobile: 48px;
     --header-height-desktop: 64px;
+    
+    /* iPhone Dynamic Island support */
+    --dynamic-island-offset: 0px;
+  }
+  
+  /* iPhone 14 Pro / 15 / 16 Pro / 17 Pro - Dynamic Island devices */
+  @supports (padding-top: env(safe-area-inset-top)) {
+    :root {
+      --dynamic-island-offset: env(safe-area-inset-top, 0px);
+    }
   }
 
   .dark {
