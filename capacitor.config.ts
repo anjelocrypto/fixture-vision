@@ -13,11 +13,12 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: 'automatic'
   },
-  server: {
-    url: 'https://f8241af7-9ba1-484e-bd18-215507503e86.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
-    androidScheme: 'https'
-  }
+  // DEVELOPMENT ONLY - Comment out for production builds!
+  // server: {
+  //   url: 'https://f8241af7-9ba1-484e-bd18-215507503e86.lovableproject.com?forceHideBadge=true',
+  //   cleartext: true,
+  //   androidScheme: 'https'
+  // }
 };
 
 export default config;
