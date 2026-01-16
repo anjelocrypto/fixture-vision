@@ -186,8 +186,17 @@ serve(async (req) => {
       return 4; // Other supported leagues
     };
     
+    // Count how many friendlies are skipped for logging
+    const friendliesSkipped = upcomingFixtures.filter((f: any) => f.league_id === 667).length;
+    if (friendliesSkipped > 0) {
+      console.log(`[backfill-odds] SKIPPING ${friendliesSkipped} friendlies fixtures (league_id=667) - they rarely have odds`);
+    }
+    
     const batchFixtures = upcomingFixtures
       .filter((f: any) => {
+        // EXPLICIT SKIP: Exclude friendlies entirely (they rarely have odds)
+        if (f.league_id === 667) return false;
+        
         const capturedAt = oddsMap.get(f.id);
         if (!capturedAt) return true; // Missing odds
         return new Date(capturedAt) < new Date(staleThreshold); // Stale odds
