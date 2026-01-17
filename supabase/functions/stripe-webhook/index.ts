@@ -331,6 +331,8 @@ serve(async (req) => {
           customerId,
           priceId,
           status: subscription.status,
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          current_period_end: subscription.current_period_end,
         });
 
         const userId = await resolveUserId(stripe, supabase, undefined, subscription, undefined, customerId);
@@ -349,7 +351,71 @@ serve(async (req) => {
           );
         }
 
-        await upsertSubscriptionEntitlement(supabase, userId, subscription, customerId);
+        // Map price to plan
+        let plan = "monthly";
+        if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
+        else if (priceId === STRIPE_PRICE_YEARLY) plan = "annual";
+        else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
+
+        // Get period end from Stripe
+        const endTimestamp = subscription.current_period_end;
+        const fallbackEndSeconds = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        const currentPeriodEnd = new Date((endTimestamp ?? fallbackEndSeconds) * 1000).toISOString();
+        const now = new Date();
+        const periodEndDate = new Date((endTimestamp ?? fallbackEndSeconds) * 1000);
+
+        // CRITICAL: Never downgrade to free if user still has paid time
+        if (periodEndDate > now) {
+          // User still has time - always keep access
+          const status = mapSubscriptionStatus(subscription.status);
+          
+          const updateData: Record<string, any> = {
+            user_id: userId,
+            plan,
+            status,
+            current_period_end: currentPeriodEnd,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription.id,
+            source: "stripe",
+            cancel_at_period_end: subscription.cancel_at_period_end || false,
+          };
+
+          // If cancellation was scheduled, record when
+          if (subscription.cancel_at_period_end && subscription.canceled_at) {
+            updateData.canceled_at = new Date(subscription.canceled_at * 1000).toISOString();
+          }
+
+          console.log(`[webhook][${event.type}] Upserting entitlement (user has time until ${currentPeriodEnd}):`, updateData);
+
+          const { error } = await supabase
+            .from("user_entitlements")
+            .upsert(updateData);
+
+          if (error) {
+            console.error(`[webhook][${event.type}] ❌ Error upserting:`, error);
+            throw error;
+          }
+          console.log(`[webhook][${event.type}] ✅ Entitlement updated successfully`);
+        } else {
+          // Period expired - now we can downgrade
+          console.log(`[webhook][${event.type}] Period expired (${currentPeriodEnd}), downgrading to free`);
+          
+          const { error } = await supabase
+            .from("user_entitlements")
+            .update({
+              plan: "free",
+              status: "free",
+              current_period_end: null,
+              stripe_subscription_id: null,
+              cancel_at_period_end: false,
+              canceled_at: null,
+            })
+            .eq("user_id", userId);
+
+          if (error) {
+            console.error(`[webhook][${event.type}] ❌ Error downgrading:`, error);
+          }
+        }
         break;
       }
 

@@ -72,11 +72,12 @@ serve(async (req) => {
     
     for (const sub of activeOrPastDue) {
       // Set cancel_at_period_end = true instead of immediate cancellation
-      await stripe.subscriptions.update(sub.id, {
+      const updatedSub = await stripe.subscriptions.update(sub.id, {
         cancel_at_period_end: true
       });
       
-      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+      // Get the authoritative period end from Stripe's response
+      const periodEnd = new Date(updatedSub.current_period_end * 1000).toISOString();
       canceledSubs.push({ id: sub.id, currentPeriodEnd: periodEnd });
       
       logStep("Set subscription to cancel at period end", { 
@@ -84,6 +85,24 @@ serve(async (req) => {
         status: sub.status,
         currentPeriodEnd: periodEnd
       });
+
+      // CRITICAL: Also sync DB with correct Stripe values immediately
+      const { error: syncError } = await supabaseClient
+        .from("user_entitlements")
+        .update({
+          cancel_at_period_end: true,
+          canceled_at: new Date().toISOString(),
+          current_period_end: periodEnd, // Sync from Stripe
+          status: "active", // Keep active - they paid for this time
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+
+      if (syncError) {
+        logStep("Warning: Failed to sync entitlement in loop", { error: syncError.message });
+      } else {
+        logStep("Synced entitlement with Stripe values", { userId: user.id, periodEnd });
+      }
     }
 
     // Void any open invoices to stop payment collection attempts
@@ -114,23 +133,8 @@ serve(async (req) => {
       });
     }
 
-    // Update user_entitlements to mark as pending cancellation
-    // DO NOT downgrade plan/status - user keeps access until current_period_end
-    const { error: updateError } = await supabaseClient
-      .from("user_entitlements")
-      .update({
-        cancel_at_period_end: true,
-        canceled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        // Keep status as 'active' and plan unchanged - user keeps access until period ends
-      })
-      .eq("user_id", user.id);
-
-    if (updateError) {
-      logStep("Warning: Failed to update entitlements", { error: updateError.message });
-    } else {
-      logStep("Updated user entitlements - marked for cancellation at period end");
-    }
+    // DB update already done in the loop above with correct Stripe values
+    logStep("All entitlements synced during subscription updates");
 
     return new Response(
       JSON.stringify({ 
