@@ -2,12 +2,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, TrendingUp, Coins } from "lucide-react";
 import { LeaderboardEntry } from "@/hooks/useMarkets";
+import { useTranslation } from "react-i18next";
 
 interface LeaderboardPanelProps {
   entries: LeaderboardEntry[];
 }
 
 export function LeaderboardPanel({ entries }: LeaderboardPanelProps) {
+  const { t } = useTranslation("markets");
+
   const getRankIcon = (rank: number) => {
     if (rank === 1) return "🥇";
     if (rank === 2) return "🥈";
@@ -26,7 +29,7 @@ export function LeaderboardPanel({ entries }: LeaderboardPanelProps) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <Trophy className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p>No traders yet. Be the first!</p>
+        <p>{t("leaderboard.no_traders")}</p>
       </div>
     );
   }
@@ -67,7 +70,7 @@ export function LeaderboardPanel({ entries }: LeaderboardPanelProps) {
                   variant="outline"
                   className={entry.roi >= 0 ? "text-green-600" : "text-red-600"}
                 >
-                  {entry.roi >= 0 ? "+" : ""}{entry.roi}% ROI
+                  {entry.roi >= 0 ? "+" : ""}{entry.roi}% {t("leaderboard.roi")}
                 </Badge>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Coins, TrendingUp, TrendingDown, CheckCircle, XCircle, Clock, AlertCircle, DollarSign, LogIn } from "lucide-react";
 import { Position, Market } from "@/hooks/useMarkets";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 interface YourPositionProps {
   positions: Position[];
@@ -13,6 +14,7 @@ interface YourPositionProps {
 }
 
 export function YourPosition({ positions, market }: YourPositionProps) {
+  const { t } = useTranslation("markets");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const navigate = useNavigate();
 
@@ -38,13 +40,13 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="text-lg flex items-center gap-2 font-semibold">
             <DollarSign className="h-5 w-5 text-primary" />
-            Your Bets
+            {t("your_position.your_bets")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <div className="text-center py-6 bg-muted/20 rounded-xl border border-border/30 space-y-3">
             <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Login to track your bets</p>
+            <p className="text-sm text-muted-foreground">{t("your_position.login_to_track")}</p>
             <Button 
               variant="outline" 
               size="sm"
@@ -52,7 +54,7 @@ export function YourPosition({ positions, market }: YourPositionProps) {
               className="mt-2"
             >
               <LogIn className="h-4 w-4 mr-2" />
-              Login
+              {t("your_position.login")}
             </Button>
           </div>
         </CardContent>
@@ -66,14 +68,14 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="text-lg flex items-center gap-2 font-semibold">
             <DollarSign className="h-5 w-5 text-primary" />
-            Your Bets
+            {t("your_position.your_bets")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <div className="text-center py-6 text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
             <AlertCircle className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p>No positions on this market</p>
-            <p className="text-xs mt-1 text-muted-foreground/70">Place a bet to get started</p>
+            <p>{t("your_position.no_positions")}</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">{t("your_position.place_bet_to_start")}</p>
           </div>
         </CardContent>
       </Card>
@@ -140,20 +142,20 @@ export function YourPosition({ positions, market }: YourPositionProps) {
       <CardHeader className="pb-3 pt-5 px-5">
         <CardTitle className="text-lg flex items-center gap-2 font-semibold">
           <DollarSign className="h-5 w-5 text-primary" />
-          Your Bets
+          {t("your_position.your_bets")}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-5 pb-5 space-y-4">
         {/* Summary Stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-muted/40 rounded-xl p-3.5 border border-border/30">
-            <div className="text-xs text-muted-foreground mb-1 font-medium">Total Staked</div>
+            <div className="text-xs text-muted-foreground mb-1 font-medium">{t("your_position.total_staked")}</div>
             <div className="text-xl font-bold text-foreground">{totalStaked.toLocaleString()}</div>
-            <div className="text-[10px] text-muted-foreground">Fees: {totalFees.toLocaleString()}</div>
+            <div className="text-[10px] text-muted-foreground">{t("your_position.fees")}: {totalFees.toLocaleString()}</div>
           </div>
           <div className="bg-muted/40 rounded-xl p-3.5 border border-border/30">
             <div className="text-xs text-muted-foreground mb-1 font-medium">
-              {isResolved ? "Settled Payout" : "Potential Payout"}
+              {isResolved ? t("your_position.settled_payout") : t("your_position.potential_payout")}
             </div>
             <div className="text-xl font-bold text-emerald-400">
               {isResolved
@@ -163,11 +165,11 @@ export function YourPosition({ positions, market }: YourPositionProps) {
             {/* P/L indicator */}
             {isResolved ? (
               <div className={`text-[10px] font-medium ${realizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                P/L: {realizedPL >= 0 ? '+' : ''}{realizedPL.toLocaleString()}
+                {t("your_position.pl")}: {realizedPL >= 0 ? '+' : ''}{realizedPL.toLocaleString()}
               </div>
             ) : (
               <div className={`text-[10px] font-medium ${unrealizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                If win: {unrealizedPL >= 0 ? '+' : ''}{unrealizedPL.toLocaleString()}
+                {t("your_position.if_win")}: {unrealizedPL >= 0 ? '+' : ''}{unrealizedPL.toLocaleString()}
               </div>
             )}
           </div>
@@ -181,12 +183,12 @@ export function YourPosition({ positions, market }: YourPositionProps) {
                 <div className="p-1.5 rounded-lg bg-emerald-500/20">
                   <TrendingUp className="h-4 w-4 text-emerald-400" />
                 </div>
-                <span className="font-semibold text-emerald-400">YES</span>
+                <span className="font-semibold text-emerald-400">{t("card.yes").toUpperCase()}</span>
               </div>
               <div className="text-right text-sm">
-                <div className="font-medium text-foreground">{yesStaked.toLocaleString()} coins</div>
+                <div className="font-medium text-foreground">{yesStaked.toLocaleString()} {t("bet_dialog.coins")}</div>
                 <div className="text-xs text-muted-foreground">
-                  Avg @ {avgYesOdds.toFixed(2)}
+                  {t("your_position.avg")} @ {avgYesOdds.toFixed(2)}
                 </div>
               </div>
             </div>
@@ -197,12 +199,12 @@ export function YourPosition({ positions, market }: YourPositionProps) {
                 <div className="p-1.5 rounded-lg bg-red-500/20">
                   <TrendingDown className="h-4 w-4 text-red-400" />
                 </div>
-                <span className="font-semibold text-red-400">NO</span>
+                <span className="font-semibold text-red-400">{t("card.no").toUpperCase()}</span>
               </div>
               <div className="text-right text-sm">
-                <div className="font-medium text-foreground">{noStaked.toLocaleString()} coins</div>
+                <div className="font-medium text-foreground">{noStaked.toLocaleString()} {t("bet_dialog.coins")}</div>
                 <div className="text-xs text-muted-foreground">
-                  Avg @ {avgNoOdds.toFixed(2)}
+                  {t("your_position.avg")} @ {avgNoOdds.toFixed(2)}
                 </div>
               </div>
             </div>
@@ -212,7 +214,7 @@ export function YourPosition({ positions, market }: YourPositionProps) {
         {/* Individual Positions */}
         <div className="space-y-2 pt-2">
           <div className="text-xs text-muted-foreground font-medium">
-            Individual Bets ({positions.length})
+            {t("your_position.individual_bets")} ({positions.length})
           </div>
           <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
             {positions.map((pos) => {
@@ -246,7 +248,7 @@ export function YourPosition({ positions, market }: YourPositionProps) {
                           ? `+${pos.payout_amount}`
                           : pos.status === "pending"
                           ? `→ ${pos.potential_payout}`
-                          : pos.status}
+                          : t(`positions.${pos.status}`)}
                       </span>
                     </Badge>
                   </div>

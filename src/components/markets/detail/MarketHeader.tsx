@@ -4,25 +4,15 @@ import { Clock, CheckCircle, XCircle, Calendar, Trophy } from "lucide-react";
 import { MarketWithFixture } from "@/hooks/useMarketDetail";
 import { formatDistanceToNow, format } from "date-fns";
 import { PriceDisplay, normalizeImpliedProbs } from "./PriceDisplay";
+import { useTranslation } from "react-i18next";
 
 interface MarketHeaderProps {
   market: MarketWithFixture;
 }
 
-const RESOLUTION_RULE_LABELS: Record<string, string> = {
-  "over_0.5_goals": "Over 0.5 Goals",
-  "over_1.5_goals": "Over 1.5 Goals",
-  "over_2.5_goals": "Over 2.5 Goals",
-  "under_2.5_goals": "Under 2.5 Goals",
-  btts: "Both Teams to Score",
-  "over_8.5_corners": "Over 8.5 Corners",
-  "under_9.5_corners": "Under 9.5 Corners",
-  home_win: "Home Win",
-  away_win: "Away Win",
-  draw: "Draw",
-};
-
 export function MarketHeader({ market }: MarketHeaderProps) {
+  const { t } = useTranslation("markets");
+
   const isOpen = market.status === "open";
   const isClosed = market.status === "closed";
   const isResolved = market.status === "resolved";
@@ -34,6 +24,14 @@ export function MarketHeader({ market }: MarketHeaderProps) {
 
   // Get normalized implied probabilities
   const { yesPct, noPct } = normalizeImpliedProbs(market.odds_yes, market.odds_no);
+
+  // Get translated resolution rule label
+  const getResolutionRuleLabel = (rule: string | null) => {
+    if (!rule) return null;
+    const key = `resolution_rules.${rule}` as const;
+    const translated = t(key, { defaultValue: "" });
+    return translated || rule;
+  };
 
   const getStatusBadge = () => {
     if (isResolved && market.winning_outcome) {
@@ -48,14 +46,14 @@ export function MarketHeader({ market }: MarketHeaderProps) {
           }
         >
           {isYesWon ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-          {market.winning_outcome.toUpperCase()} Won
+          {market.winning_outcome === "yes" ? t("card.yes") : t("card.no")} {t("card.won")}
         </Badge>
       );
     }
     if (isResolved && !market.winning_outcome) {
       return (
         <Badge variant="outline" className="bg-muted text-muted-foreground font-medium">
-          Voided
+          {t("detail.voided")}
         </Badge>
       );
     }
@@ -63,14 +61,14 @@ export function MarketHeader({ market }: MarketHeaderProps) {
       return (
         <Badge variant="outline" className="bg-amber-500/20 text-amber-400 border-amber-500/40 font-medium">
           <Clock className="h-3 w-3 mr-1" />
-          Closed
+          {t("status.closed")}
         </Badge>
       );
     }
     return (
       <Badge variant="outline" className="bg-primary/20 text-primary border-primary/40 font-medium">
         <Trophy className="h-3 w-3 mr-1" />
-        Open
+        {t("status.open")}
       </Badge>
     );
   };
@@ -89,7 +87,7 @@ export function MarketHeader({ market }: MarketHeaderProps) {
           {getStatusBadge()}
           {market.resolution_rule && (
             <Badge variant="secondary" className="text-xs font-medium bg-secondary/80">
-              {RESOLUTION_RULE_LABELS[market.resolution_rule] || market.resolution_rule}
+              {getResolutionRuleLabel(market.resolution_rule)}
             </Badge>
           )}
         </div>
@@ -115,7 +113,7 @@ export function MarketHeader({ market }: MarketHeaderProps) {
         {/* Implied Probability Bar */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Implied Probability (normalized)</span>
+            <span>{t("detail.implied_probability")}</span>
             <span className="font-medium">
               <span className="text-emerald-400">{yesPct}%</span>
               {" / "}
@@ -144,7 +142,7 @@ export function MarketHeader({ market }: MarketHeaderProps) {
               </span>
             </div>
             <div className="text-xs text-muted-foreground sm:ml-auto">
-              Kickoff: {format(market.fixture.kickoff_at, "MMM d, HH:mm")}
+              {t("detail.kickoff")}: {format(market.fixture.kickoff_at, "MMM d, HH:mm")}
             </div>
           </div>
         )}
@@ -153,7 +151,7 @@ export function MarketHeader({ market }: MarketHeaderProps) {
         <div className="flex items-center gap-2 text-sm pt-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <span className="text-muted-foreground">
-            {isOpen ? "Closes" : "Closed"} {countdown}
+            {isOpen ? t("detail.closes") : t("detail.closed")} {countdown}
           </span>
         </div>
       </CardContent>

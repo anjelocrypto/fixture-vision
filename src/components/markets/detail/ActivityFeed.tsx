@@ -3,26 +3,29 @@ import { Badge } from "@/components/ui/badge";
 import { Coins, TrendingUp, TrendingDown, Activity, Gavel, Plus, Clock } from "lucide-react";
 import { ActivityEntry } from "@/hooks/useMarketDetail";
 import { formatDistanceToNow } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 interface ActivityFeedProps {
   activity: ActivityEntry[];
 }
 
 export function ActivityFeed({ activity }: ActivityFeedProps) {
+  const { t } = useTranslation("markets");
+
   if (activity.length === 0) {
     return (
       <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
         <CardHeader className="pb-2 pt-5 px-5">
           <CardTitle className="text-base flex items-center gap-2 font-semibold">
             <Activity className="h-4 w-4 text-primary" />
-            Recent Activity
+            {t("activity.recent_activity")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <div className="text-center py-8 text-muted-foreground text-sm bg-muted/20 rounded-xl border border-border/30">
             <Activity className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p>No activity yet</p>
-            <p className="text-xs mt-1 text-muted-foreground/70">Be the first to bet!</p>
+            <p>{t("activity.no_activity")}</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">{t("activity.be_first")}</p>
           </div>
         </CardContent>
       </Card>
@@ -45,21 +48,16 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
   const getSystemEventLabel = (action: string) => {
     switch (action) {
       case "create":
-        return "Market created";
+        return t("activity.market_created");
       case "resolve":
-        return "Market resolved";
+        return t("activity.market_resolved");
       case "close":
-        return "Market closed";
+        return t("activity.market_closed");
       case "close_expired":
-        return "Betting closed";
+        return t("activity.betting_closed");
       default:
         return action;
     }
-  };
-
-  // Anonymize user display
-  const formatUser = (id: string) => {
-    return `Player ${id.slice(0, 4)}`;
   };
 
   return (
@@ -68,10 +66,10 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2 font-semibold">
             <Activity className="h-4 w-4 text-primary" />
-            Recent Activity
+            {t("activity.recent_activity")}
           </CardTitle>
           <Badge variant="secondary" className="text-xs">
-            {activity.filter(a => a.type === "bet").length} bets
+            {activity.filter(a => a.type === "bet").length} {t("activity.bets")}
           </Badge>
         </div>
       </CardHeader>

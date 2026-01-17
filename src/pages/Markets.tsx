@@ -29,7 +29,7 @@ const Markets = () => {
         <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border/50">
           <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           <p className="text-[11px] text-muted-foreground">
-            <strong>{t("disclaimer").split('.')[0]}.</strong> {t("disclaimer").split('.').slice(1).join('.')}
+            <strong>{t("disclaimer_title")}.</strong> {t("disclaimer_text")}
           </p>
         </div>
 
