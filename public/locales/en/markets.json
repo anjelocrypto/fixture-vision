@@ -1,7 +1,8 @@
 {
   "page_title": "Prediction Markets",
   "page_subtitle": "Bet with Ticket Coins on match outcomes. No real money.",
-  "disclaimer": "Virtual coins only. Skill-based game. No real money. Coins cannot be exchanged for cash.",
+  "disclaimer_title": "Virtual coins only",
+  "disclaimer_text": "Skill-based game. No real money. Coins cannot be exchanged for cash.",
   
   "tabs": {
     "markets": "Markets",

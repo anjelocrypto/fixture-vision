@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clock, Coins, TrendingUp, Users, Trophy, Target } from "lucide-react";
+import { Clock, Coins, TrendingUp, Trophy, Target } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketWithMetadata } from "@/hooks/useMarketsFiltered";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface EnhancedMarketCardProps {
   market: MarketWithMetadata;
@@ -20,6 +21,7 @@ export function EnhancedMarketCard({
   showBetButton = true,
   userHasPosition,
 }: EnhancedMarketCardProps) {
+  const { t } = useTranslation("markets");
   const navigate = useNavigate();
 
   const totalStaked = market.total_staked_yes + market.total_staked_no;
@@ -38,7 +40,7 @@ export function EnhancedMarketCard({
   const getTimeLabel = () => {
     if (hoursUntil < 1) {
       const mins = Math.round(hoursUntil * 60);
-      return mins <= 0 ? "Starting soon" : `${mins}m`;
+      return mins <= 0 ? t("card.starting_soon") : `${mins}m`;
     }
     if (hoursUntil < 24) return `${Math.round(hoursUntil)}h`;
     return `${Math.round(hoursUntil / 24)}d`;
@@ -56,9 +58,9 @@ export function EnhancedMarketCard({
       const match = rule.match(/under_(\d+\.?\d?)_goals/);
       return match ? `U${match[1]}` : "Under";
     }
-    if (rule.includes("home_win")) return "Home";
-    if (rule.includes("away_win")) return "Away";
-    if (rule.includes("draw")) return "Draw";
+    if (rule.includes("home_win")) return t("resolution_rules.home_win");
+    if (rule.includes("away_win")) return t("resolution_rules.away_win");
+    if (rule.includes("draw")) return t("resolution_rules.draw");
     return market.category || "Other";
   };
 
@@ -101,7 +103,7 @@ export function EnhancedMarketCard({
               {market.league?.logo && (
                 <img src={market.league.logo} alt="" className="w-3 h-3 object-contain" />
               )}
-              <span className="truncate max-w-[100px]">{market.league?.name || "Football"}</span>
+              <span className="truncate max-w-[100px]">{market.league?.name || t("filter.football")}</span>
             </Badge>
 
             {/* Market Type */}
@@ -118,11 +120,11 @@ export function EnhancedMarketCard({
             {isResolved ? (
               <Badge variant="default" className="bg-green-500/20 text-green-400 border-0 h-5 text-[10px]">
                 <Trophy className="h-3 w-3 mr-0.5" />
-                Resolved
+                {t("status.resolved")}
               </Badge>
             ) : isClosed ? (
               <Badge variant="secondary" className="bg-amber-500/20 text-amber-400 border-0 h-5 text-[10px]">
-                Closed
+                {t("status.closed")}
               </Badge>
             ) : (
               <Badge variant="outline" className="h-5 text-[10px] px-1.5 gap-1 border-primary/30">
@@ -135,7 +137,7 @@ export function EnhancedMarketCard({
             {userHasPosition && (
               <Badge className="h-5 text-[10px] px-1.5 bg-primary text-primary-foreground">
                 <Target className="h-2.5 w-2.5 mr-0.5" />
-                Active
+                {t("card.active")}
               </Badge>
             )}
           </div>
@@ -163,7 +165,7 @@ export function EnhancedMarketCard({
             "bg-green-500/10 border border-green-500/20",
             !isResolved && !isClosed && "hover:bg-green-500/20"
           )}>
-            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">Yes</div>
+            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">{t("card.yes")}</div>
             <div className="text-lg font-bold text-green-500">{market.odds_yes.toFixed(2)}</div>
             <div className="text-[10px] text-green-400/80">{yesPercent}%</div>
           </div>
@@ -172,7 +174,7 @@ export function EnhancedMarketCard({
             "bg-red-500/10 border border-red-500/20",
             !isResolved && !isClosed && "hover:bg-red-500/20"
           )}>
-            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">No</div>
+            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">{t("card.no")}</div>
             <div className="text-lg font-bold text-red-500">{market.odds_no.toFixed(2)}</div>
             <div className="text-[10px] text-red-400/80">{noPercent}%</div>
           </div>
@@ -198,7 +200,7 @@ export function EnhancedMarketCard({
               }}
             >
               <TrendingUp className="h-3 w-3 mr-1" />
-              Place Bet
+              {t("card.place_bet")}
             </Button>
           )}
 
@@ -212,7 +214,7 @@ export function EnhancedMarketCard({
                   : "bg-red-500/20 text-red-400"
               )}
             >
-              {market.winning_outcome} Won
+              {market.winning_outcome === "yes" ? t("card.yes") : t("card.no")} {t("card.won")}
             </Badge>
           )}
         </div>
@@ -237,7 +239,7 @@ export function LeagueSection({
   userPositionMarketIds: Set<string>;
   maxVisible?: number;
 }) {
-  const navigate = useNavigate();
+  const { t } = useTranslation("markets");
   const [expanded, setExpanded] = useState(false);
   const visibleMarkets = expanded ? markets : markets.slice(0, maxVisible);
   const hasMore = markets.length > maxVisible;
@@ -255,7 +257,7 @@ export function LeagueSection({
           )}
           <h3 className="font-semibold text-sm">{league.name}</h3>
           <Badge variant="outline" className="h-5 text-[10px] px-1.5">
-            {markets.length} market{markets.length !== 1 ? "s" : ""}
+            {markets.length} {markets.length === 1 ? t("card.market") : t("card.markets")}
           </Badge>
         </div>
       </div>
@@ -280,7 +282,7 @@ export function LeagueSection({
           className="w-full text-xs text-muted-foreground"
           onClick={() => setExpanded(true)}
         >
-          Show {markets.length - maxVisible} more markets
+          {t("card.show_more", { count: markets.length - maxVisible })}
         </Button>
       )}
     </div>

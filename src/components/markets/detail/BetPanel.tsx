@@ -12,6 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 import { normalizeImpliedProbs } from "./PriceDisplay";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 interface BetPanelProps {
   market: Market;
@@ -23,6 +24,7 @@ const MIN_FEE = 1;
 const MIN_STAKE = 10;
 
 export function BetPanel({ market, userBalance }: BetPanelProps) {
+  const { t } = useTranslation("markets");
   const [outcome, setOutcome] = useState<"yes" | "no">("yes");
   const [stake, setStake] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -70,7 +72,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         stake: stakeNum,
       });
 
-      toast.success(`Bet placed! Potential payout: ${potentialPayout} coins`);
+      toast.success(`${t("bet_dialog.potential_payout")}: ${potentialPayout} ${t("bet_dialog.coins")}`);
       setStake("");
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to place bet";
@@ -85,11 +87,11 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="text-lg flex items-center gap-2 font-semibold">
             <Target className="h-5 w-5 text-primary" />
-            Place Bet
+            {t("bet_panel.place_bet")}
           </CardTitle>
           <div className="flex items-center gap-1.5 text-xs text-amber-500 mt-1 bg-amber-500/10 px-2 py-1 rounded-md w-fit">
             <Clock className="h-3.5 w-3.5" />
-            <span>Closes {closesIn}</span>
+            <span>{t("detail.closes")} {closesIn}</span>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
@@ -98,9 +100,9 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
               <LogIn className="h-8 w-8 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Login to Place Bets</h3>
+              <h3 className="font-semibold text-foreground">{t("auth.login_to_place_bets")}</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Create a free account to start betting with virtual coins
+                {t("auth.create_free_account")}
               </p>
             </div>
             <Button 
@@ -109,7 +111,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
               size="lg"
             >
               <LogIn className="h-4 w-4 mr-2" />
-              Login / Sign Up
+              {t("auth.login_signup")}
             </Button>
           </div>
         </CardContent>
@@ -124,7 +126,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="text-lg flex items-center gap-2 font-semibold">
             <Target className="h-5 w-5 text-primary" />
-            Place Bet
+            {t("bet_panel.place_bet")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
@@ -141,17 +143,17 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
       <CardHeader className="pb-3 pt-5 px-5">
         <CardTitle className="text-lg flex items-center gap-2 font-semibold">
           <Target className="h-5 w-5 text-primary" />
-          Place Bet
+          {t("bet_panel.place_bet")}
         </CardTitle>
         <div className="flex items-center gap-1.5 text-xs text-amber-500 mt-1 bg-amber-500/10 px-2 py-1 rounded-md w-fit">
           <Clock className="h-3.5 w-3.5" />
-          <span>Closes {closesIn}</span>
+          <span>{t("detail.closes")} {closesIn}</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-5 px-5 pb-5">
         {/* Outcome Selection with normalized implied % */}
         <div className="space-y-3">
-          <Label className="text-sm font-medium text-foreground">Choose Outcome</Label>
+          <Label className="text-sm font-medium text-foreground">{t("bet_panel.choose_outcome")}</Label>
           <RadioGroup
             value={outcome}
             onValueChange={(v) => setOutcome(v as "yes" | "no")}
@@ -167,12 +169,12 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
             >
               <RadioGroupItem value="yes" id="yes-detail" className="sr-only" />
               <TrendingUp className={`h-5 w-5 mb-1 ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`} />
-              <span className={`text-xs font-bold ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>YES</span>
+              <span className={`text-xs font-bold ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>{t("card.yes").toUpperCase()}</span>
               <span className={`text-xl font-bold mt-1 ${outcome === "yes" ? "text-emerald-400" : "text-emerald-500/70"}`}>
                 {yesPct}%
               </span>
               <span className={`text-[10px] ${outcome === "yes" ? "text-emerald-400/80" : "text-muted-foreground"}`}>
-                @ {market.odds_yes.toFixed(2)} odds
+                @ {market.odds_yes.toFixed(2)} {t("bet_dialog.odds").toLowerCase()}
               </span>
             </Label>
             <Label
@@ -185,12 +187,12 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
             >
               <RadioGroupItem value="no" id="no-detail" className="sr-only" />
               <TrendingDown className={`h-5 w-5 mb-1 ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`} />
-              <span className={`text-xs font-bold ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>NO</span>
+              <span className={`text-xs font-bold ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>{t("card.no").toUpperCase()}</span>
               <span className={`text-xl font-bold mt-1 ${outcome === "no" ? "text-red-400" : "text-red-500/70"}`}>
                 {noPct}%
               </span>
               <span className={`text-[10px] ${outcome === "no" ? "text-red-400/80" : "text-muted-foreground"}`}>
-                @ {market.odds_no.toFixed(2)} odds
+                @ {market.odds_no.toFixed(2)} {t("bet_dialog.odds").toLowerCase()}
               </span>
             </Label>
           </RadioGroup>
@@ -198,21 +200,21 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
 
         {/* Stake Input */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium text-foreground">Amount</Label>
+          <Label className="text-sm font-medium text-foreground">{t("bet_panel.amount")}</Label>
           <div className="relative">
             <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="number"
               value={stake}
               onChange={(e) => setStake(e.target.value)}
-              placeholder={`Min ${MIN_STAKE} coins`}
+              placeholder={t("bet_dialog.min_coins", { min: MIN_STAKE })}
               className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 text-lg"
               min={MIN_STAKE}
               max={userBalance}
             />
           </div>
           <div className="flex justify-between items-center text-xs">
-            <span className="text-muted-foreground">Balance: <span className="text-foreground font-medium">{userBalance.toLocaleString()}</span></span>
+            <span className="text-muted-foreground">{t("bet_panel.balance")}: <span className="text-foreground font-medium">{userBalance.toLocaleString()}</span></span>
             <div className="flex gap-1">
               {[25, 50, 100].map((pct) => (
                 <Button
@@ -235,31 +237,31 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         {stakeNum > 0 && (
           <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border/30">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Stake</span>
-              <span className="font-medium">{stakeNum.toLocaleString()} coins</span>
+              <span className="text-muted-foreground">{t("bet_dialog.stake")}</span>
+              <span className="font-medium">{stakeNum.toLocaleString()} {t("bet_dialog.coins")}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Fee (2%)</span>
+              <span className="text-muted-foreground">{t("bet_dialog.fee", { percent: "2" })}</span>
               <span className="font-medium text-red-400 flex items-center gap-1">
                 <Minus className="h-3 w-3" />
-                {fee} coins
+                {fee} {t("bet_dialog.coins")}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Net Stake</span>
-              <span className="font-medium">{netStake.toLocaleString()} coins</span>
+              <span className="text-muted-foreground">{t("bet_dialog.net_stake")}</span>
+              <span className="font-medium">{netStake.toLocaleString()} {t("bet_dialog.coins")}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Odds</span>
+              <span className="text-muted-foreground">{t("bet_dialog.odds")}</span>
               <span className="font-medium">@ {odds.toFixed(2)}</span>
             </div>
             <Separator className="my-2" />
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">Potential Payout</span>
+              <span className="text-sm font-medium text-foreground">{t("bet_dialog.potential_payout")}</span>
               <div className="text-right">
                 <span className="text-lg font-bold text-emerald-400">{potentialPayout.toLocaleString()}</span>
                 <span className="text-xs text-emerald-400/80 ml-1">
-                  (+{potentialProfit.toLocaleString()} profit)
+                  (+{potentialProfit.toLocaleString()} {t("bet_dialog.potential_profit")})
                 </span>
               </div>
             </div>
@@ -270,7 +272,7 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
         {insufficientBalance && (
           <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>Insufficient balance</span>
+            <span>{t("bet_dialog.insufficient_balance")}</span>
           </div>
         )}
 
@@ -289,12 +291,12 @@ export function BetPanel({ market, userBalance }: BetPanelProps) {
           ) : (
             <Target className="h-4 w-4 mr-2" />
           )}
-          Place Bet on {outcome.toUpperCase()}
+          {t("bet_dialog.place_bet_on", { outcome: outcome.toUpperCase() })}
         </Button>
 
         {/* Fixed odds disclaimer */}
         <p className="text-[10px] text-center text-muted-foreground/70 leading-tight">
-          Implied % shown are fixed odds set by admins — not live market pricing.
+          {t("bet_panel.fixed_odds_disclaimer")}
         </p>
       </CardContent>
     </Card>
