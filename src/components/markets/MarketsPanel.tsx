@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 type MarketStatus = "open" | "closed" | "resolved";
 
 export function MarketsPanel() {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation("markets");
   
   // Filter state
   const [countryId, setCountryId] = useState<number | null>(null);
@@ -85,7 +85,7 @@ export function MarketsPanel() {
                 <Coins className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Your Balance</p>
+                <p className="text-sm text-muted-foreground">{t("balance.your_balance")}</p>
                 <p className="text-2xl font-bold text-primary">
                   {coinsLoading ? "..." : coins?.balance.toLocaleString() ?? "0"}
                 </p>
@@ -94,11 +94,11 @@ export function MarketsPanel() {
             <div className="text-right text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <TrendingUp className="h-3 w-3 text-green-500" />
-                <span>Won: {coins?.total_won.toLocaleString() ?? 0}</span>
+                <span>{t("balance.won")}: {coins?.total_won.toLocaleString() ?? 0}</span>
               </div>
               <div className="flex items-center gap-1">
                 <TrendingDown className="h-3 w-3 text-red-500" />
-                <span>Wagered: {coins?.total_wagered.toLocaleString() ?? 0}</span>
+                <span>{t("balance.wagered")}: {coins?.total_wagered.toLocaleString() ?? 0}</span>
               </div>
             </div>
           </div>
@@ -112,11 +112,11 @@ export function MarketsPanel() {
         <TabsList className="w-full grid grid-cols-3">
           <TabsTrigger value="markets" className="text-xs">
             <Target className="h-3 w-3 mr-1" />
-            Markets
+            {t("tabs.markets")}
           </TabsTrigger>
           <TabsTrigger value="positions" className="text-xs">
             <Clock className="h-3 w-3 mr-1" />
-            My Bets
+            {t("tabs.my_bets")}
             {pendingPositions.length > 0 && (
               <Badge variant="secondary" className="ml-1 text-xs">
                 {pendingPositions.length}
@@ -125,13 +125,12 @@ export function MarketsPanel() {
           </TabsTrigger>
           <TabsTrigger value="leaderboard" className="text-xs">
             <Trophy className="h-3 w-3 mr-1" />
-            Top 10
+            {t("tabs.leaderboard")}
           </TabsTrigger>
         </TabsList>
 
         {/* Markets Tab */}
         <TabsContent value="markets" className="mt-4 space-y-4">
-          {/* Filter Bar */}
           <MarketsFilterBar
             countryId={countryId}
             leagueId={leagueId}
@@ -144,7 +143,6 @@ export function MarketsPanel() {
             onReset={handleReset}
           />
 
-          {/* Quick League Chips */}
           {leagues && leagues.length > 0 && !leagueId && (
             <QuickLeagueChips
               leagues={leagues}
@@ -165,7 +163,7 @@ export function MarketsPanel() {
                 {status === "open" && <Target className="h-3 w-3 mr-1" />}
                 {status === "closed" && <Clock className="h-3 w-3 mr-1" />}
                 {status === "resolved" && <CheckCircle className="h-3 w-3 mr-1" />}
-                {status}
+                {t(`status.${status}`)}
               </Badge>
             ))}
           </div>
@@ -190,32 +188,26 @@ export function MarketsPanel() {
               ))}
             </div>
           ) : !markets?.length ? (
-            /* Empty State */
             <Card className="p-8 text-center">
               <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-              <h3 className="font-semibold text-lg mb-1">No Markets Found</h3>
+              <h3 className="font-semibold text-lg mb-1">{t("empty_state.no_markets_found")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {search 
-                  ? `No markets matching "${search}"`
+                  ? t("empty_state.no_markets_search", { search })
                   : leagueId 
-                    ? "No open markets for this league right now."
+                    ? t("empty_state.no_markets_league")
                     : countryId
-                      ? "No open markets for this country right now."
-                      : `No ${marketStatusFilter} markets available.`
+                      ? t("empty_state.no_markets_country")
+                      : t("empty_state.no_status_markets", { status: t(`status.${marketStatusFilter}`) })
                 }
               </p>
               {(countryId || leagueId || search) && (
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer"
-                  onClick={handleReset}
-                >
-                  Clear filters
+                <Badge variant="outline" className="cursor-pointer" onClick={handleReset}>
+                  {t("empty_state.clear_filters")}
                 </Badge>
               )}
             </Card>
           ) : leagueId || search ? (
-            /* Flat List (when league selected or searching) */
             <div className="space-y-3">
               {markets.map((market) => (
                 <EnhancedMarketCard
@@ -228,7 +220,6 @@ export function MarketsPanel() {
               ))}
             </div>
           ) : groupedMarkets && groupedMarkets.length > 0 ? (
-            /* Grouped by League */
             <div className="space-y-6">
               {groupedMarkets.map((group) => (
                 <LeagueSection
@@ -243,7 +234,6 @@ export function MarketsPanel() {
               ))}
             </div>
           ) : (
-            /* Fallback: flat list */
             <div className="space-y-3">
               {markets.map((market) => (
                 <EnhancedMarketCard
@@ -261,31 +251,29 @@ export function MarketsPanel() {
         {/* My Positions Tab */}
         <TabsContent value="positions" className="mt-4 space-y-4">
           {pendingPositions.length > 0 && (
-            <PositionSection title="Pending" icon={<Clock className="h-4 w-4 text-yellow-500" />} positions={pendingPositions} />
+            <PositionSection title={t("positions.pending")} icon={<Clock className="h-4 w-4 text-yellow-500" />} positions={pendingPositions} />
           )}
           {wonPositions.length > 0 && (
-            <PositionSection title="Won" icon={<CheckCircle className="h-4 w-4 text-green-500" />} positions={wonPositions} />
+            <PositionSection title={t("positions.won")} icon={<CheckCircle className="h-4 w-4 text-green-500" />} positions={wonPositions} />
           )}
           {lostPositions.length > 0 && (
-            <PositionSection title="Lost" icon={<XCircle className="h-4 w-4 text-red-500" />} positions={lostPositions} />
+            <PositionSection title={t("positions.lost")} icon={<XCircle className="h-4 w-4 text-red-500" />} positions={lostPositions} />
           )}
           {refundedPositions.length > 0 && (
-            <PositionSection title="Refunded" icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={refundedPositions} />
+            <PositionSection title={t("positions.refunded")} icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={refundedPositions} />
           )}
           {!positions?.length && (
             <div className="text-center py-8 text-muted-foreground">
-              You haven't placed any bets yet.
+              {t("positions.no_bets_yet")}
             </div>
           )}
         </TabsContent>
 
-        {/* Leaderboard */}
         <TabsContent value="leaderboard" className="mt-4">
           <LeaderboardPanel entries={leaderboard || []} />
         </TabsContent>
       </Tabs>
 
-      {/* Bet Dialog */}
       <PlaceBetDialog
         market={selectedMarket as Market | null}
         open={betDialogOpen}
@@ -296,7 +284,6 @@ export function MarketsPanel() {
   );
 }
 
-// Position Section Component
 function PositionSection({ title, icon, positions }: { title: string; icon: React.ReactNode; positions: any[] }) {
   return (
     <div className="space-y-2">
@@ -311,7 +298,6 @@ function PositionSection({ title, icon, positions }: { title: string; icon: Reac
   );
 }
 
-// Position Card Component
 function PositionCard({ position }: { position: any }) {
   const statusColors: Record<string, string> = {
     pending: "bg-yellow-500/20 text-yellow-600",

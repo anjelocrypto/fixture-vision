@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -15,6 +16,7 @@ import { ActivityFeed } from "@/components/markets/detail/ActivityFeed";
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation("markets");
 
   const { data: market, isLoading: marketLoading } = useMarketWithFixture(id || null);
   const { data: aggregates, isLoading: aggregatesLoading } = useMarketAggregates(id || null);
@@ -31,7 +33,7 @@ const MarketDetail = () => {
           <div className="flex items-center justify-center py-24">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <span className="text-muted-foreground text-sm">Loading market...</span>
+              <span className="text-muted-foreground text-sm">{t("detail.loading_market")}</span>
             </div>
           </div>
         </main>
@@ -45,11 +47,11 @@ const MarketDetail = () => {
         <AppHeader />
         <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <div className="text-center py-24">
-            <h1 className="text-2xl font-bold text-foreground mb-3">Market Not Found</h1>
-            <p className="text-muted-foreground mb-6">The market you're looking for doesn't exist.</p>
+            <h1 className="text-2xl font-bold text-foreground mb-3">{t("detail.market_not_found")}</h1>
+            <p className="text-muted-foreground mb-6">{t("detail.market_not_found_desc")}</p>
             <Button onClick={() => navigate("/markets")} variant="outline" size="lg">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Markets
+              {t("detail.back_to_markets")}
             </Button>
           </div>
         </main>
@@ -71,7 +73,7 @@ const MarketDetail = () => {
           className="mb-4 sm:mb-6 -ml-2 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          All Markets
+          {t("detail.all_markets")}
         </Button>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">

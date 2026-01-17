@@ -1,0 +1,171 @@
+{
+  "page_title": "პროგნოზების ბაზარი",
+  "page_subtitle": "დადეთ ფსონი ვირტუალური მონეტებით მატჩის შედეგებზე. რეალური ფული არ გამოიყენება.",
+  "disclaimer": "მხოლოდ ვირტუალური მონეტები. უნარებზე დაფუძნებული თამაში. რეალური ფული არ არის. მონეტები ვერ გადაიცვლება ნაღდ ფულში.",
+  
+  "tabs": {
+    "markets": "ბაზრები",
+    "my_bets": "ჩემი ფსონები",
+    "leaderboard": "ლიდერბორდი"
+  },
+  
+  "balance": {
+    "your_balance": "თქვენი ბალანსი",
+    "won": "მოგებული",
+    "wagered": "დადებული"
+  },
+  
+  "status": {
+    "open": "ღია",
+    "closed": "დახურული",
+    "resolved": "დასრულებული"
+  },
+  
+  "filter": {
+    "football": "ფეხბურთი",
+    "all_countries": "ყველა ქვეყანა",
+    "all_leagues": "ყველა ლიგა",
+    "sort_soonest": "უახლოესი",
+    "sort_highest_pool": "უდიდესი პული",
+    "sort_newest": "ახალი",
+    "search": "ძიება",
+    "search_teams": "გუნდების ძიება...",
+    "reset": "გასუფთავება",
+    "filters": "ფილტრები",
+    "sort": "სორტირება",
+    "country": "ქვეყანა",
+    "league": "ლიგა"
+  },
+  
+  "card": {
+    "yes": "კი",
+    "no": "არა",
+    "place_bet": "ფსონის დადება",
+    "starting_soon": "მალე იწყება",
+    "starts_in": "იწყება {{time}}-ში",
+    "active": "აქტიური",
+    "won": "მოგებული",
+    "your_position": "თქვენი პოზიცია",
+    "pool": "პული",
+    "market": "ბაზარი",
+    "markets": "ბაზარი",
+    "show_more": "კიდევ {{count}}-ის ჩვენება"
+  },
+  
+  "bet_dialog": {
+    "place_your_bet": "თქვენი ფსონის დადება",
+    "your_prediction": "თქვენი პროგნოზი",
+    "stake_amount": "ფსონის თანხა",
+    "min_coins": "მინ. {{min}} მონეტა",
+    "available": "ხელმისაწვდომი",
+    "stake": "ფსონი",
+    "fee": "საკომისიო ({{percent}}%)",
+    "net_stake": "წმინდა ფსონი",
+    "odds": "კოეფიციენტი",
+    "potential_payout": "შესაძლო მოგება",
+    "potential_profit": "მოგება",
+    "insufficient_balance": "არასაკმარისი ბალანსი",
+    "cancel": "გაუქმება",
+    "place_bet_on": "{{outcome}}-ზე ფსონის დადება",
+    "coins": "მონეტა"
+  },
+  
+  "empty_state": {
+    "no_markets_found": "ბაზრები ვერ მოიძებნა",
+    "no_markets_search": "ბაზრები \"{{search}}\"-ზე ვერ მოიძებნა",
+    "no_markets_league": "ამ ლიგისთვის ღია ბაზრები ამჟამად არ არის.",
+    "no_markets_country": "ამ ქვეყნისთვის ღია ბაზრები ამჟამად არ არის.",
+    "no_status_markets": "{{status}} ბაზრები ხელმისაწვდომი არ არის.",
+    "clear_filters": "ფილტრების გასუფთავება",
+    "try_another": "სცადეთ სხვა ლიგა ან გაასუფთავეთ ფილტრები"
+  },
+  
+  "leaderboard": {
+    "no_traders": "ჯერ არავინ არის. იყავი პირველი!",
+    "roi": "ROI"
+  },
+  
+  "positions": {
+    "no_bets_yet": "თქვენ ჯერ არცერთი ფსონი არ გაგიკეთებიათ.",
+    "pending": "მოლოდინში",
+    "won": "მოგებული",
+    "lost": "წაგებული",
+    "refunded": "დაბრუნებული"
+  },
+  
+  "detail": {
+    "loading_market": "ბაზარი იტვირთება...",
+    "market_not_found": "ბაზარი ვერ მოიძებნა",
+    "market_not_found_desc": "ბაზარი, რომელსაც ეძებთ, არ არსებობს.",
+    "back_to_markets": "ბაზრებზე დაბრუნება",
+    "all_markets": "ყველა ბაზარი",
+    "voided": "გაუქმებული",
+    "implied_probability": "ნაგულისხმევი ალბათობა (ნორმალიზებული)",
+    "kickoff": "დაწყება",
+    "closes": "იხურება",
+    "closed": "დახურულია"
+  },
+  
+  "stats": {
+    "total_pool": "სრული პული",
+    "unique_traders": "უნიკალური მოთამაშეები",
+    "total_bets": "სულ ფსონები",
+    "yes_pool": "კი პული",
+    "no_pool": "არა პული",
+    "coins": "მონეტა"
+  },
+  
+  "your_position": {
+    "your_bets": "თქვენი ფსონები",
+    "login_to_track": "შედით ფსონების სანახავად",
+    "login": "შესვლა",
+    "no_positions": "ამ ბაზარზე პოზიციები არ არის",
+    "place_bet_to_start": "დადეთ ფსონი დასაწყებად",
+    "total_staked": "სულ დადებული",
+    "fees": "საკომისიო",
+    "settled_payout": "გადახდილი მოგება",
+    "potential_payout": "პოტენციური მოგება",
+    "pl": "მოგ/წაგ",
+    "if_win": "მოგების შემთხვევაში",
+    "individual_bets": "ინდივიდუალური ფსონები",
+    "avg": "საშ."
+  },
+  
+  "activity": {
+    "recent_activity": "ბოლო აქტივობა",
+    "bets": "ფსონები",
+    "no_activity": "აქტივობა ჯერ არ არის",
+    "be_first": "იყავი პირველი!",
+    "market_created": "ბაზარი შეიქმნა",
+    "market_resolved": "ბაზარი დასრულდა",
+    "market_closed": "ბაზარი დაიხურა",
+    "betting_closed": "ფსონები დაიხურა"
+  },
+  
+  "resolution_rules": {
+    "over_0.5_goals": ">0.5 გოლი",
+    "over_1.5_goals": ">1.5 გოლი",
+    "over_2.5_goals": ">2.5 გოლი",
+    "under_2.5_goals": "<2.5 გოლი",
+    "btts": "ორივე გაიტანს",
+    "over_8.5_corners": ">8.5 კუთხური",
+    "under_9.5_corners": "<9.5 კუთხური",
+    "home_win": "მასპინძელი",
+    "away_win": "სტუმარი",
+    "draw": "ფრე"
+  },
+  
+  "auth": {
+    "login_to_place_bets": "შედით ფსონის დასადებად",
+    "create_free_account": "შექმენით უფასო ანგარიში ვირტუალური მონეტებით ფსონების დასადებად",
+    "login_signup": "შესვლა / რეგისტრაცია"
+  },
+  
+  "bet_panel": {
+    "place_bet": "ფსონის დადება",
+    "choose_outcome": "აირჩიეთ შედეგი",
+    "amount": "თანხა",
+    "balance": "ბალანსი",
+    "fixed_odds_disclaimer": "ნაჩვენები % არის ადმინების მიერ დაყენებული ფიქსირებული კოეფიციენტები — არა ცოცხალი ფასები."
+  }
+}
