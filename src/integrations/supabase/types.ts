@@ -1834,6 +1834,8 @@ export type Database = {
       }
       user_entitlements: {
         Row: {
+          cancel_at_period_end: boolean | null
+          canceled_at: string | null
           current_period_end: string
           plan: string
           source: string
@@ -1844,6 +1846,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cancel_at_period_end?: boolean | null
+          canceled_at?: string | null
           current_period_end: string
           plan: string
           source?: string
@@ -1854,6 +1858,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cancel_at_period_end?: boolean | null
+          canceled_at?: string | null
           current_period_end?: string
           plan?: string
           source?: string
