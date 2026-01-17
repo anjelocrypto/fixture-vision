@@ -3,10 +3,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/hooks/useAccess";
-import { ArrowLeft, CreditCard, RefreshCw, Sparkles, Check, ChevronDown, ChevronUp, XCircle } from "lucide-react";
+import { useUsername } from "@/hooks/useUsername";
+import { ArrowLeft, CreditCard, RefreshCw, Sparkles, Check, ChevronDown, ChevronUp, XCircle, AtSign, Loader2, X, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,10 +25,9 @@ import {
 } from "@/components/ui/alert-dialog";
 
 // IMPORTANT: Plan keys must match backend (user_entitlements.plan)
-// See memory: payments/plan-key-naming-convention
 const PLAN_NAMES: Record<string, string> = {
   day_pass: "Day Pass",
-  monthly: "Premium Monthly", // Changed from "premium_monthly"
+  monthly: "Premium Monthly",
   three_month: "3-Month Plan",
   annual: "Annual Plan",
 };
@@ -46,7 +48,7 @@ const PLANS = [
     ],
   },
   {
-    id: "monthly", // Changed from "premium_monthly" to match DB
+    id: "monthly",
     name: "Premium Monthly",
     price: "$14.99",
     interval: "per month",
@@ -103,16 +105,41 @@ const Account = () => {
   const [sessionReady, setSessionReady] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
+  // Username management
+  const {
+    username: newUsername,
+    isValid: newUsernameValid,
+    isAvailable: newUsernameAvailable,
+    isChecking: newUsernameChecking,
+    error: newUsernameError,
+    setUsername: setNewUsername,
+    updateUsername,
+    fetchCurrentUsername,
+    canChange: canChangeUsername,
+    hoursUntilChange,
+  } = useUsername();
+
+  const [currentUsername, setCurrentUsername] = useState<string>("");
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+
   useEffect(() => {
     const getUser = async () => {
-      // Wait for session to be fully restored
       await new Promise(resolve => setTimeout(resolve, 100));
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user);
       setSessionReady(true);
+      
+      // Fetch current username
+      if (session?.user) {
+        const username = await fetchCurrentUsername();
+        if (username) {
+          setCurrentUsername(username);
+        }
+      }
     };
     getUser();
-  }, []);
+  }, [fetchCurrentUsername]);
 
   // Show success message if redirected from checkout
   useEffect(() => {
@@ -123,9 +150,7 @@ const Account = () => {
         description: "Your premium access is now active. Welcome!",
         duration: 5000,
       });
-      // Refresh access status
       refreshAccess();
-      // Clear the checkout param from URL after showing message
       window.history.replaceState({}, '', '/account');
     }
   }, [searchParams, sessionReady, toast, refreshAccess]);
@@ -134,12 +159,8 @@ const Account = () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("billing-portal");
-
       if (error) throw error;
-
-      // Open in new tab
       window.open(data.url, "_blank");
-      
       toast({
         title: "Opening billing portal...",
         description: "Manage your subscription in the new tab",
@@ -180,15 +201,11 @@ const Account = () => {
     setCancelling(true);
     try {
       const { data, error } = await supabase.functions.invoke("cancel-subscription");
-
       if (error) throw error;
-
       toast({
         title: "Subscription Cancelled",
         description: "Your subscription has been cancelled successfully.",
       });
-      
-      // Refresh access status
       await refreshAccess();
     } catch (error: any) {
       console.error("Cancel error:", error);
@@ -231,7 +248,6 @@ const Account = () => {
       }
 
       window.open(data.url, "_blank");
-      
       toast({
         title: "Opening checkout...",
         description: "Complete your purchase in the new tab",
@@ -248,6 +264,33 @@ const Account = () => {
     }
   };
 
+  const handleSaveUsername = async () => {
+    if (!newUsernameValid || newUsernameAvailable !== true) {
+      toast({
+        title: "Invalid Username",
+        description: newUsernameError || "Please choose a valid username",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingUsername(true);
+    const result = await updateUsername(newUsername);
+    setSavingUsername(false);
+
+    if (result.success) {
+      setCurrentUsername(newUsername);
+      setIsEditingUsername(false);
+      setNewUsername("");
+    } else {
+      toast({
+        title: "Failed to update username",
+        description: result.error,
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
       active: { label: "Active", variant: "default" },
@@ -255,10 +298,27 @@ const Account = () => {
       canceled: { label: "Canceled", variant: "secondary" },
       expired: { label: "Expired", variant: "secondary" },
     };
-
     const config = variants[status] || { label: status, variant: "secondary" };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
+
+  // Username status indicator
+  const UsernameStatus = () => {
+    if (!newUsername) return null;
+    if (newUsernameChecking) {
+      return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
+    }
+    if (newUsernameValid && newUsernameAvailable === true) {
+      return <Check className="h-4 w-4 text-green-500" />;
+    }
+    if (newUsernameError || newUsernameAvailable === false) {
+      return <X className="h-4 w-4 text-destructive" />;
+    }
+    return null;
+  };
+
+  // Check if user has a generated username (player_xxxxxxxx)
+  const hasGeneratedUsername = currentUsername.startsWith("player_");
 
   if (accessLoading || !sessionReady) {
     return (
@@ -288,14 +348,14 @@ const Account = () => {
             Account
           </h1>
           <p className="text-muted-foreground text-lg">
-            Manage your subscription and billing
+            Manage your profile and subscription
           </p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left Column - User Info & Status */}
           <div className="lg:col-span-2 space-y-6">
-            {/* User Info */}
+            {/* Profile Card with Username */}
             <Card className="border-primary/20 shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -305,6 +365,96 @@ const Account = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {/* Username Section */}
+                  <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground font-medium">Username</span>
+                      {!isEditingUsername && (
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold flex items-center gap-1">
+                            <AtSign className="h-4 w-4 text-primary" />
+                            {currentUsername}
+                          </span>
+                          {canChangeUsername ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsEditingUsername(true)}
+                            >
+                              Change
+                            </Button>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Wait {hoursUntilChange}h
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {hasGeneratedUsername && !isEditingUsername && (
+                      <div className="flex items-center gap-2 text-sm text-amber-500 bg-amber-500/10 p-2 rounded">
+                        <AlertCircle className="h-4 w-4" />
+                        Pick your real username now!
+                      </div>
+                    )}
+
+                    {isEditingUsername && (
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                            <AtSign className="h-4 w-4" />
+                          </div>
+                          <Input
+                            type="text"
+                            placeholder="new_username"
+                            value={newUsername}
+                            onChange={(e) => setNewUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                            className="pl-9 pr-10"
+                            maxLength={20}
+                            disabled={savingUsername}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <UsernameStatus />
+                          </div>
+                        </div>
+                        
+                        {newUsernameError && (
+                          <p className="text-xs text-destructive">{newUsernameError}</p>
+                        )}
+                        {newUsernameValid && newUsernameAvailable === true && (
+                          <p className="text-xs text-green-500">✓ Username available</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          3-20 characters, letters, numbers, underscore only. You can change once per 24 hours.
+                        </p>
+                        
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveUsername}
+                            disabled={savingUsername || !newUsernameValid || newUsernameAvailable !== true}
+                          >
+                            {savingUsername && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Username
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIsEditingUsername(false);
+                              setNewUsername("");
+                            }}
+                            disabled={savingUsername}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <span className="text-muted-foreground font-medium">Email</span>
                     <span className="font-semibold">{user?.email}</span>

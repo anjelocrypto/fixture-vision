@@ -1479,6 +1479,7 @@ export type Database = {
           updated_at: string
           user_id: string
           username: string
+          username_updated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -1487,6 +1488,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           username: string
+          username_updated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -1495,6 +1497,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           username?: string
+          username_updated_at?: string | null
         }
         Relationships: []
       }
@@ -2267,7 +2270,15 @@ export type Database = {
           skipped: number
         }[]
       }
+      check_username_available: {
+        Args: { p_username: string }
+        Returns: boolean
+      }
       close_expired_markets: { Args: never; Returns: Json }
+      create_profile_with_username: {
+        Args: { p_username: string }
+        Returns: Json
+      }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
       get_cron_internal_key: { Args: never; Returns: string }
@@ -2357,6 +2368,7 @@ export type Database = {
           remaining_uses: number
         }[]
       }
+      update_username: { Args: { p_new_username: string }; Returns: Json }
       user_has_access: { Args: never; Returns: boolean }
     }
     Enums: {
