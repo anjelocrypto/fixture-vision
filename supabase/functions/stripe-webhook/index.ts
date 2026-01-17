@@ -363,21 +363,48 @@ serve(async (req) => {
           break;
         }
 
-        console.log(`[webhook][subscription.deleted] Setting user ${userId} to free plan`);
+        // Check if user still has paid time remaining
+        const periodEnd = subscription.current_period_end;
+        const periodEndDate = new Date(periodEnd * 1000);
+        const now = new Date();
 
-        const { error } = await supabase
-          .from("user_entitlements")
-          .update({ 
-            plan: "free",
-            status: "free",
-            current_period_end: null,
-            stripe_subscription_id: null
-          })
-          .eq("user_id", userId)
-          .eq("stripe_subscription_id", subscription.id);
+        if (periodEndDate > now) {
+          // User still has paid time - keep access until period ends!
+          console.log(`[webhook][subscription.deleted] User ${userId} has access until ${periodEndDate.toISOString()}`);
 
-        if (error) console.error("[webhook] Error canceling subscription:", error);
-        else console.log(`[webhook] ✅ Subscription ${subscription.id} canceled, user ${userId} set to free`);
+          const { error } = await supabase
+            .from("user_entitlements")
+            .update({ 
+              status: "active", // Keep active - they paid for this time!
+              cancel_at_period_end: true,
+              canceled_at: new Date().toISOString(),
+              current_period_end: periodEndDate.toISOString(),
+              // Keep plan unchanged - cron will downgrade after period ends
+            })
+            .eq("user_id", userId)
+            .eq("stripe_subscription_id", subscription.id);
+
+          if (error) console.error("[webhook] Error updating subscription:", error);
+          else console.log(`[webhook] ✅ Subscription ${subscription.id} marked for expiration, user ${userId} keeps access until ${periodEndDate.toISOString()}`);
+        } else {
+          // Period already expired - downgrade immediately
+          console.log(`[webhook][subscription.deleted] Period expired, setting user ${userId} to free plan`);
+
+          const { error } = await supabase
+            .from("user_entitlements")
+            .update({ 
+              plan: "free",
+              status: "free",
+              current_period_end: null,
+              stripe_subscription_id: null,
+              cancel_at_period_end: false,
+            })
+            .eq("user_id", userId)
+            .eq("stripe_subscription_id", subscription.id);
+
+          if (error) console.error("[webhook] Error canceling subscription:", error);
+          else console.log(`[webhook] ✅ Subscription ${subscription.id} canceled, user ${userId} set to free`);
+        }
         break;
       }
 
