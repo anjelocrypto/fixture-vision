@@ -1,38 +1,77 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target, CheckCircle, XCircle } from "lucide-react";
-import { Market, useMarkets, useMyCoins, useMyPositions, useLeaderboard } from "@/hooks/useMarkets";
+import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Market, useMyCoins, useMyPositions, useLeaderboard } from "@/hooks/useMarkets";
+import { useMarketsFiltered, useMarketLeagues, groupMarketsByLeague, MarketWithMetadata } from "@/hooks/useMarketsFiltered";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { MarketCard } from "./MarketCard";
+import { EnhancedMarketCard, LeagueSection } from "./EnhancedMarketCard";
+import { MarketsFilterBar, QuickLeagueChips } from "./MarketsFilterBar";
 import { PlaceBetDialog } from "./PlaceBetDialog";
 import { LeaderboardPanel } from "./LeaderboardPanel";
 import { AdminMarketControls } from "./AdminMarketControls";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type MarketStatus = "open" | "closed" | "resolved";
 
 export function MarketsPanel() {
   const { t } = useTranslation("common");
-  const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
-  const [betDialogOpen, setBetDialogOpen] = useState(false);
+  
+  // Filter state
+  const [countryId, setCountryId] = useState<number | null>(null);
+  const [leagueId, setLeagueId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"kickoff" | "pool" | "newest">("kickoff");
   const [marketStatusFilter, setMarketStatusFilter] = useState<MarketStatus>("open");
 
+  // Bet dialog state
+  const [selectedMarket, setSelectedMarket] = useState<MarketWithMetadata | null>(null);
+  const [betDialogOpen, setBetDialogOpen] = useState(false);
+
+  // Data queries
   const { data: isAdmin } = useIsAdmin();
-  const { data: markets, isLoading: marketsLoading } = useMarkets(marketStatusFilter);
+  const { data: markets, isLoading: marketsLoading } = useMarketsFiltered({
+    status: marketStatusFilter,
+    countryId,
+    leagueId,
+    search,
+    sortBy,
+  });
+  const { data: leagues } = useMarketLeagues(countryId);
   const { data: coins, isLoading: coinsLoading } = useMyCoins();
   const { data: positions } = useMyPositions();
   const { data: leaderboard } = useLeaderboard(10);
 
+  // Positions categorized
   const pendingPositions = positions?.filter((p) => p.status === "pending") || [];
   const wonPositions = positions?.filter((p) => p.status === "won") || [];
   const lostPositions = positions?.filter((p) => p.status === "lost") || [];
   const refundedPositions = positions?.filter((p) => p.status === "refunded") || [];
 
-  const handleBet = (market: Market) => {
+  // User's active market IDs
+  const userPositionMarketIds = useMemo(() => 
+    new Set(positions?.map((p) => p.market_id) || []),
+    [positions]
+  );
+
+  // Group markets by league when no specific league is selected
+  const groupedMarkets = useMemo(() => {
+    if (!markets || leagueId) return null;
+    return groupMarketsByLeague(markets);
+  }, [markets, leagueId]);
+
+  const handleBet = (market: MarketWithMetadata) => {
     setSelectedMarket(market);
     setBetDialogOpen(true);
+  };
+
+  const handleReset = () => {
+    setCountryId(null);
+    setLeagueId(null);
+    setSearch("");
+    setSortBy("kickoff");
   };
 
   return (
@@ -91,14 +130,36 @@ export function MarketsPanel() {
         </TabsList>
 
         {/* Markets Tab */}
-        <TabsContent value="markets" className="mt-4 space-y-3">
+        <TabsContent value="markets" className="mt-4 space-y-4">
+          {/* Filter Bar */}
+          <MarketsFilterBar
+            countryId={countryId}
+            leagueId={leagueId}
+            search={search}
+            sortBy={sortBy}
+            onCountryChange={setCountryId}
+            onLeagueChange={setLeagueId}
+            onSearchChange={setSearch}
+            onSortChange={setSortBy}
+            onReset={handleReset}
+          />
+
+          {/* Quick League Chips */}
+          {leagues && leagues.length > 0 && !leagueId && (
+            <QuickLeagueChips
+              leagues={leagues}
+              selectedLeagueId={leagueId}
+              onSelect={setLeagueId}
+            />
+          )}
+
           {/* Market Status Filter */}
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2">
             {(["open", "closed", "resolved"] as MarketStatus[]).map((status) => (
               <Badge
                 key={status}
                 variant={marketStatusFilter === status ? "default" : "outline"}
-                className="cursor-pointer capitalize"
+                className="cursor-pointer capitalize h-7"
                 onClick={() => setMarketStatusFilter(status)}
               >
                 {status === "open" && <Target className="h-3 w-3 mr-1" />}
@@ -109,21 +170,91 @@ export function MarketsPanel() {
             ))}
           </div>
 
+          {/* Loading State */}
           {marketsLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading markets...</div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-20" />
+                      <Skeleton className="h-5 w-16" />
+                    </div>
+                    <Skeleton className="h-6 w-3/4" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Skeleton className="h-16" />
+                      <Skeleton className="h-16" />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
           ) : !markets?.length ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No {marketStatusFilter} markets right now.
+            /* Empty State */
+            <Card className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+              <h3 className="font-semibold text-lg mb-1">No Markets Found</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {search 
+                  ? `No markets matching "${search}"`
+                  : leagueId 
+                    ? "No open markets for this league right now."
+                    : countryId
+                      ? "No open markets for this country right now."
+                      : `No ${marketStatusFilter} markets available.`
+                }
+              </p>
+              {(countryId || leagueId || search) && (
+                <Badge
+                  variant="outline"
+                  className="cursor-pointer"
+                  onClick={handleReset}
+                >
+                  Clear filters
+                </Badge>
+              )}
+            </Card>
+          ) : leagueId || search ? (
+            /* Flat List (when league selected or searching) */
+            <div className="space-y-3">
+              {markets.map((market) => (
+                <EnhancedMarketCard
+                  key={market.id}
+                  market={market}
+                  onBet={handleBet}
+                  showBetButton={marketStatusFilter === "open"}
+                  userHasPosition={userPositionMarketIds.has(market.id)}
+                />
+              ))}
+            </div>
+          ) : groupedMarkets && groupedMarkets.length > 0 ? (
+            /* Grouped by League */
+            <div className="space-y-6">
+              {groupedMarkets.map((group) => (
+                <LeagueSection
+                  key={group.league?.id}
+                  league={group.league!}
+                  country={group.country}
+                  markets={group.markets}
+                  onBet={handleBet}
+                  userPositionMarketIds={userPositionMarketIds}
+                  maxVisible={3}
+                />
+              ))}
             </div>
           ) : (
-            markets.map((market) => (
-              <MarketCard
-                key={market.id}
-                market={market}
-                onBet={handleBet}
-                showBetButton={marketStatusFilter === "open"}
-              />
-            ))
+            /* Fallback: flat list */
+            <div className="space-y-3">
+              {markets.map((market) => (
+                <EnhancedMarketCard
+                  key={market.id}
+                  market={market}
+                  onBet={handleBet}
+                  showBetButton={marketStatusFilter === "open"}
+                  userHasPosition={userPositionMarketIds.has(market.id)}
+                />
+              ))}
+            </div>
           )}
         </TabsContent>
 
@@ -156,7 +287,7 @@ export function MarketsPanel() {
 
       {/* Bet Dialog */}
       <PlaceBetDialog
-        market={selectedMarket}
+        market={selectedMarket as Market | null}
         open={betDialogOpen}
         onOpenChange={setBetDialogOpen}
         userBalance={coins?.balance ?? 0}
