@@ -1,0 +1,171 @@
+{
+  "page_title": "Prediction Markets",
+  "page_subtitle": "Bet with Ticket Coins on match outcomes. No real money.",
+  "disclaimer": "Virtual coins only. Skill-based game. No real money. Coins cannot be exchanged for cash.",
+  
+  "tabs": {
+    "markets": "Markets",
+    "my_bets": "My Bets",
+    "leaderboard": "Leaderboard"
+  },
+  
+  "balance": {
+    "your_balance": "Your Balance",
+    "won": "Won",
+    "wagered": "Wagered"
+  },
+  
+  "status": {
+    "open": "Open",
+    "closed": "Closed",
+    "resolved": "Resolved"
+  },
+  
+  "filter": {
+    "football": "Football",
+    "all_countries": "All Countries",
+    "all_leagues": "All Leagues",
+    "sort_soonest": "Soonest",
+    "sort_highest_pool": "Highest Pool",
+    "sort_newest": "Newest",
+    "search": "Search",
+    "search_teams": "Search teams...",
+    "reset": "Reset",
+    "filters": "Filters",
+    "sort": "Sort",
+    "country": "Country",
+    "league": "League"
+  },
+  
+  "card": {
+    "yes": "Yes",
+    "no": "No",
+    "place_bet": "Place Bet",
+    "starting_soon": "Starting soon",
+    "starts_in": "Starts in {{time}}",
+    "active": "Active",
+    "won": "Won",
+    "your_position": "Your Position",
+    "pool": "Pool",
+    "market": "market",
+    "markets": "markets",
+    "show_more": "Show {{count}} more"
+  },
+  
+  "bet_dialog": {
+    "place_your_bet": "Place Your Bet",
+    "your_prediction": "Your Prediction",
+    "stake_amount": "Stake Amount",
+    "min_coins": "Min {{min}} coins",
+    "available": "Available",
+    "stake": "Stake",
+    "fee": "Fee ({{percent}}%)",
+    "net_stake": "Net Stake",
+    "odds": "Odds",
+    "potential_payout": "Potential Payout",
+    "potential_profit": "profit",
+    "insufficient_balance": "Insufficient balance",
+    "cancel": "Cancel",
+    "place_bet_on": "Place Bet on {{outcome}}",
+    "coins": "coins"
+  },
+  
+  "empty_state": {
+    "no_markets_found": "No Markets Found",
+    "no_markets_search": "No markets matching \"{{search}}\"",
+    "no_markets_league": "No open markets for this league right now.",
+    "no_markets_country": "No open markets for this country right now.",
+    "no_status_markets": "No {{status}} markets available.",
+    "clear_filters": "Clear filters",
+    "try_another": "Try another league or clear filters"
+  },
+  
+  "leaderboard": {
+    "no_traders": "No traders yet. Be the first!",
+    "roi": "ROI"
+  },
+  
+  "positions": {
+    "no_bets_yet": "You haven't placed any bets yet.",
+    "pending": "Pending",
+    "won": "Won",
+    "lost": "Lost",
+    "refunded": "Refunded"
+  },
+  
+  "detail": {
+    "loading_market": "Loading market...",
+    "market_not_found": "Market Not Found",
+    "market_not_found_desc": "The market you're looking for doesn't exist.",
+    "back_to_markets": "Back to Markets",
+    "all_markets": "All Markets",
+    "voided": "Voided",
+    "implied_probability": "Implied Probability (normalized)",
+    "kickoff": "Kickoff",
+    "closes": "Closes",
+    "closed": "Closed"
+  },
+  
+  "stats": {
+    "total_pool": "Total Pool",
+    "unique_traders": "Unique Traders",
+    "total_bets": "Total Bets",
+    "yes_pool": "YES Pool",
+    "no_pool": "NO Pool",
+    "coins": "coins"
+  },
+  
+  "your_position": {
+    "your_bets": "Your Bets",
+    "login_to_track": "Login to track your bets",
+    "login": "Login",
+    "no_positions": "No positions on this market",
+    "place_bet_to_start": "Place a bet to get started",
+    "total_staked": "Total Staked",
+    "fees": "Fees",
+    "settled_payout": "Settled Payout",
+    "potential_payout": "Potential Payout",
+    "pl": "P/L",
+    "if_win": "If win",
+    "individual_bets": "Individual Bets",
+    "avg": "Avg"
+  },
+  
+  "activity": {
+    "recent_activity": "Recent Activity",
+    "bets": "bets",
+    "no_activity": "No activity yet",
+    "be_first": "Be the first to bet!",
+    "market_created": "Market created",
+    "market_resolved": "Market resolved",
+    "market_closed": "Market closed",
+    "betting_closed": "Betting closed"
+  },
+  
+  "resolution_rules": {
+    "over_0.5_goals": "Over 0.5 Goals",
+    "over_1.5_goals": "Over 1.5 Goals",
+    "over_2.5_goals": "Over 2.5 Goals",
+    "under_2.5_goals": "Under 2.5 Goals",
+    "btts": "Both Teams to Score",
+    "over_8.5_corners": "Over 8.5 Corners",
+    "under_9.5_corners": "Under 9.5 Corners",
+    "home_win": "Home Win",
+    "away_win": "Away Win",
+    "draw": "Draw"
+  },
+  
+  "auth": {
+    "login_to_place_bets": "Login to Place Bets",
+    "create_free_account": "Create a free account to start betting with virtual coins",
+    "login_signup": "Login / Sign Up"
+  },
+  
+  "bet_panel": {
+    "place_bet": "Place Bet",
+    "choose_outcome": "Choose Outcome",
+    "amount": "Amount",
+    "balance": "Balance",
+    "fixed_odds_disclaimer": "Implied % shown are fixed odds set by admins — not live market pricing."
+  }
+}
