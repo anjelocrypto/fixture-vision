@@ -64,12 +64,26 @@ serve(async (req) => {
       throw new Error("No active subscription found to cancel");
     }
 
-    logStep("Found subscriptions to cancel", { count: activeOrPastDue.length });
+    logStep("Found subscriptions to cancel at period end", { count: activeOrPastDue.length });
 
-    // Cancel all active/past_due subscriptions
+    // Use cancel_at_period_end instead of immediate cancellation
+    // This allows users to keep access until their paid period ends
+    const canceledSubs: Array<{ id: string; currentPeriodEnd: string }> = [];
+    
     for (const sub of activeOrPastDue) {
-      await stripe.subscriptions.cancel(sub.id);
-      logStep("Cancelled subscription", { subscriptionId: sub.id, status: sub.status });
+      // Set cancel_at_period_end = true instead of immediate cancellation
+      await stripe.subscriptions.update(sub.id, {
+        cancel_at_period_end: true
+      });
+      
+      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+      canceledSubs.push({ id: sub.id, currentPeriodEnd: periodEnd });
+      
+      logStep("Set subscription to cancel at period end", { 
+        subscriptionId: sub.id, 
+        status: sub.status,
+        currentPeriodEnd: periodEnd
+      });
     }
 
     // Void any open invoices to stop payment collection attempts
@@ -100,28 +114,31 @@ serve(async (req) => {
       });
     }
 
-    // Update user_entitlements in database
+    // Update user_entitlements to mark as pending cancellation
+    // DO NOT downgrade plan/status - user keeps access until current_period_end
     const { error: updateError } = await supabaseClient
       .from("user_entitlements")
       .update({
-        status: "canceled",
-        plan: "free",
+        cancel_at_period_end: true,
+        canceled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        // Keep status as 'active' and plan unchanged - user keeps access until period ends
       })
       .eq("user_id", user.id);
 
     if (updateError) {
       logStep("Warning: Failed to update entitlements", { error: updateError.message });
     } else {
-      logStep("Updated user entitlements to free/canceled");
+      logStep("Updated user entitlements - marked for cancellation at period end");
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Subscription cancelled successfully",
+        message: "Subscription will be cancelled at the end of your billing period. You'll keep access until then.",
         cancelledCount: activeOrPastDue.length,
-        voidedInvoices
+        voidedInvoices,
+        accessUntil: canceledSubs[0]?.currentPeriodEnd || null
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );

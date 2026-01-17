@@ -59,9 +59,15 @@ export const useAccess = () => {
       }
 
       if (data) {
-        // Check if active and not expired
-        const isActive = data.status === "active" && new Date(data.current_period_end) > new Date();
-        setHasAccess(isActive || whitelisted);
+        // FAILSAFE: User has paid access if current_period_end is in the future
+        // This protects against any status bugs - if they paid, they get access
+        const periodEnd = data.current_period_end ? new Date(data.current_period_end) : null;
+        const hasPaidTime = periodEnd && periodEnd > new Date() && data.plan !== "free";
+        
+        // Access is granted if:
+        // 1. They have paid time remaining (regardless of status), OR
+        // 2. They're whitelisted
+        setHasAccess(hasPaidTime || whitelisted);
         setEntitlement(data);
       } else {
         setHasAccess(whitelisted);
