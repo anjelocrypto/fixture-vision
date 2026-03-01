@@ -58,6 +58,8 @@ Deno.serve(async (req) => {
         .select("market, side, line, league_id, odds, result_status")
         .gte("settled_at", cutoffDate.toISOString())
         .in("result_status", ["WIN", "LOSS", "PUSH"])
+        .order("settled_at", { ascending: true })
+        .order("id", { ascending: true })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
       if (fetchError) {
