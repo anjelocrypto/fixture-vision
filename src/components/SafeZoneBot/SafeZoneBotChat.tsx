@@ -17,12 +17,12 @@ interface Props {
 }
 
 const QUICK_CHIPS = [
-  { label: "Top 10", query: "top 10", filters: {} },
-  { label: "Corners", query: "corners", filters: { market: "corners" as const } },
-  { label: "Goals", query: "goals", filters: { market: "goals" as const } },
-  { label: "Today", query: "today", filters: { date: "today" as const } },
-  { label: "Tomorrow", query: "tomorrow", filters: { date: "tomorrow" as const } },
-  { label: "48h", query: "48h", filters: { date: "48h" as const } },
+  { key: "top_10", query: "top 10", filters: {} },
+  { key: "corners", query: "corners", filters: { market: "corners" as const } },
+  { key: "goals", query: "goals", filters: { market: "goals" as const } },
+  { key: "today", query: "today", filters: { date: "today" as const } },
+  { key: "tomorrow", query: "tomorrow", filters: { date: "tomorrow" as const } },
+  { key: "48h", query: "48h", filters: { date: "48h" as const } },
 ];
 
 export function SafeZoneBotChat({ open, onClose }: Props) {
@@ -35,7 +35,6 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -61,7 +60,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-primary" />
           <span className="font-semibold text-sm text-foreground">
-            {t("safe_zone_bot_title", "Safe Zone Bot")}
+            {t("safe_zone_bot_title")}
           </span>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
@@ -74,10 +73,10 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-4">
           <Lock className="w-10 h-10 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            {t("safe_zone_bot_paywall", "Safe Zone Bot requires a premium subscription.")}
+            {t("safe_zone_bot_paywall")}
           </p>
           <Button size="sm" onClick={() => { onClose(); navigate("/pricing"); }}>
-            {t("view_plans")}
+            {t("safe_zone_bot_view_plans")}
           </Button>
         </div>
       ) : (
@@ -87,7 +86,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
             {/* Greeting */}
             {messages.length === 0 && (
               <div className="rounded-lg bg-secondary/50 p-3 text-sm text-muted-foreground mb-3">
-                {t("safe_zone_bot_greeting", "Hey — I can show you the safest picks for the next 48 hours. Try: \"Top 10 corners picks today\".")}
+                {t("safe_zone_bot_greeting")}
               </div>
             )}
 
@@ -105,7 +104,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span className="text-muted-foreground">
-                          {t("safe_zone_bot_thinking", "Analyzing...")}
+                          {t("safe_zone_bot_thinking")}
                         </span>
                       </div>
                     ) : (
@@ -118,7 +117,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
                             className="mt-2"
                             onClick={() => { onClose(); navigate("/pricing"); }}
                           >
-                            {t("view_plans")}
+                            {t("safe_zone_bot_view_plans")}
                           </Button>
                         )}
                         {msg.picks && msg.picks.length > 0 && (
@@ -140,12 +139,12 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
           <div className="px-4 py-2 flex gap-1.5 flex-wrap border-t border-border">
             {QUICK_CHIPS.map((chip) => (
               <button
-                key={chip.label}
+                key={chip.key}
                 onClick={() => handleChip(chip)}
                 disabled={loading}
                 className="px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
               >
-                {t(`safe_zone_bot_chip_${chip.label.toLowerCase().replace(/\s/g, "_")}`, chip.label)}
+                {t(`safe_zone_bot_chip_${chip.key}`)}
               </button>
             ))}
           </div>
@@ -156,7 +155,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder={t("safe_zone_bot_placeholder", "Ask about safe picks...")}
+              placeholder={t("safe_zone_bot_placeholder")}
               disabled={loading}
               className="flex-1 h-9 text-sm"
             />
@@ -174,7 +173,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
         <SheetContent side="bottom" className="h-[85vh] p-0 flex flex-col">
           <SheetHeader className="sr-only">
-            <SheetTitle>{t("safe_zone_bot_title", "Safe Zone Bot")}</SheetTitle>
+            <SheetTitle>{t("safe_zone_bot_title")}</SheetTitle>
           </SheetHeader>
           {chatContent}
         </SheetContent>

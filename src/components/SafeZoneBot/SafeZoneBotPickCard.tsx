@@ -12,6 +12,10 @@ export function SafeZoneBotPickCard({ pick }: Props) {
   const kickoff = new Date(pick.utc_kickoff);
   const confidencePct = Math.round(pick.confidence_score * 100);
 
+  const marketLabel = pick.market === "corners"
+    ? t("safe_zone_bot_corners")
+    : t("safe_zone_bot_goals");
+
   return (
     <div className="rounded-lg border border-border bg-card p-3 space-y-2">
       {/* Header: League + Kickoff */}
@@ -29,7 +33,7 @@ export function SafeZoneBotPickCard({ pick }: Props) {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary">
           <Shield className="w-3 h-3" />
-          {pick.market === "corners" ? "Corners" : "Goals"} Over {pick.line}
+          {marketLabel} {t("safe_zone_bot_over")} {pick.line}
         </span>
         <span className="text-xs font-mono text-foreground">
           @{pick.odds?.toFixed(2)}
