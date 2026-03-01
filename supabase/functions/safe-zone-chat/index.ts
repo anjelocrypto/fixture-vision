@@ -71,7 +71,6 @@ Deno.serve(async (req) => {
       JSON.stringify({
         status: "error",
         code: "PAYWALL",
-        message: "Safe Zone Bot requires a premium subscription.",
       }),
       { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -157,7 +156,7 @@ Deno.serve(async (req) => {
   if (pickErr) {
     console.error("[safe-zone-chat] Query error:", pickErr);
     return new Response(
-      JSON.stringify({ status: "error", message: "Failed to fetch picks" }),
+      JSON.stringify({ status: "error", code: "QUERY_FAILED" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -189,7 +188,7 @@ Deno.serve(async (req) => {
   // If no picks, add breakdown
   if (!picks || picks.length === 0) {
     response.status = "empty";
-    response.message = `No qualifying Safe Zone picks found for ${dateFilter}. This can happen when: (1) no upcoming fixtures pass our strict odds/confidence filters, (2) insufficient historical data for leagues in play, or (3) no fixtures scheduled in the time window.`;
+    response.code = "NO_PICKS";
   }
 
   return new Response(JSON.stringify(response), {

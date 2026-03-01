@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface SafeZonePick {
@@ -41,6 +42,7 @@ interface ChatFilters {
 }
 
 export function useSafeZoneChat() {
+  const { t } = useTranslation("common");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -81,14 +83,24 @@ export function useSafeZoneChat() {
                   loading: false,
                   error: !isPaywall,
                   text: isPaywall
-                    ? "🔒 Safe Zone Bot requires a premium subscription."
-                    : "Something went wrong. Please try again.",
+                    ? t("safe_zone_bot_paywall")
+                    : t("safe_zone_bot_error_generic"),
                   meta: isPaywall ? { paywall: true } : undefined,
                 }
               : m
           )
         );
         return;
+      }
+
+      const count = data.count || 0;
+      let botText: string;
+      if (data.status === "empty") {
+        botText = t("safe_zone_bot_empty_message");
+      } else if (count === 1) {
+        botText = t("safe_zone_bot_found_picks_one");
+      } else {
+        botText = t("safe_zone_bot_found_picks_many", { count });
       }
 
       setMessages((prev) =>
@@ -98,10 +110,7 @@ export function useSafeZoneChat() {
                 ...m,
                 loading: false,
                 picks: data.picks || [],
-                text:
-                  data.status === "empty"
-                    ? data.message
-                    : `Found ${data.count} qualifying pick${data.count !== 1 ? "s" : ""}.`,
+                text: botText,
                 meta: data.meta,
               }
             : m
@@ -111,14 +120,14 @@ export function useSafeZoneChat() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === loadingMsg.id
-            ? { ...m, loading: false, error: true, text: "Network error. Please try again." }
+            ? { ...m, loading: false, error: true, text: t("safe_zone_bot_error_network") }
             : m
         )
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const clearMessages = useCallback(() => setMessages([]), []);
 
