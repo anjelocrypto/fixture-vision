@@ -46,17 +46,35 @@ Deno.serve(async (req) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 90);
 
-    const { data: outcomes, error: fetchError } = await supabase
-      .from("ticket_leg_outcomes")
-      .select("market, side, line, league_id, odds, result_status")
-      .gte("settled_at", cutoffDate.toISOString())
-      .in("result_status", ["WIN", "LOSS", "PUSH"]);
+    // Paginate to avoid Supabase 1000-row default limit
+    const PAGE_SIZE = 1000;
+    let allOutcomes: any[] = [];
+    let page = 0;
+    let hasMore = true;
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch outcomes: ${fetchError.message}`);
+    while (hasMore) {
+      const { data: batch, error: fetchError } = await supabase
+        .from("ticket_leg_outcomes")
+        .select("market, side, line, league_id, odds, result_status")
+        .gte("settled_at", cutoffDate.toISOString())
+        .in("result_status", ["WIN", "LOSS", "PUSH"])
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (fetchError) {
+        throw new Error(`Failed to fetch outcomes page ${page}: ${fetchError.message}`);
+      }
+
+      if (batch && batch.length > 0) {
+        allOutcomes = allOutcomes.concat(batch);
+        hasMore = batch.length === PAGE_SIZE;
+        page++;
+      } else {
+        hasMore = false;
+      }
     }
 
-    console.log(`${LOG_PREFIX} Fetched ${outcomes?.length ?? 0} settled legs from last 90 days`);
+    const outcomes = allOutcomes;
+    console.log(`${LOG_PREFIX} Fetched ${outcomes.length} settled legs from last 90 days (${page} pages)`);
 
     if (!outcomes || outcomes.length === 0) {
       return jsonResponse({ success: true, message: "No settled outcomes to process", upserted: 0 }, origin);

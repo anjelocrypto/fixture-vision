@@ -19,7 +19,11 @@ const ODDS_BANDS: Record<string, [number, number]> = {
 };
 
 const MIN_SAMPLE_SIZE = 50;
-const MIN_BAYES_WIN_RATE = 0.55;
+
+/** Normalize line to nearest 0.5 to avoid precision mismatches (8.50 vs 8.5) */
+function normalizeLine(line: number): number {
+  return Math.round(line * 2) / 2;
+}
 
 /** Wilson Lower Bound (z=1.96 for 95% CI) */
 function wilsonLB(wins: number, total: number): number {
@@ -64,6 +68,11 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Check for diagnostic mode
+  let body: any = {};
+  try { body = await req.json(); } catch { /* empty body ok */ }
+  const diagnosticMode = body.diagnostic === true;
+
   try {
     const now = new Date().toISOString();
     const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
@@ -88,7 +97,8 @@ Deno.serve(async (req) => {
       throw candErr;
     }
 
-    console.log(`[safe-zone-populate] ${candidates?.length || 0} raw candidates`);
+    const rawCount = candidates?.length || 0;
+    console.log(`[safe-zone-populate] ${rawCount} raw candidates`);
 
     // 3) Filter by odds bands
     const filtered = (candidates || []).filter((c) => {
@@ -97,22 +107,25 @@ Deno.serve(async (req) => {
       return c.odds >= band[0] && c.odds <= band[1];
     });
 
-    console.log(`[safe-zone-populate] ${filtered.length} after odds band filter`);
+    const afterOddsBand = filtered.length;
+    console.log(`[safe-zone-populate] ${afterOddsBand} after odds band filter`);
 
     if (filtered.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "ok", picks: 0, message: "No candidates passed filters" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const result = { status: "ok", picks: 0, message: "No candidates passed filters" };
+      if (diagnosticMode) {
+        Object.assign(result, { diagnostic: { candidates_raw: rawCount, after_odds_band: 0 } });
+      }
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // 4) Get unique league+market+line combos for performance_weights lookup
-    const combos = [...new Set(filtered.map((c) => `${c.league_id}|${c.market}|${c.side}|${c.line}`))];
-    
-    // Fetch performance_weights for these combos
+    // 4) Fetch ALL performance_weights for corners/goals/over with sample >= MIN_SAMPLE_SIZE
     const { data: weights, error: wErr } = await supabase
       .from("performance_weights")
-      .select("league_id, market, side, line, wins, losses, sample_size, bayes_win_rate, roi_pct")
+      .select("league_id, league_key, market, side, line, wins, losses, sample_size, bayes_win_rate, roi_pct")
+      .in("market", ["corners", "goals"])
+      .eq("side", "over")
       .gte("sample_size", MIN_SAMPLE_SIZE);
 
     if (wErr) {
@@ -120,12 +133,18 @@ Deno.serve(async (req) => {
       throw wErr;
     }
 
-    // Index weights by key
+    // Index weights by normalized key: league_id|market|side|normalizedLine
+    // performance_weights uses league_key (COALESCE(league_id, -1)), so we match on league_id
     const weightMap = new Map<string, typeof weights[0]>();
     for (const w of weights || []) {
-      const key = `${w.league_id}|${w.market}|${w.side}|${w.line}`;
+      // Use league_id if present, otherwise league_key for global rows
+      const lid = w.league_id ?? w.league_key;
+      const normalizedLine = normalizeLine(w.line);
+      const key = `${lid}|${w.market}|${w.side}|${normalizedLine}`;
       weightMap.set(key, w);
     }
+
+    console.log(`[safe-zone-populate] ${weightMap.size} performance weight entries loaded (sample >= ${MIN_SAMPLE_SIZE})`);
 
     // 5) Score each candidate
     type ScoredPick = {
@@ -145,26 +164,46 @@ Deno.serve(async (req) => {
     };
 
     const scored: ScoredPick[] = [];
+    let noWeightMatch = 0;
+    let failedWilsonOrRoi = 0;
+    let failedEdge = 0;
 
     for (const c of filtered) {
-      const key = `${c.league_id}|${c.market}|${c.side}|${c.line}`;
-      const w = weightMap.get(key);
-      if (!w) continue; // No performance data → exclude
-      if (w.bayes_win_rate < MIN_BAYES_WIN_RATE) continue;
+      const normalizedLine = normalizeLine(c.line);
+      // Try league-specific first, then global (league_key = -1)
+      const leagueKey = `${c.league_id}|${c.market}|${c.side}|${normalizedLine}`;
+      const globalKey = `-1|${c.market}|${c.side}|${normalizedLine}`;
+      const w = weightMap.get(leagueKey) || weightMap.get(globalKey);
+
+      if (!w) {
+        noWeightMatch++;
+        continue;
+      }
+
+      // Relaxed threshold: wilson_lb >= 0.55 OR roi_pct > 0
+      // (replaces strict bayes_win_rate >= 0.55 which is unreachable with prior_strength=50)
+      const total = w.wins + w.losses;
+      const wlb = wilsonLB(w.wins, total);
+      
+      if (wlb < 0.55 && w.roi_pct <= 0) {
+        failedWilsonOrRoi++;
+        continue;
+      }
 
       // Compute edge_pct: prefer stored, then compute from model_prob
       let edgePct = c.edge_pct;
       if (edgePct == null && c.model_prob != null && c.odds > 0) {
         edgePct = c.model_prob - 1 / c.odds;
       }
-      if (edgePct == null || edgePct <= 0) continue; // Must have positive edge
+      // If edge_pct is still null, allow it but set to 0 (don't hard-exclude)
+      // Only exclude if edge is explicitly negative
+      if (edgePct != null && edgePct < 0) {
+        failedEdge++;
+        continue;
+      }
+      const finalEdge = edgePct ?? 0;
 
-      // ROI filter
-      if (w.roi_pct <= 0) continue;
-
-      const total = w.wins + w.losses;
-      const wlb = wilsonLB(w.wins, total);
-      const confidence = computeConfidence(wlb, w.roi_pct, edgePct, w.sample_size);
+      const confidence = computeConfidence(wlb, w.roi_pct, finalEdge, w.sample_size);
 
       scored.push({
         fixture_id: c.fixture_id,
@@ -179,11 +218,11 @@ Deno.serve(async (req) => {
         wilson_lb: Math.round(wlb * 10000) / 10000,
         historical_roi_pct: w.roi_pct,
         sample_size: w.sample_size,
-        edge_pct: Math.round(edgePct * 10000) / 10000,
+        edge_pct: Math.round(finalEdge * 10000) / 10000,
       });
     }
 
-    console.log(`[safe-zone-populate] ${scored.length} scored picks`);
+    console.log(`[safe-zone-populate] Scoring: ${scored.length} passed, ${noWeightMatch} no weight match, ${failedWilsonOrRoi} failed wilson/roi, ${failedEdge} negative edge`);
 
     // 6) One best pick per fixture (highest confidence, then wilson, then roi, then edge)
     const bestByFixture = new Map<number, ScoredPick>();
@@ -199,15 +238,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[safe-zone-populate] ${bestByFixture.size} unique fixtures`);
+    console.log(`[safe-zone-populate] ${bestByFixture.size} unique fixtures after dedup`);
 
     // 7) Enrich with fixture + league data
     const fixtureIds = [...bestByFixture.keys()];
     if (fixtureIds.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "ok", picks: 0, message: "No qualifying picks" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const result: any = { status: "ok", picks: 0, message: "No qualifying picks" };
+      if (diagnosticMode) {
+        result.diagnostic = {
+          candidates_raw: rawCount,
+          after_odds_band: afterOddsBand,
+          weight_entries_loaded: weightMap.size,
+          no_weight_match: noWeightMatch,
+          failed_wilson_or_roi: failedWilsonOrRoi,
+          failed_edge: failedEdge,
+          scored: scored.length,
+          final: 0,
+        };
+      }
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data: fixtures } = await supabase
@@ -279,10 +330,24 @@ Deno.serve(async (req) => {
 
     console.log(`[safe-zone-populate] Upserted ${rows.length} picks`);
 
-    return new Response(
-      JSON.stringify({ status: "ok", picks: rows.length }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const result: any = { status: "ok", picks: rows.length };
+    if (diagnosticMode) {
+      result.diagnostic = {
+        candidates_raw: rawCount,
+        after_odds_band: afterOddsBand,
+        weight_entries_loaded: weightMap.size,
+        no_weight_match: noWeightMatch,
+        failed_wilson_or_roi: failedWilsonOrRoi,
+        failed_edge: failedEdge,
+        scored: scored.length,
+        unique_fixtures: bestByFixture.size,
+        final_upsert: rows.length,
+      };
+    }
+
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("[safe-zone-populate] Error:", error);
     return new Response(
