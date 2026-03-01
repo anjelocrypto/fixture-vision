@@ -196,5 +196,16 @@
   "safe_zone_xc": "xCorners",
   "safe_zone_xf": "xFouls",
   "safe_zone_over_rate": "Over%",
-  "analytics_tools": "Analytics Tools"
+  "analytics_tools": "Analytics Tools",
+  "safe_zone_bot_title": "Safe Zone Bot",
+  "safe_zone_bot_greeting": "Hey — I can show you the safest picks for the next 48 hours. Try: \"Top 10 corners picks today\".",
+  "safe_zone_bot_paywall": "Safe Zone Bot requires a premium subscription.",
+  "safe_zone_bot_thinking": "Analyzing...",
+  "safe_zone_bot_placeholder": "Ask about safe picks...",
+  "safe_zone_bot_chip_top_10": "Top 10",
+  "safe_zone_bot_chip_corners": "Corners",
+  "safe_zone_bot_chip_goals": "Goals",
+  "safe_zone_bot_chip_today": "Today",
+  "safe_zone_bot_chip_tomorrow": "Tomorrow",
+  "safe_zone_bot_chip_48h": "48h"
 }

@@ -196,5 +196,16 @@
   "safe_zone_xc": "xკუთხ.",
   "safe_zone_xf": "xჯარ.",
   "safe_zone_over_rate": ">%",
-  "analytics_tools": "ანალიტიკის ინსტრუმენტები"
+  "analytics_tools": "ანალიტიკის ინსტრუმენტები",
+  "safe_zone_bot_title": "Safe Zone ბოტი",
+  "safe_zone_bot_greeting": "გამარჯობა — შემიძლია გაჩვენო ყველაზე უსაფრთხო არჩევანი მომდევნო 48 საათისთვის. სცადე: \"Top 10 corners picks today\".",
+  "safe_zone_bot_paywall": "Safe Zone ბოტი მოითხოვს პრემიუმ გამოწერას.",
+  "safe_zone_bot_thinking": "ანალიზი...",
+  "safe_zone_bot_placeholder": "იკითხე უსაფრთხო არჩევანის შესახებ...",
+  "safe_zone_bot_chip_top_10": "ტოპ 10",
+  "safe_zone_bot_chip_corners": "კუთხურები",
+  "safe_zone_bot_chip_goals": "გოლები",
+  "safe_zone_bot_chip_today": "დღეს",
+  "safe_zone_bot_chip_tomorrow": "ხვალ",
+  "safe_zone_bot_chip_48h": "48 სთ"
 }
