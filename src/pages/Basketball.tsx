@@ -5,6 +5,7 @@ import { BasketballCenterRail } from "@/components/basketball/BasketballCenterRa
 import { BasketballSafeZonePanel } from "@/components/basketball/BasketballSafeZonePanel";
 import { BasketballFixtureAnalyzer } from "@/components/basketball/BasketballFixtureAnalyzer";
 import { PaywallGate } from "@/components/PaywallGate";
+import { SafeZoneBotButton } from "@/components/SafeZoneBot/SafeZoneBotButton";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Menu, Target, Calendar, ChartBar } from "lucide-react";
@@ -158,6 +159,8 @@ const Basketball = () => {
           </SheetContent>
         </Sheet>
       </div>
+
+      <SafeZoneBotButton />
     </>
   );
 };

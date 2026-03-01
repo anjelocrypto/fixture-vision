@@ -1501,6 +1501,72 @@ export type Database = {
         }
         Relationships: []
       }
+      safe_zone_picks: {
+        Row: {
+          away_team: string
+          bookmaker: string | null
+          computed_at: string
+          confidence_score: number
+          edge_pct: number | null
+          explanation: string | null
+          fixture_id: number
+          historical_roi_pct: number | null
+          home_team: string
+          id: string
+          league_id: number
+          league_name: string
+          line: number
+          market: string
+          odds: number
+          sample_size: number
+          side: string
+          utc_kickoff: string
+          wilson_lb: number
+        }
+        Insert: {
+          away_team: string
+          bookmaker?: string | null
+          computed_at?: string
+          confidence_score: number
+          edge_pct?: number | null
+          explanation?: string | null
+          fixture_id: number
+          historical_roi_pct?: number | null
+          home_team: string
+          id?: string
+          league_id: number
+          league_name: string
+          line: number
+          market: string
+          odds: number
+          sample_size: number
+          side?: string
+          utc_kickoff: string
+          wilson_lb: number
+        }
+        Update: {
+          away_team?: string
+          bookmaker?: string | null
+          computed_at?: string
+          confidence_score?: number
+          edge_pct?: number | null
+          explanation?: string | null
+          fixture_id?: number
+          historical_roi_pct?: number | null
+          home_team?: string
+          id?: string
+          league_id?: number
+          league_name?: string
+          line?: number
+          market?: string
+          odds?: number
+          sample_size?: number
+          side?: string
+          utc_kickoff?: string
+          wilson_lb?: number
+        }
+        Relationships: []
+      }
       stats_cache: {
         Row: {
           cards: number

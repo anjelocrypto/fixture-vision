@@ -29,6 +29,7 @@ import { useTranslation } from "react-i18next";
 import { formatMarketLabel } from "@/lib/i18nFormatters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getEmptyStateMessage } from "@/lib/holidayMessages";
+import { SafeZoneBotButton } from "@/components/SafeZoneBot/SafeZoneBotButton";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
@@ -1532,6 +1533,9 @@ const Index = () => {
         onShuffle={shuffleTicket}
         canShuffle={!!lastTicketParams && currentTicket?.mode !== "near-miss"}
       />
+
+      {/* Safe Zone Ticket Bot */}
+      <SafeZoneBotButton />
     </div>
   );
 };

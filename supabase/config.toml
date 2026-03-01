@@ -208,3 +208,9 @@ verify_jwt = false
 
 [functions.market-close-expired]
 verify_jwt = false
+
+[functions.populate-safe-zone-picks]
+verify_jwt = false
+
+[functions.safe-zone-chat]
+verify_jwt = true
