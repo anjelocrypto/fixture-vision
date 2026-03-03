@@ -43,7 +43,9 @@ import {
   getDynamicLeagueWeight,
   getWeightRecord,
   STATIC_LOW_WIN_RATE_LINES,
-  STATIC_LEAGUE_WEIGHTS
+  STATIC_LEAGUE_WEIGHTS,
+  DISABLED_MARKETS,
+  BLACKLISTED_LEAGUE_IDS
 } from "../_shared/dynamic_weights.ts";
 
 const corsHeaders = {
@@ -447,9 +449,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   const isMaxWinRateMode = ticketMode === "max_win_rate";
   
   // For Max Win Rate mode, restrict to scorable markets only
-  const markets = isMaxWinRateMode 
+  // DISABLED_MARKETS are removed from ALL modes (cards blacklisted Feb 2026 audit)
+  const baseMarkets = isMaxWinRateMode 
     ? ["goals", "corners", "cards"] 
     : (includeMarkets || ["goals", "corners", "cards", "offsides", "fouls"]);
+  const markets = baseMarkets.filter(m => !DISABLED_MARKETS.includes(m));
+  console.log(`[AI-ticket] Markets after disabling ${DISABLED_MARKETS.join(',')}: [${markets.join(',')}]`);
   
   // === EDGE REQUIREMENT CONFIG ===
   const MIN_EDGE_THRESHOLD = 0.03; // 3% minimum edge
@@ -613,6 +618,13 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       for (const sel of selections) {
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
+        
+        // BLACKLISTED LEAGUES: Skip entirely (Feb 2026 audit)
+        const leagueId = (sel as any).league_id;
+        if (BLACKLISTED_LEAGUE_IDS.includes(leagueId)) {
+          logs.push(`[BLACKLISTED_LEAGUE] league_id=${leagueId} fixture=${(sel as any).fixture_id} - DROPPED`);
+          continue;
+        }
         
         // Enforce global odds band [ODDS_MIN, ODDS_MAX]
         if ((sel as any).odds < ODDS_MIN || (sel as any).odds > ODDS_MAX) {
@@ -1396,6 +1408,12 @@ async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supa
   const candidates: any[] = [];
 
   for (const fixture of fixtures) {
+    // BLACKLISTED LEAGUES: Skip entirely (Feb 2026 audit)
+    if (BLACKLISTED_LEAGUE_IDS.includes(fixture.league_id)) {
+      console.log(`[bet-optimizer] Skipping blacklisted league ${fixture.league_id} fixture ${fixture.id}`);
+      continue;
+    }
+
     const { data: oddsCache } = await supabase
       .from("odds_cache")
       .select("*")

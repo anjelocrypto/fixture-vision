@@ -234,11 +234,18 @@ export const STATIC_LOW_WIN_RATE_LINES: Record<string, number[]> = {
 export const STATIC_LEAGUE_WEIGHTS: Record<number, number> = {
   40: 1.3,   // Championship 78.9%
   39: 1.2,   // Premier League 77.8%
-  3: 1.1,    // Europa League 75%
-  848: 1.1,  // Conference League 71.4%
-  2: 1.0,    // Champions League 61.5%
-  135: 1.0,  // Serie A 60%
-  140: 0.7,  // La Liga 37.5%
-  61: 0.5,   // Ligue 1 12.5%
-  307: 0.3,  // Pro League Saudi 0%
+  848: 1.1,  // Conference League 73.3%
+  2: 1.0,    // Champions League 73.9%
+  135: 1.0,  // Serie A 50%
+  140: 0.7,  // La Liga (small sample)
+  3: 0.0,    // Europa League 12.1% — BLACKLISTED (Feb 2026 audit)
+  61: 0.0,   // Ligue 1 9.5% — BLACKLISTED (Feb 2026 audit)
+  307: 0.0,  // Pro League Saudi — BLACKLISTED
 };
+
+// Markets disabled from ticket generation due to catastrophic loss rates
+// Cards Over 2.5: 0/13 (0%), Cards Over 4.5: 1/18 (5.6%) — Feb 2026 audit
+export const DISABLED_MARKETS: string[] = ["cards"];
+
+// League IDs fully blacklisted from ticket bot (win rate < 15%)
+export const BLACKLISTED_LEAGUE_IDS: number[] = [3, 61, 307];
