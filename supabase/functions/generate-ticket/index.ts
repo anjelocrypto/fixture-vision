@@ -670,7 +670,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // === EDGE REQUIREMENT: model_prob > implied_prob + 3% ===
         const impliedProb = 1 / (sel as any).odds;
-        const leagueId = (sel as any).league_id;
+        // leagueId already declared above (blacklist check)
         
         // Priority for model_prob:
         // 1. Use model_prob from optimized_selections (pre-computed from stats pipeline)
