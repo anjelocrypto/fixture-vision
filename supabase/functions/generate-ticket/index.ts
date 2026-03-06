@@ -889,12 +889,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // Compute bucket score using stored fields directly (no regex parsing)
         let bucketScore = 0;
-        if (greenBucketMap && leg.line != null && leg.side) {
-          const lineNorm = normalizeLineAllowlist(leg.line);
-          const band = computeOddsBand(leg.odds);
+        if (gbContext && leg.line != null && leg.side) {
           const lId = (leg as any)._leagueId || 0;
-          const bKey = `${lId}|${leg.market}|${leg.side}|${lineNorm}|${band}`;
-          const bucket = greenBucketMap.get(bKey);
+          const bKey = makeBucketKey(lId, leg.market, leg.side, leg.line, leg.odds);
+          const bucket = gbContext.bucketMap.get(bKey);
           if (bucket) {
             bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
             logs.push(`[BUCKET_SCORE] fixture=${leg.fixtureId} ${bKey} → hr=${bucket.hit_rate_pct}% n=${bucket.sample_size} roi=${bucket.roi_pct}% score=${bucketScore.toFixed(0)}`);
