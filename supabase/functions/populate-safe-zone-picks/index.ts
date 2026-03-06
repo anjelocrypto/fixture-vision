@@ -1,16 +1,19 @@
 // ============================================================================
-// Populate Safe Zone Picks — GREEN ALLOWLIST enforced
+// Populate Safe Zone Picks — GREEN BUCKETS enforced (data-driven)
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 import {
   isAllowlisted,
   filterByAllowlist,
+  filterByGreenBuckets,
+  buildGreenBucketsContext,
   ALLOWED_LEAGUE_IDS,
   ALLOWED_MARKET_LINES,
   BANNED_MARKETS,
   GLOBAL_ODDS_CAP,
   normalizeLine,
+  type GreenBucketsContext,
 } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
