@@ -555,7 +555,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets for candidate filtering`);
       console.log(`[generate-ticket] Loaded ${gbRows.length} green buckets`);
     } else {
-      logs.push(`[GREEN_BUCKETS] Warning: green_buckets table is empty. Falling back to static allowlist only.`);
+      // P0: Empty green_buckets = no data-driven filtering possible. Hard stop.
+      console.error(`[generate-ticket] green_buckets table is empty — cannot generate safe tickets`);
+      return new Response(
+        JSON.stringify({
+          code: "BUCKETS_NOT_BUILT",
+          message: "Green buckets have not been computed yet. Run rebuild-green-buckets first.",
+          logs: [`[GREEN_BUCKETS] FATAL: green_buckets table is empty. Cannot generate tickets without historical performance data.`],
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
     }
   }
 
