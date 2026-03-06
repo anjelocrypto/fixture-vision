@@ -113,7 +113,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">
               Safe Mode
             </Badge>
-            <InfoTooltip content={t('ticket:ai_ticket_description')} />
+            <InfoTooltip tooltipKey="ai_ticket" />
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             Verified selections only — Data-driven from historical performance · Hit rate ≥65% · Odds ≤{ODDS_CAP}
