@@ -531,10 +531,55 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], mode:${ticketMode}}`);
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
+  // === GREEN BUCKETS: Load from DB for data-driven filtering ===
+  let greenBucketSet: Set<string> | null = null;
+  let greenBucketMap: Map<string, { hit_rate_pct: number; sample_size: number; roi_pct: number }> | null = null;
+  {
+    const { data: gbRows, error: gbError } = await supabase
+      .from("green_buckets")
+      .select("league_id, market, side, line_norm, odds_band, hit_rate_pct, sample_size, roi_pct");
+    
+    if (gbError) {
+      console.error("[generate-ticket] Failed to load green_buckets:", gbError);
+      logs.push(`[GREEN_BUCKETS] Warning: could not load green_buckets table: ${gbError.message}`);
+    } else if (gbRows && gbRows.length > 0) {
+      greenBucketSet = new Set(
+        gbRows.map((b: any) => `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`)
+      );
+      greenBucketMap = new Map(
+        gbRows.map((b: any) => [
+          `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`,
+          { hit_rate_pct: b.hit_rate_pct, sample_size: b.sample_size, roi_pct: b.roi_pct }
+        ])
+      );
+      logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets for candidate filtering`);
+      console.log(`[generate-ticket] Loaded ${gbRows.length} green buckets`);
+    } else {
+      logs.push(`[GREEN_BUCKETS] Warning: green_buckets table is empty. Falling back to static allowlist only.`);
+    }
+  }
+
+  // Helper: compute odds band label (must match rebuild-green-buckets)
+  function computeOddsBand(odds: number): string {
+    if (odds < 1.20) return "<1.20";
+    if (odds < 1.30) return "1.20-1.30";
+    if (odds < 1.40) return "1.30-1.40";
+    if (odds < 1.50) return "1.40-1.50";
+    if (odds < 1.60) return "1.50-1.60";
+    if (odds < 1.70) return "1.60-1.70";
+    if (odds < 1.80) return "1.70-1.80";
+    if (odds < 1.90) return "1.80-1.90";
+    if (odds < 2.00) return "1.90-2.00";
+    if (odds < 2.10) return "2.00-2.10";
+    if (odds < 2.20) return "2.10-2.20";
+    if (odds < 2.30) return "2.20-2.30";
+    return "2.30+";
+  }
+
   // GLOBAL MODE: Query optimized_selections for selected date range
   // GREEN ALLOWLIST: Only pull from allowed leagues and markets
   if (globalMode) {
-    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN ALLOWLIST enforced)...`);
+    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN BUCKETS enforced)...`);
     
     // Only query allowed markets (never cards)
     const allowedMarketNames = ALLOWED_MARKET_LINES.map(ml => ml.market);
@@ -662,6 +707,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           droppedOutOfBand++;
           logs.push(`[GREEN_ALLOWLIST_REJECT] fixture=${(sel as any).fixture_id} ${allowCheck.reason}`);
           continue;
+        }
+        
+        // GREEN BUCKETS: Data-driven gate — candidate must exist in green_buckets table
+        if (greenBucketSet && greenBucketSet.size > 0) {
+          const lineNorm = normalizeLineAllowlist((sel as any).line);
+          const band = computeOddsBand(Number((sel as any).odds));
+          const bucketKey = `${leagueId}|${(sel as any).market}|${(sel as any).side}|${lineNorm}|${band}`;
+          
+          if (!greenBucketSet.has(bucketKey)) {
+            droppedOutOfBand++;
+            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} no bucket for ${bucketKey}`);
+            continue;
+          }
         }
         
         // MAX WIN RATE MODE: Apply mode-specific odds filter (minOdds from request)
@@ -839,20 +897,62 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         console.log(`[MAX_WIN_RATE SUMMARY] total=${maxWinRateStats.total_candidates}, rejected_not_over=${maxWinRateStats.rejected_not_over}, rejected_by_avoid=${maxWinRateStats.rejected_by_avoid}, rejected_by_league=${maxWinRateStats.rejected_by_league_weight}, kept=${maxWinRateStats.kept}, global_wts=${maxWinRateStats.global_weights_used}, league_wts=${maxWinRateStats.league_weights_used}`);
       }
       
-      // === ONE LEG PER FIXTURE: Keep best edge per fixture (not fixture+market) ===
-      const dedupMap = new Map<number, TicketLeg & { modelProb?: number }>();
+      // === ONE LEG PER FIXTURE: Keep best bucket-scored candidate per fixture ===
+      // Sorting priority: hit_rate_pct (desc) → sample_size (desc) → roi_pct (desc)
+      const dedupMap = new Map<number, TicketLeg & { modelProb?: number; bucketScore?: number }>();
       for (const leg of tempCandidates as (TicketLeg & { modelProb?: number })[]) {
-        const key = leg.fixtureId; // Changed from `${leg.fixtureId}|${leg.market}` to enforce one leg per fixture
+        const key = leg.fixtureId;
         const prev = dedupMap.get(key);
-        // Prefer leg with higher model_prob (edge), fallback to higher odds
-        const legEdge = (leg.modelProb || 0) - (1 / leg.odds);
-        const prevEdge = prev ? ((prev.modelProb || 0) - (1 / prev.odds)) : -Infinity;
-        if (!prev || legEdge > prevEdge) {
-          dedupMap.set(key, leg);
+        
+        // Compute bucket score for sorting: hit_rate * 10000 + sample_size * 10 + roi
+        let bucketScore = 0;
+        if (greenBucketMap) {
+          const lineNorm = normalizeLineAllowlist(parseFloat(leg.selection.match(/([\d.]+)/)?.[0] || "0"));
+          const band = computeOddsBand(leg.odds);
+          const leagueId = (tempCandidates as any[]).find(c => c === leg)?.fixtureId;
+          // Use fixture's league_id from fixtureMap
+          const fixture = fixtureMap.get(leg.fixtureId);
+          const lId = fixture ? (fixture as any).league_id : 0;
+          const bKey = `${lId}|${leg.market}|over|${lineNorm}|${band}`;
+          const bucket = greenBucketMap.get(bKey);
+          if (bucket) {
+            bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
+          }
+        }
+        
+        const prevScore = prev ? ((prev as any).bucketScore || 0) : -Infinity;
+        if (!prev || bucketScore > prevScore) {
+          dedupMap.set(key, { ...leg, bucketScore } as any);
         }
       }
       const deduped = Array.from(dedupMap.values());
-      candidatePool.push(...deduped);
+      
+      // Sort final pool: highest bucket score first
+      deduped.sort((a: any, b: any) => (b.bucketScore || 0) - (a.bucketScore || 0));
+      
+      // MAX 1 LEG PER LEAGUE: When ticket has >3 legs, enforce league diversity
+      if (legsMax > 3) {
+        const leagueSeen = new Set<number>();
+        const diversified: typeof deduped = [];
+        const overflow: typeof deduped = [];
+        
+        for (const leg of deduped) {
+          const fixture = fixtureMap.get(leg.fixtureId);
+          const lId = fixture ? (fixture as any).league_id : 0;
+          if (leagueSeen.has(lId)) {
+            overflow.push(leg);
+          } else {
+            leagueSeen.add(lId);
+            diversified.push(leg);
+          }
+        }
+        // Put diversified first, overflow after (beam search can pick overflow if needed)
+        candidatePool.push(...diversified, ...overflow);
+        logs.push(`[LEAGUE_DIVERSITY] Prioritized ${diversified.length} unique-league legs, ${overflow.length} overflow`);
+      } else {
+        candidatePool.push(...deduped);
+      }
+      
       logs.push(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates (one per fixture)`);
       console.log(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates`);
       

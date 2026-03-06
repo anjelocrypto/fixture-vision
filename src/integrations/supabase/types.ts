@@ -584,6 +584,51 @@ export type Database = {
         }
         Relationships: []
       }
+      green_buckets: {
+        Row: {
+          hit_rate_pct: number
+          id: string
+          league_id: number
+          line_norm: number
+          losses: number
+          market: string
+          odds_band: string
+          roi_pct: number
+          sample_size: number
+          side: string
+          updated_at: string
+          wins: number
+        }
+        Insert: {
+          hit_rate_pct?: number
+          id?: string
+          league_id: number
+          line_norm: number
+          losses?: number
+          market: string
+          odds_band: string
+          roi_pct?: number
+          sample_size?: number
+          side?: string
+          updated_at?: string
+          wins?: number
+        }
+        Update: {
+          hit_rate_pct?: number
+          id?: string
+          league_id?: number
+          line_norm?: number
+          losses?: number
+          market?: string
+          odds_band?: string
+          roi_pct?: number
+          sample_size?: number
+          side?: string
+          updated_at?: string
+          wins?: number
+        }
+        Relationships: []
+      }
       h2h_cache: {
         Row: {
           cards: number

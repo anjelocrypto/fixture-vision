@@ -223,3 +223,9 @@ verify_jwt = false
 
 [functions.allowlist-compliance]
 verify_jwt = false
+
+[functions.rebuild-green-buckets]
+verify_jwt = false
+
+[functions.green-bucket-diagnostics]
+verify_jwt = false
