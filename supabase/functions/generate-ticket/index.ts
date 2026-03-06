@@ -897,20 +897,62 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         console.log(`[MAX_WIN_RATE SUMMARY] total=${maxWinRateStats.total_candidates}, rejected_not_over=${maxWinRateStats.rejected_not_over}, rejected_by_avoid=${maxWinRateStats.rejected_by_avoid}, rejected_by_league=${maxWinRateStats.rejected_by_league_weight}, kept=${maxWinRateStats.kept}, global_wts=${maxWinRateStats.global_weights_used}, league_wts=${maxWinRateStats.league_weights_used}`);
       }
       
-      // === ONE LEG PER FIXTURE: Keep best edge per fixture (not fixture+market) ===
-      const dedupMap = new Map<number, TicketLeg & { modelProb?: number }>();
+      // === ONE LEG PER FIXTURE: Keep best bucket-scored candidate per fixture ===
+      // Sorting priority: hit_rate_pct (desc) → sample_size (desc) → roi_pct (desc)
+      const dedupMap = new Map<number, TicketLeg & { modelProb?: number; bucketScore?: number }>();
       for (const leg of tempCandidates as (TicketLeg & { modelProb?: number })[]) {
-        const key = leg.fixtureId; // Changed from `${leg.fixtureId}|${leg.market}` to enforce one leg per fixture
+        const key = leg.fixtureId;
         const prev = dedupMap.get(key);
-        // Prefer leg with higher model_prob (edge), fallback to higher odds
-        const legEdge = (leg.modelProb || 0) - (1 / leg.odds);
-        const prevEdge = prev ? ((prev.modelProb || 0) - (1 / prev.odds)) : -Infinity;
-        if (!prev || legEdge > prevEdge) {
-          dedupMap.set(key, leg);
+        
+        // Compute bucket score for sorting: hit_rate * 10000 + sample_size * 10 + roi
+        let bucketScore = 0;
+        if (greenBucketMap) {
+          const lineNorm = normalizeLineAllowlist(parseFloat(leg.selection.match(/([\d.]+)/)?.[0] || "0"));
+          const band = computeOddsBand(leg.odds);
+          const leagueId = (tempCandidates as any[]).find(c => c === leg)?.fixtureId;
+          // Use fixture's league_id from fixtureMap
+          const fixture = fixtureMap.get(leg.fixtureId);
+          const lId = fixture ? (fixture as any).league_id : 0;
+          const bKey = `${lId}|${leg.market}|over|${lineNorm}|${band}`;
+          const bucket = greenBucketMap.get(bKey);
+          if (bucket) {
+            bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
+          }
+        }
+        
+        const prevScore = prev ? ((prev as any).bucketScore || 0) : -Infinity;
+        if (!prev || bucketScore > prevScore) {
+          dedupMap.set(key, { ...leg, bucketScore } as any);
         }
       }
       const deduped = Array.from(dedupMap.values());
-      candidatePool.push(...deduped);
+      
+      // Sort final pool: highest bucket score first
+      deduped.sort((a: any, b: any) => (b.bucketScore || 0) - (a.bucketScore || 0));
+      
+      // MAX 1 LEG PER LEAGUE: When ticket has >3 legs, enforce league diversity
+      if (legsMax > 3) {
+        const leagueSeen = new Set<number>();
+        const diversified: typeof deduped = [];
+        const overflow: typeof deduped = [];
+        
+        for (const leg of deduped) {
+          const fixture = fixtureMap.get(leg.fixtureId);
+          const lId = fixture ? (fixture as any).league_id : 0;
+          if (leagueSeen.has(lId)) {
+            overflow.push(leg);
+          } else {
+            leagueSeen.add(lId);
+            diversified.push(leg);
+          }
+        }
+        // Put diversified first, overflow after (beam search can pick overflow if needed)
+        candidatePool.push(...diversified, ...overflow);
+        logs.push(`[LEAGUE_DIVERSITY] Prioritized ${diversified.length} unique-league legs, ${overflow.length} overflow`);
+      } else {
+        candidatePool.push(...deduped);
+      }
+      
       logs.push(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates (one per fixture)`);
       console.log(`[ONE_LEG_PER_FIXTURE] Deduped from ${tempCandidates.length} to ${deduped.length} candidates`);
       
