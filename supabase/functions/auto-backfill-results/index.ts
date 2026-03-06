@@ -348,12 +348,19 @@ Deno.serve(async (req: Request) => {
       await new Promise(r => setTimeout(r, 50));
     }
 
+    // Deduplicate results by fixture_id (keep last occurrence)
+    const deduped = new Map<number, FixtureResultRow>();
+    for (const r of results) {
+      deduped.set(r.fixture_id, r);
+    }
+    const uniqueResults = Array.from(deduped.values());
+
     // Batch upsert results
-    if (results.length > 0) {
-      console.log(`[auto-backfill] Upserting ${results.length} results`);
+    if (uniqueResults.length > 0) {
+      console.log(`[auto-backfill] Upserting ${uniqueResults.length} results (${results.length - uniqueResults.length} duplicates removed)`);
       const { error: upsertError } = await supabase
         .from("fixture_results")
-        .upsert(results, { onConflict: "fixture_id" });
+        .upsert(uniqueResults, { onConflict: "fixture_id" });
 
       if (upsertError) {
         console.error("[auto-backfill] Upsert error:", upsertError);
@@ -361,7 +368,7 @@ Deno.serve(async (req: Request) => {
         return errorResponse(`Upsert failed: ${upsertError.message}`, origin, 500, req);
       }
 
-      inserted = results.length;
+      inserted = uniqueResults.length;
       console.log(`[auto-backfill] Successfully upserted ${inserted} results`);
     }
 
