@@ -2390,6 +2390,14 @@ export type Database = {
           wins_count: number
         }[]
       }
+      get_pending_ticket_fixture_ids: {
+        Args: { batch_limit?: number }
+        Returns: {
+          fixture_id: number
+          kickoff_at: string
+          league_id: number
+        }[]
+      }
       get_scorable_pending_legs: {
         Args: { batch_limit?: number }
         Returns: {
@@ -2442,6 +2450,13 @@ export type Database = {
       }
       update_username: { Args: { p_new_username: string }; Returns: Json }
       user_has_access: { Args: never; Returns: boolean }
+      void_non_ft_pending_legs: {
+        Args: { batch_limit?: number }
+        Returns: {
+          affected_tickets: number
+          voided_count: number
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "user"
