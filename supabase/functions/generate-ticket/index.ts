@@ -47,6 +47,16 @@ import {
   DISABLED_MARKETS,
   BLACKLISTED_LEAGUE_IDS
 } from "../_shared/dynamic_weights.ts";
+import {
+  isAllowlisted,
+  ALLOWED_LEAGUE_IDS,
+  ALLOWED_MARKET_LINES,
+  GLOBAL_ODDS_CAP,
+  BANNED_MARKETS,
+  MAX_TICKET_LEGS,
+  DEFAULT_TICKET_LEGS,
+  normalizeLine as normalizeLineAllowlist,
+} from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -434,8 +444,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     fixtureIds,
     minOdds,
     maxOdds,
-    legsMin,
-    legsMax,
+    legsMin: rawLegsMin,
+    legsMax: rawLegsMax,
     includeMarkets,
     useLiveOdds = false,
     dayRange = "next_2_days",
@@ -444,6 +454,11 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     debug = false,
     ticketMode = "balanced",
   } = body;
+
+  // GREEN ALLOWLIST: Enforce max legs cap (audit: 8+ legs = 0% win rate, cap at 2)
+  const legsMin = Math.min(rawLegsMin, MAX_TICKET_LEGS);
+  const legsMax = Math.min(rawLegsMax, MAX_TICKET_LEGS);
+  console.log(`[AI-ticket] GREEN ALLOWLIST: legs capped to [${legsMin}, ${legsMax}] (requested [${rawLegsMin}, ${rawLegsMax}], cap=${MAX_TICKET_LEGS})`);
 
   const globalMode = !fixtureIds || fixtureIds.length === 0;
   const isMaxWinRateMode = ticketMode === "max_win_rate";
@@ -517,20 +532,34 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
   // GLOBAL MODE: Query optimized_selections for selected date range
+  // GREEN ALLOWLIST: Only pull from allowed leagues and markets
   if (globalMode) {
-    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel}...`);
+    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN ALLOWLIST enforced)...`);
+    
+    // Only query allowed markets (never cards)
+    const allowedMarketNames = ALLOWED_MARKET_LINES.map(ml => ml.market);
+    const effectiveMarkets = markets.filter(m => allowedMarketNames.includes(m) && !BANNED_MARKETS.includes(m));
+    logs.push(`[GREEN_ALLOWLIST] Effective markets: [${effectiveMarkets.join(',')}] (from requested: [${markets.join(',')}])`);
     
     let query = supabase
       .from("optimized_selections")
       .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
-      .eq("rules_version", RULES_VERSION) // Only qualified selections from current matrix
+      .eq("rules_version", RULES_VERSION)
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
-      .in("market", markets);
+      .in("market", effectiveMarkets)
+      .in("league_id", ALLOWED_LEAGUE_IDS)
+      .eq("side", "over")
+      .not("odds", "is", null)
+      .lte("odds", GLOBAL_ODDS_CAP);
     
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
-    if (leagueIds && leagueIds.length > 0) query = query.in("league_id", leagueIds);
+    // If user specified leagueIds, intersect with allowlist
+    if (leagueIds && leagueIds.length > 0) {
+      const intersected = leagueIds.filter(id => ALLOWED_LEAGUE_IDS.includes(id));
+      if (intersected.length > 0) query = query.in("league_id", intersected);
+    }
     
     const { data: selections, error: selectionsError } = await query.limit(500);
     
@@ -619,16 +648,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         const fixture: any = fixtureMap.get((sel as any).fixture_id);
         if (!fixture) continue;
         
-        // BLACKLISTED LEAGUES: Skip entirely (Feb 2026 audit)
         const leagueId = (sel as any).league_id;
-        if (BLACKLISTED_LEAGUE_IDS.includes(leagueId)) {
-          logs.push(`[BLACKLISTED_LEAGUE] league_id=${leagueId} fixture=${(sel as any).fixture_id} - DROPPED`);
-          continue;
-        }
         
-        // Enforce global odds band [ODDS_MIN, ODDS_MAX]
-        if ((sel as any).odds < ODDS_MIN || (sel as any).odds > ODDS_MAX) {
+        // GREEN ALLOWLIST: Primary gate — replaces old blacklist + band checks
+        const allowCheck = isAllowlisted({
+          league_id: leagueId,
+          market: (sel as any).market,
+          side: (sel as any).side,
+          line: (sel as any).line,
+          odds: (sel as any).odds,
+        });
+        if (!allowCheck.allowed) {
           droppedOutOfBand++;
+          logs.push(`[GREEN_ALLOWLIST_REJECT] fixture=${(sel as any).fixture_id} ${allowCheck.reason}`);
           continue;
         }
         

@@ -1,29 +1,24 @@
 // ============================================================================
-// Populate Safe Zone Picks — Precompute pipeline (runs every 30 min via cron)
+// Populate Safe Zone Picks — GREEN ALLOWLIST enforced
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import {
+  isAllowlisted,
+  filterByAllowlist,
+  ALLOWED_LEAGUE_IDS,
+  ALLOWED_MARKET_LINES,
+  BANNED_MARKETS,
+  GLOBAL_ODDS_CAP,
+  normalizeLine,
+} from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-key",
 };
 
-// League blacklist (hard-coded)
-const BLACKLISTED_LEAGUES = [172, 71, 143, 235, 271, 129, 136, 48];
-
-// Odds bands per market
-const ODDS_BANDS: Record<string, [number, number]> = {
-  corners: [1.40, 2.30],
-  goals: [1.50, 1.60],
-};
-
 const MIN_SAMPLE_SIZE = 50;
-
-/** Normalize line to nearest 0.5 to avoid precision mismatches (8.50 vs 8.5) */
-function normalizeLine(line: number): number {
-  return Math.round(line * 2) / 2;
-}
 
 /** Wilson Lower Bound (z=1.96 for 95% CI) */
 function wilsonLB(wins: number, total: number): number {
@@ -80,17 +75,19 @@ Deno.serve(async (req) => {
     // 1) Delete expired rows
     await supabase.from("safe_zone_picks").delete().lt("utc_kickoff", now);
 
-    // 2) Fetch candidates from optimized_selections (next 48h, corners/goals, over, not live)
+    // 2) Fetch candidates — GREEN ALLOWLIST: only allowed leagues, markets, side=over
+    const allowedMarkets = ALLOWED_MARKET_LINES.map(ml => ml.market);
     const { data: candidates, error: candErr } = await supabase
       .from("optimized_selections")
       .select("fixture_id, league_id, market, side, line, odds, bookmaker, edge_pct, model_prob, utc_kickoff")
       .gte("utc_kickoff", now)
       .lte("utc_kickoff", in48h)
-      .in("market", ["corners", "goals"])
+      .in("market", allowedMarkets)
       .eq("side", "over")
       .eq("is_live", false)
-      .not("league_id", "in", `(${BLACKLISTED_LEAGUES.join(",")})`)
-      .not("odds", "is", null);
+      .in("league_id", ALLOWED_LEAGUE_IDS)
+      .not("odds", "is", null)
+      .lte("odds", GLOBAL_ODDS_CAP);
 
     if (candErr) {
       console.error("[safe-zone-populate] Candidate fetch error:", candErr);
@@ -98,33 +95,32 @@ Deno.serve(async (req) => {
     }
 
     const rawCount = candidates?.length || 0;
-    console.log(`[safe-zone-populate] ${rawCount} raw candidates`);
+    console.log(`[safe-zone-populate] ${rawCount} raw candidates (pre-allowlist filtered at query level)`);
 
-    // 3) Filter by odds bands
-    const filtered = (candidates || []).filter((c) => {
-      const band = ODDS_BANDS[c.market];
-      if (!band) return false;
-      return c.odds >= band[0] && c.odds <= band[1];
-    });
-
-    const afterOddsBand = filtered.length;
-    console.log(`[safe-zone-populate] ${afterOddsBand} after odds band filter`);
+    // 3) Filter through GREEN ALLOWLIST (market-specific odds bands + line matching)
+    const { passed: filtered, violations } = filterByAllowlist(candidates || []);
+    
+    console.log(`[safe-zone-populate] ${filtered.length} passed allowlist, ${violations.length} rejected`);
+    if (violations.length > 0) {
+      const sampleViolations = violations.slice(0, 5).map(v => v.reason);
+      console.log(`[safe-zone-populate] Sample violations: ${sampleViolations.join('; ')}`);
+    }
 
     if (filtered.length === 0) {
-      const result = { status: "ok", picks: 0, message: "No candidates passed filters" };
+      const result = { status: "ok", picks: 0, message: "No candidates passed GREEN allowlist" };
       if (diagnosticMode) {
-        Object.assign(result, { diagnostic: { candidates_raw: rawCount, after_odds_band: 0 } });
+        Object.assign(result, { diagnostic: { candidates_raw: rawCount, after_allowlist: 0, violations_sample: violations.slice(0, 10).map(v => v.reason) } });
       }
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 4) Fetch ALL performance_weights for corners/goals/over with sample >= MIN_SAMPLE_SIZE
+    // 4) Fetch performance_weights for allowed markets
     const { data: weights, error: wErr } = await supabase
       .from("performance_weights")
       .select("league_id, league_key, market, side, line, wins, losses, sample_size, bayes_win_rate, roi_pct")
-      .in("market", ["corners", "goals"])
+      .in("market", allowedMarkets)
       .eq("side", "over")
       .gte("sample_size", MIN_SAMPLE_SIZE);
 
@@ -133,11 +129,8 @@ Deno.serve(async (req) => {
       throw wErr;
     }
 
-    // Index weights by normalized key: league_id|market|side|normalizedLine
-    // performance_weights uses league_key (COALESCE(league_id, -1)), so we match on league_id
     const weightMap = new Map<string, typeof weights[0]>();
     for (const w of weights || []) {
-      // Use league_id if present, otherwise league_key for global rows
       const lid = w.league_id ?? w.league_key;
       const normalizedLine = normalizeLine(w.line);
       const key = `${lid}|${w.market}|${w.side}|${normalizedLine}`;
@@ -170,7 +163,6 @@ Deno.serve(async (req) => {
 
     for (const c of filtered) {
       const normalizedLine = normalizeLine(c.line);
-      // Try league-specific first, then global (league_key = -1)
       const leagueKey = `${c.league_id}|${c.market}|${c.side}|${normalizedLine}`;
       const globalKey = `-1|${c.market}|${c.side}|${normalizedLine}`;
       const w = weightMap.get(leagueKey) || weightMap.get(globalKey);
@@ -180,8 +172,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Relaxed threshold: wilson_lb >= 0.55 OR roi_pct > 0
-      // (replaces strict bayes_win_rate >= 0.55 which is unreachable with prior_strength=50)
       const total = w.wins + w.losses;
       const wlb = wilsonLB(w.wins, total);
       
@@ -190,13 +180,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Compute edge_pct: prefer stored, then compute from model_prob
       let edgePct = c.edge_pct;
       if (edgePct == null && c.model_prob != null && c.odds > 0) {
         edgePct = c.model_prob - 1 / c.odds;
       }
-      // If edge_pct is still null, allow it but set to 0 (don't hard-exclude)
-      // Only exclude if edge is explicitly negative
       if (edgePct != null && edgePct < 0) {
         failedEdge++;
         continue;
@@ -224,7 +211,7 @@ Deno.serve(async (req) => {
 
     console.log(`[safe-zone-populate] Scoring: ${scored.length} passed, ${noWeightMatch} no weight match, ${failedWilsonOrRoi} failed wilson/roi, ${failedEdge} negative edge`);
 
-    // 6) One best pick per fixture (highest confidence, then wilson, then roi, then edge)
+    // 6) One best pick per fixture
     const bestByFixture = new Map<number, ScoredPick>();
     for (const s of scored) {
       const existing = bestByFixture.get(s.fixture_id);
@@ -243,11 +230,11 @@ Deno.serve(async (req) => {
     // 7) Enrich with fixture + league data
     const fixtureIds = [...bestByFixture.keys()];
     if (fixtureIds.length === 0) {
-      const result: any = { status: "ok", picks: 0, message: "No qualifying picks" };
+      const result: any = { status: "ok", picks: 0, message: "No qualifying picks after scoring" };
       if (diagnosticMode) {
         result.diagnostic = {
           candidates_raw: rawCount,
-          after_odds_band: afterOddsBand,
+          after_allowlist: filtered.length,
           weight_entries_loaded: weightMap.size,
           no_weight_match: noWeightMatch,
           failed_wilson_or_roi: failedWilsonOrRoi,
@@ -271,11 +258,11 @@ Deno.serve(async (req) => {
       fixtureMap.set(f.id, f);
     }
 
-    const leagueIds = [...new Set([...bestByFixture.values()].map((p) => p.league_id))];
+    const leagueIdsSet = [...new Set([...bestByFixture.values()].map((p) => p.league_id))];
     const { data: leagues } = await supabase
       .from("leagues")
       .select("id, name")
-      .in("id", leagueIds);
+      .in("id", leagueIdsSet);
 
     const leagueMap = new Map<number, string>();
     for (const l of leagues || []) {
@@ -334,7 +321,8 @@ Deno.serve(async (req) => {
     if (diagnosticMode) {
       result.diagnostic = {
         candidates_raw: rawCount,
-        after_odds_band: afterOddsBand,
+        after_allowlist: filtered.length,
+        violations_count: violations.length,
         weight_entries_loaded: weightMap.size,
         no_weight_match: noWeightMatch,
         failed_wilson_or_roi: failedWilsonOrRoi,
@@ -342,6 +330,11 @@ Deno.serve(async (req) => {
         scored: scored.length,
         unique_fixtures: bestByFixture.size,
         final_upsert: rows.length,
+        allowlist: {
+          leagues: ALLOWED_LEAGUE_IDS,
+          markets: ALLOWED_MARKET_LINES,
+          odds_cap: GLOBAL_ODDS_CAP,
+        },
       };
     }
 
