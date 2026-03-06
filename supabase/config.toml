@@ -214,3 +214,6 @@ verify_jwt = false
 
 [functions.safe-zone-chat]
 verify_jwt = true
+
+[functions.admin-void-legs]
+verify_jwt = false
