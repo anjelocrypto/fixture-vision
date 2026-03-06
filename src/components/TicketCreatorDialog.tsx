@@ -26,10 +26,8 @@ export interface GenerateParams {
   ticketMode?: TicketMode;
 }
 
-// Allowlist constants mirrored from backend green_allowlist.ts
-const ALLOWED_MARKETS = ["goals", "corners"];
-const MAX_LEGS = 2;
-const DEFAULT_LEGS = 1;
+// These match the backend green_buckets system
+const MAX_LEGS = 3;
 const ODDS_CAP = 2.30;
 
 const DAY_RANGES = [
@@ -46,15 +44,15 @@ interface DebugInfo {
 
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
   const { t } = useTranslation(['ticket']);
-  const [legs, setLegs] = useState<1 | 2>(1);
+  const [legs, setLegs] = useState<1 | 2 | 3>(1);
   const [dayRange, setDayRange] = useState<"today" | "tomorrow" | "next_2_days">("next_2_days");
   const [generating, setGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
   // Compute odds range based on legs
-  const targetMin = legs === 1 ? 1.30 : 1.80;
-  const targetMax = legs === 1 ? ODDS_CAP : 5.29;
+  const targetMin = legs === 1 ? 1.20 : legs === 2 ? 1.80 : 2.50;
+  const targetMax = legs === 1 ? ODDS_CAP : legs === 2 ? 5.29 : 12.0;
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -64,7 +62,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
       await onGenerate({
         targetMin,
         targetMax,
-        includeMarkets: ALLOWED_MARKETS,
+        includeMarkets: ["goals", "corners"],
         minLegs: legs,
         maxLegs: legs,
         useLiveOdds: false,
@@ -72,19 +70,16 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
         ticketMode: "max_win_rate",
       });
     } catch (error: any) {
-      // Parse backend response for debug info
       const msg = error.message || "Failed to generate ticket";
       
-      // Check if this is an allowlist "no candidates" error
-      if (msg.includes("INSUFFICIENT_CANDIDATES") || msg.includes("Not enough")) {
+      if (msg.includes("INSUFFICIENT_CANDIDATES") || msg.includes("Not enough") || msg.includes("BUCKETS_NOT_BUILT")) {
         setErrorMessage(
-          "No matches in the next 48h meet Safe Zone rules (leagues: PL/Championship/FA Cup + Goals O1.5 / Corners O9.5 + odds ≤2.30). Try again later."
+          "No matches in the next 48h meet Safe Zone rules (verified leagues + markets with ≥65% hit rate + odds ≤2.30). Try again later or expand the day range."
         );
       } else {
         setErrorMessage(msg);
       }
 
-      // Extract debug info from logs if available
       try {
         const parsed = typeof error.details === "string" ? JSON.parse(error.details) : error.details;
         if (parsed?.logs) {
@@ -95,16 +90,12 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
               const match = log.match(/raw=(\d+)/);
               if (match) scanned = parseInt(match[1]);
             }
-            if (log.includes("ALLOWLIST_REJECT")) {
-              const reason = log.match(/reason=(.+)/)?.[1] || "unknown";
+            if (log.includes("BUCKET_REJECT") || log.includes("ALLOWLIST_REJECT")) {
+              const reason = log.match(/reason=(.+)/)?.[1] || log.match(/no bucket for (.+)/)?.[1] || "unknown";
               rejections[reason] = (rejections[reason] || 0) + 1;
             }
           }
-          setDebugInfo({
-            logs: parsed.logs,
-            candidatesScanned: scanned,
-            rejectionReasons: rejections,
-          });
+          setDebugInfo({ logs: parsed.logs, candidatesScanned: scanned, rejectionReasons: rejections });
         }
       } catch { /* ignore parse errors */ }
     } finally {
@@ -114,31 +105,31 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-green-500" />
-            {t('ticket:title')}
-            <Badge variant="outline" className="text-[10px] border-green-500/50 text-green-600">
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            {t('ticket:ai_ticket_title')}
+            <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">
               Safe Mode
             </Badge>
-            <InfoTooltip tooltipKey="ticket_creator" />
+            <InfoTooltip content={t('ticket:ai_ticket_description')} />
           </DialogTitle>
-          <DialogDescription>
-            Verified selections only — PL, Championship &amp; FA Cup · Goals O1.5 · Corners O9.5 · Odds ≤{ODDS_CAP}
+          <DialogDescription className="text-xs text-muted-foreground">
+            Verified selections only — Data-driven from historical performance · Hit rate ≥65% · Odds ≤{ODDS_CAP}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Allowlist Info */}
+          {/* Green Buckets Info */}
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 space-y-1.5">
             <p className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Green Allowlist Active
+              Green Buckets Active
             </p>
             <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>✓ Leagues: Premier League, Championship, FA Cup</p>
-              <p>✓ Markets: Goals Over 1.5 (1.30–1.60) · Corners Over 9.5 (1.40–2.30)</p>
+              <p>✓ Leagues: All verified leagues with ≥65% hit rate (Champions League, Championship, Europa League, La Liga, Serie A, and more)</p>
+              <p>✓ Markets: Goals Over (1.5/2.5/3.5) — data-verified odds bands</p>
               <p>✗ Cards: Disabled (negative EV)</p>
             </div>
           </div>
@@ -146,23 +137,18 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
           {/* Number of Legs */}
           <div>
             <Label className="mb-2 block text-sm">Number of Legs</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={legs === 1 ? "default" : "outline"}
-                size="sm"
-                onClick={() => setLegs(1)}
-                className={legs === 1 ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-              >
-                1 Leg (Safest)
-              </Button>
-              <Button
-                variant={legs === 2 ? "default" : "outline"}
-                size="sm"
-                onClick={() => setLegs(2)}
-                className={legs === 2 ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-              >
-                2 Legs (Max)
-              </Button>
+            <div className="grid grid-cols-3 gap-2">
+              {([1, 2, 3] as const).map((n) => (
+                <Button
+                  key={n}
+                  variant={legs === n ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setLegs(n)}
+                  className={legs === n ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                >
+                  {n === 1 ? "1 Leg (Safest)" : n === 2 ? "2 Legs" : "3 Legs (Max)"}
+                </Button>
+              ))}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">
               Safe mode supports max {MAX_LEGS} legs. Odds range: {targetMin.toFixed(2)}–{targetMax.toFixed(2)}
@@ -190,12 +176,9 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
           {/* Markets Display (read-only) */}
           <div>
             <Label className="mb-2 block text-sm">Markets</Label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Badge className="bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/30">
-                ⚽ Goals O1.5
-              </Badge>
-              <Badge className="bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/30">
-                🔲 Corners O9.5
+                ⚽ Goals Over
               </Badge>
               <Badge variant="outline" className="opacity-40 line-through text-xs">
                 🟨 Cards
