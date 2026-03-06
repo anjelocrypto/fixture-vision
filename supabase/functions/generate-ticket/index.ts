@@ -947,8 +947,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         const overflow: typeof deduped = [];
         
         for (const leg of deduped) {
-          const fixture = fixtureMap.get(leg.fixtureId);
-          const lId = fixture ? (fixture as any).league_id : 0;
+          const lId = (leg as any)._leagueId || 0;
+          if (leagueSeen.has(lId)) {
           if (leagueSeen.has(lId)) {
             overflow.push(leg);
           } else {
