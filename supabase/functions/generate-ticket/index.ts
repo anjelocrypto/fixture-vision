@@ -49,13 +49,18 @@ import {
 } from "../_shared/dynamic_weights.ts";
 import {
   isAllowlisted,
+  isInGreenBucket,
+  buildGreenBucketsContext,
+  makeBucketKey,
+  computeOddsBand,
+  normalizeLine as normalizeLineAllowlist,
   ALLOWED_LEAGUE_IDS,
   ALLOWED_MARKET_LINES,
   GLOBAL_ODDS_CAP,
   BANNED_MARKETS,
   MAX_TICKET_LEGS,
   DEFAULT_TICKET_LEGS,
-  normalizeLine as normalizeLineAllowlist,
+  type GreenBucketsContext,
 } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
