@@ -555,7 +555,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets for candidate filtering`);
       console.log(`[generate-ticket] Loaded ${gbRows.length} green buckets`);
     } else {
-      logs.push(`[GREEN_BUCKETS] Warning: green_buckets table is empty. Falling back to static allowlist only.`);
+      // P0: Empty green_buckets = no data-driven filtering possible. Hard stop.
+      console.error(`[generate-ticket] green_buckets table is empty — cannot generate safe tickets`);
+      return new Response(
+        JSON.stringify({
+          code: "BUCKETS_NOT_BUILT",
+          message: "Green buckets have not been computed yet. Run rebuild-green-buckets first.",
+          logs: [`[GREEN_BUCKETS] FATAL: green_buckets table is empty. Cannot generate tickets without historical performance data.`],
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
     }
   }
 
@@ -877,9 +886,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           bookmaker: (sel as any).bookmaker || "Unknown",
           combinedAvg: combinedSnapshot?.[market],
           source: (sel as any).is_live ? "live" : "prematch",
-          // NEW: Store model_prob for edge-based selection
+          line: Number(line),
+          side: side as "over" | "under",
+          // NEW: Store model_prob and league_id for edge-based selection & bucket scoring
           modelProb: candidateModelProb,
-        } as TicketLeg & { modelProb: number });
+          _leagueId: leagueId, // stash for bucket score computation
+        } as TicketLeg & { modelProb: number; _leagueId: number });
       }
       
       // Log edge filter summary
@@ -899,24 +911,22 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       
       // === ONE LEG PER FIXTURE: Keep best bucket-scored candidate per fixture ===
       // Sorting priority: hit_rate_pct (desc) → sample_size (desc) → roi_pct (desc)
-      const dedupMap = new Map<number, TicketLeg & { modelProb?: number; bucketScore?: number }>();
-      for (const leg of tempCandidates as (TicketLeg & { modelProb?: number })[]) {
+      const dedupMap = new Map<number, TicketLeg & { modelProb?: number; bucketScore?: number; _leagueId?: number }>();
+      for (const leg of tempCandidates as (TicketLeg & { modelProb?: number; _leagueId?: number })[]) {
         const key = leg.fixtureId;
         const prev = dedupMap.get(key);
         
-        // Compute bucket score for sorting: hit_rate * 10000 + sample_size * 10 + roi
+        // Compute bucket score using stored fields directly (no regex parsing)
         let bucketScore = 0;
-        if (greenBucketMap) {
-          const lineNorm = normalizeLineAllowlist(parseFloat(leg.selection.match(/([\d.]+)/)?.[0] || "0"));
+        if (greenBucketMap && leg.line != null && leg.side) {
+          const lineNorm = normalizeLineAllowlist(leg.line);
           const band = computeOddsBand(leg.odds);
-          const leagueId = (tempCandidates as any[]).find(c => c === leg)?.fixtureId;
-          // Use fixture's league_id from fixtureMap
-          const fixture = fixtureMap.get(leg.fixtureId);
-          const lId = fixture ? (fixture as any).league_id : 0;
-          const bKey = `${lId}|${leg.market}|over|${lineNorm}|${band}`;
+          const lId = (leg as any)._leagueId || 0;
+          const bKey = `${lId}|${leg.market}|${leg.side}|${lineNorm}|${band}`;
           const bucket = greenBucketMap.get(bKey);
           if (bucket) {
             bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
+            logs.push(`[BUCKET_SCORE] fixture=${leg.fixtureId} ${bKey} → hr=${bucket.hit_rate_pct}% n=${bucket.sample_size} roi=${bucket.roi_pct}% score=${bucketScore.toFixed(0)}`);
           }
         }
         
@@ -937,8 +947,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         const overflow: typeof deduped = [];
         
         for (const leg of deduped) {
-          const fixture = fixtureMap.get(leg.fixtureId);
-          const lId = fixture ? (fixture as any).league_id : 0;
+          const lId = (leg as any)._leagueId || 0;
           if (leagueSeen.has(lId)) {
             overflow.push(leg);
           } else {
