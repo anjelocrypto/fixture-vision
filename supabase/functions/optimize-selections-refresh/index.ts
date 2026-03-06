@@ -344,7 +344,20 @@ serve(async (req) => {
 
         // If no odds found, create a model-only selection
         if (bookmakerOdds.length === 0 && !hasOdds) {
-          // Model-only selection (no bookmaker odds available)
+          // GREEN ALLOWLIST: For model-only, validate league+market+line (skip odds check)
+          // Use a dummy odds value within range just to pass the allowlist line/market check
+          const dummyOddsForLineCheck = isAllowlisted({
+            league_id: fixture.league_id,
+            market,
+            side: pick.side,
+            line: pick.line,
+            odds: 1.50, // dummy value within all bands — we only care about line validation
+          });
+          if (!dummyOddsForLineCheck.allowed) {
+            console.log(`[optimize] ALLOWLIST_REJECT model-only fixture=${fixture.id} market=${market} line=${pick.line} reason=${dummyOddsForLineCheck.reason}`);
+            continue;
+          }
+
           const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
           const countryId = leagueToCountryMap.get(fixture.league_id);
           const countryCode = countryId ? countryCodeMap.get(countryId) : null;
@@ -364,9 +377,9 @@ serve(async (req) => {
             side: pick.side,
             line: pick.line,
             bookmaker: "model",
-            odds: null, // NULL for model-only
+            odds: null,
             is_live: false,
-            edge_pct: null, // No edge without odds
+            edge_pct: null,
             model_prob: modelProb,
             sample_size: sampleSize,
             combined_snapshot: combined,
@@ -391,6 +404,19 @@ serve(async (req) => {
         const countryCode = countryId ? countryCodeMap.get(countryId) : null;
 
         for (const { bookmaker, odds } of topBookmakers) {
+          // GREEN ALLOWLIST: Final gate — reject if not allowlisted
+          const allowCheck = isAllowlisted({
+            league_id: fixture.league_id,
+            market,
+            side: pick.side,
+            line: pick.line,
+            odds,
+          });
+          if (!allowCheck.allowed) {
+            console.log(`[optimize] ALLOWLIST_REJECT fixture=${fixture.id} market=${market} line=${pick.line} odds=${odds} reason=${allowCheck.reason}`);
+            continue;
+          }
+
           // Calculate edge
           const impliedProb = 1 / odds;
           const modelProb = Math.min(0.95, Math.max(0.05, combinedValue / (pick.line * 2)));
