@@ -1,13 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Sparkles, Target, Zap, TrendingUp } from "lucide-react";
+import { Loader2, Sparkles, ShieldCheck, AlertTriangle } from "lucide-react";
 import { InfoTooltip } from "@/components/shared/InfoTooltip";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface TicketCreatorDialogProps {
   open: boolean;
@@ -28,58 +26,11 @@ export interface GenerateParams {
   ticketMode?: TicketMode;
 }
 
-// Mode configurations with preset values
-const TICKET_MODE_CONFIGS: Record<TicketMode, {
-  icon: typeof Target;
-  minLegs: number;
-  maxLegs: number;
-  minOdds: number;
-  maxOdds: number;
-  markets: string[];
-  description: string;
-}> = {
-  max_win_rate: {
-    icon: Target,
-    minLegs: 1,
-    maxLegs: 2,
-    minOdds: 1.5,
-    maxOdds: 4.0,
-    markets: ["goals", "corners", "cards"],
-    description: "1-2 legs, high-probability lines only. ~60-80% hit rate.",
-  },
-  balanced: {
-    icon: Zap,
-    minLegs: 3,
-    maxLegs: 8,
-    minOdds: 5,
-    maxOdds: 20,
-    markets: ["goals", "corners", "cards"],
-    description: "Standard multi-leg tickets. Moderate risk/reward.",
-  },
-  high_risk: {
-    icon: TrendingUp,
-    minLegs: 5,
-    maxLegs: 15,
-    minOdds: 15,
-    maxOdds: 50,
-    markets: ["goals", "corners", "cards"],
-    description: "5+ legs, higher odds target. Low hit rate, high payout.",
-  },
-};
-
-const PRESET_RANGES = [
-  { label: "5-7x", min: 5, max: 7 },
-  { label: "10-12x", min: 10, max: 12 },
-  { label: "15-18x", min: 15, max: 18 },
-  { label: "18-20x", min: 18, max: 20 },
-  { label: "25-30x", min: 25, max: 30 },
-];
-
-const MARKETS = [
-  { id: "goals", label: "Goals" },
-  { id: "corners", label: "Corners" },
-  { id: "cards", label: "Cards" },
-];
+// Allowlist constants mirrored from backend green_allowlist.ts
+const ALLOWED_MARKETS = ["goals", "corners"];
+const MAX_LEGS = 2;
+const DEFAULT_LEGS = 1;
+const ODDS_CAP = 2.30;
 
 const DAY_RANGES = [
   { id: "today", label: "day_range_today" },
@@ -87,199 +38,140 @@ const DAY_RANGES = [
   { id: "next_2_days", label: "day_range_2_days" },
 ] as const;
 
+interface DebugInfo {
+  logs: string[];
+  candidatesScanned: number;
+  rejectionReasons: Record<string, number>;
+}
+
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
   const { t } = useTranslation(['ticket']);
-  const [ticketMode, setTicketMode] = useState<TicketMode>("balanced");
-  const [targetMin, setTargetMin] = useState(18);
-  const [targetMax, setTargetMax] = useState(20);
-  const [includeMarkets, setIncludeMarkets] = useState(["goals", "corners", "cards"]);
-  const [minLegs, setMinLegs] = useState(5);
-  const [maxLegs, setMaxLegs] = useState(15);
-  const [useLiveOdds, setUseLiveOdds] = useState(false);
+  const [legs, setLegs] = useState<1 | 2>(1);
   const [dayRange, setDayRange] = useState<"today" | "tomorrow" | "next_2_days">("next_2_days");
   const [generating, setGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
-  // When mode changes, apply preset values
-  useEffect(() => {
-    const config = TICKET_MODE_CONFIGS[ticketMode];
-    setMinLegs(config.minLegs);
-    setMaxLegs(config.maxLegs);
-    setTargetMin(config.minOdds);
-    setTargetMax(config.maxOdds);
-    setIncludeMarkets(config.markets);
-  }, [ticketMode]);
-
-  const handlePresetRange = (min: number, max: number) => {
-    setTargetMin(min);
-    setTargetMax(max);
-  };
-
-  const toggleMarket = (marketId: string) => {
-    setIncludeMarkets((prev) =>
-      prev.includes(marketId)
-        ? prev.filter((m) => m !== marketId)
-        : [...prev, marketId]
-    );
-  };
-
-  const validateInputs = () => {
-    const errors: string[] = [];
-    
-    if (includeMarkets.length === 0) {
-      errors.push(t('ticket:validation_select_market'));
-    }
-    if (targetMin >= targetMax) {
-      errors.push(t('ticket:validation_min_max_odds'));
-    }
-    if (minLegs > maxLegs) {
-      errors.push(t('ticket:validation_min_max_legs'));
-    }
-    if (targetMin < 1.01) {
-      errors.push(t('ticket:validation_min_odds_value'));
-    }
-    
-    return errors;
-  };
+  // Compute odds range based on legs
+  const targetMin = legs === 1 ? 1.30 : 1.80;
+  const targetMax = legs === 1 ? ODDS_CAP : 5.29;
 
   const handleGenerate = async () => {
-    const validationErrors = validateInputs();
-    if (validationErrors.length > 0) {
-      setErrorMessage(validationErrors.join(". "));
-      return;
-    }
-    
     setGenerating(true);
     setErrorMessage(null);
+    setDebugInfo(null);
     try {
       await onGenerate({
         targetMin,
         targetMax,
-        includeMarkets,
-        minLegs,
-        maxLegs,
-        useLiveOdds,
+        includeMarkets: ALLOWED_MARKETS,
+        minLegs: legs,
+        maxLegs: legs,
+        useLiveOdds: false,
         dayRange,
-        ticketMode,
+        ticketMode: "max_win_rate",
       });
     } catch (error: any) {
-      setErrorMessage(error.message || "Failed to generate ticket");
+      // Parse backend response for debug info
+      const msg = error.message || "Failed to generate ticket";
+      
+      // Check if this is an allowlist "no candidates" error
+      if (msg.includes("INSUFFICIENT_CANDIDATES") || msg.includes("Not enough")) {
+        setErrorMessage(
+          "No matches in the next 48h meet Safe Zone rules (leagues: PL/Championship/FA Cup + Goals O1.5 / Corners O9.5 + odds ≤2.30). Try again later."
+        );
+      } else {
+        setErrorMessage(msg);
+      }
+
+      // Extract debug info from logs if available
+      try {
+        const parsed = typeof error.details === "string" ? JSON.parse(error.details) : error.details;
+        if (parsed?.logs) {
+          const rejections: Record<string, number> = {};
+          let scanned = 0;
+          for (const log of parsed.logs as string[]) {
+            if (log.includes("raw=")) {
+              const match = log.match(/raw=(\d+)/);
+              if (match) scanned = parseInt(match[1]);
+            }
+            if (log.includes("ALLOWLIST_REJECT")) {
+              const reason = log.match(/reason=(.+)/)?.[1] || "unknown";
+              rejections[reason] = (rejections[reason] || 0) + 1;
+            }
+          }
+          setDebugInfo({
+            logs: parsed.logs,
+            candidatesScanned: scanned,
+            rejectionReasons: rejections,
+          });
+        }
+      } catch { /* ignore parse errors */ }
     } finally {
       setGenerating(false);
     }
   };
-
-  const validationErrors = validateInputs();
-  const hasValidationErrors = validationErrors.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
+            <ShieldCheck className="h-5 w-5 text-green-500" />
             {t('ticket:title')}
+            <Badge variant="outline" className="text-[10px] border-green-500/50 text-green-600">
+              Safe Mode
+            </Badge>
             <InfoTooltip tooltipKey="ticket_creator" />
           </DialogTitle>
           <DialogDescription>
-            {t('ticket:description')}
+            Verified selections only — PL, Championship &amp; FA Cup · Goals O1.5 · Corners O9.5 · Odds ≤{ODDS_CAP}
           </DialogDescription>
-          <div className="mt-3 space-y-1">
-            <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2">
-              {t('ticket:per_leg_odds_note')}
-            </p>
-            <p className="text-xs text-muted-foreground border-l-2 border-destructive/30 pl-2">
-              {t('ticket:total_odds_note')}
-            </p>
-            <p className="text-xs text-muted-foreground border-l-2 border-accent/30 pl-2">
-              {t('ticket:legs_note')}
-            </p>
-          </div>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Ticket Mode Selector */}
-          <div>
-            <Label className="mb-3 block">{t('ticket:ticket_mode', 'Ticket Mode')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.entries(TICKET_MODE_CONFIGS) as [TicketMode, typeof TICKET_MODE_CONFIGS[TicketMode]][]).map(([mode, config]) => {
-                const Icon = config.icon;
-                const isActive = ticketMode === mode;
-                return (
-                  <Button
-                    key={mode}
-                    variant={isActive ? "default" : "outline"}
-                    size="sm"
-                    className={cn(
-                      "flex flex-col h-auto py-3 gap-1",
-                      isActive && mode === "max_win_rate" && "bg-green-600 hover:bg-green-700 text-white"
-                    )}
-                    onClick={() => setTicketMode(mode)}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="text-xs font-medium">
-                      {mode === "max_win_rate" ? "Max Win" : mode === "balanced" ? "Balanced" : "High Risk"}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2 border-l-2 border-primary/30 pl-2">
-              {TICKET_MODE_CONFIGS[ticketMode].description}
+        <div className="space-y-5">
+          {/* Allowlist Info */}
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 space-y-1.5">
+            <p className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Green Allowlist Active
             </p>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <p>✓ Leagues: Premier League, Championship, FA Cup</p>
+              <p>✓ Markets: Goals Over 1.5 (1.30–1.60) · Corners Over 9.5 (1.40–2.30)</p>
+              <p>✗ Cards: Disabled (negative EV)</p>
+            </div>
           </div>
 
-          {/* Target Odds Range - only show for non-max-win-rate modes */}
-          {ticketMode !== "max_win_rate" && (
-            <div>
-              <Label className="mb-3 block">{t('ticket:target_total_odds')}</Label>
-              <div className="grid grid-cols-5 gap-2 mb-3">
-                {PRESET_RANGES.map((preset) => (
-                  <Button
-                    key={preset.label}
-                    variant={targetMin === preset.min && targetMax === preset.max ? "default" : "outline"}
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => handlePresetRange(preset.min, preset.max)}
-                  >
-                    {preset.label}
-                  </Button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="targetMin" className="text-xs text-muted-foreground">
-                    {t('ticket:min_odds')}
-                  </Label>
-                  <Input
-                    id="targetMin"
-                    type="number"
-                    min="1"
-                    step="0.5"
-                    value={targetMin}
-                    onChange={(e) => setTargetMin(parseFloat(e.target.value) || 1)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="targetMax" className="text-xs text-muted-foreground">
-                    {t('ticket:max_odds')}
-                  </Label>
-                  <Input
-                    id="targetMax"
-                    type="number"
-                    min="1"
-                    step="0.5"
-                    value={targetMax}
-                    onChange={(e) => setTargetMax(parseFloat(e.target.value) || 1)}
-                  />
-                </div>
-              </div>
+          {/* Number of Legs */}
+          <div>
+            <Label className="mb-2 block text-sm">Number of Legs</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={legs === 1 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLegs(1)}
+                className={legs === 1 ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              >
+                1 Leg (Safest)
+              </Button>
+              <Button
+                variant={legs === 2 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLegs(2)}
+                className={legs === 2 ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              >
+                2 Legs (Max)
+              </Button>
             </div>
-          )}
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              Safe mode supports max {MAX_LEGS} legs. Odds range: {targetMin.toFixed(2)}–{targetMax.toFixed(2)}
+            </p>
+          </div>
 
           {/* Match Day Range */}
           <div>
-            <Label className="mb-3 block">{t('ticket:match_day_range')}</Label>
+            <Label className="mb-2 block text-sm">{t('ticket:match_day_range')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {DAY_RANGES.map((range) => (
                 <Button
@@ -295,68 +187,27 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             </div>
           </div>
 
-          {/* Markets */}
+          {/* Markets Display (read-only) */}
           <div>
-            <Label className="mb-3 block">{t('ticket:include_markets')}</Label>
-            <div className="grid grid-cols-2 gap-3">
-              {MARKETS.map((market) => (
-                <div key={market.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={market.id}
-                    checked={includeMarkets.includes(market.id)}
-                    onCheckedChange={() => toggleMarket(market.id)}
-                  />
-                  <label
-                    htmlFor={market.id}
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    {market.label}
-                  </label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Live Odds Toggle - Hidden (non-functional) */}
-
-          {/* Legs Range */}
-          <div>
-            <Label className="mb-3 block">{t('ticket:number_of_legs')}</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="minLegs" className="text-xs text-muted-foreground">
-                  {t('ticket:min')}
-                </Label>
-                <Input
-                  id="minLegs"
-                  type="number"
-                  min="1"
-                  max={maxLegs}
-                  value={minLegs}
-                  onChange={(e) => setMinLegs(parseInt(e.target.value) || 1)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="maxLegs" className="text-xs text-muted-foreground">
-                  {t('ticket:max')}
-                </Label>
-                <Input
-                  id="maxLegs"
-                  type="number"
-                  min={minLegs}
-                  max="15"
-                  value={maxLegs}
-                  onChange={(e) => setMaxLegs(parseInt(e.target.value) || 1)}
-                />
-              </div>
+            <Label className="mb-2 block text-sm">Markets</Label>
+            <div className="flex gap-2">
+              <Badge className="bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/30">
+                ⚽ Goals O1.5
+              </Badge>
+              <Badge className="bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/30">
+                🔲 Corners O9.5
+              </Badge>
+              <Badge variant="outline" className="opacity-40 line-through text-xs">
+                🟨 Cards
+              </Badge>
             </div>
           </div>
 
           {/* Generate Button */}
           <Button
-            className="w-full"
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
             onClick={handleGenerate}
-            disabled={generating || hasValidationErrors}
+            disabled={generating}
           >
             {generating ? (
               <>
@@ -366,23 +217,40 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                {t('ticket:generate_ticket')}
+                Generate Safe Ticket ({legs} leg{legs > 1 ? "s" : ""})
               </>
             )}
           </Button>
 
-          {/* Validation Hints */}
-          {hasValidationErrors && !generating && (
-            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md border">
-              {validationErrors.join(" • ")}
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 p-3 rounded-md border border-amber-500/20 flex gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* Error Message */}
-          {errorMessage && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-              {errorMessage}
-            </div>
+          {/* Debug Panel (dev-only info from backend) */}
+          {debugInfo && (
+            <details className="text-[11px] text-muted-foreground bg-muted/30 p-2 rounded border">
+              <summary className="cursor-pointer font-medium">Debug: Generation Details</summary>
+              <div className="mt-2 space-y-1 font-mono">
+                <p>Candidates scanned: {debugInfo.candidatesScanned}</p>
+                {Object.keys(debugInfo.rejectionReasons).length > 0 && (
+                  <div>
+                    <p className="font-semibold mt-1">Rejections:</p>
+                    {Object.entries(debugInfo.rejectionReasons).map(([reason, count]) => (
+                      <p key={reason} className="pl-2">• {reason}: {count}</p>
+                    ))}
+                  </div>
+                )}
+                <div className="max-h-32 overflow-y-auto mt-1">
+                  {debugInfo.logs.map((log, i) => (
+                    <p key={i} className="text-[10px] opacity-70">{log}</p>
+                  ))}
+                </div>
+              </div>
+            </details>
           )}
         </div>
       </DialogContent>

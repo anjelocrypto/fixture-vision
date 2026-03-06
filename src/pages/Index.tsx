@@ -669,11 +669,9 @@ const Index = () => {
           });
           return;
         } else if (data.code === "INSUFFICIENT_CANDIDATES" || data.code === "POOL_EMPTY") {
-          // Show suggestions from the response
-          const suggestions = data.suggestions?.join(" • ") || "Try refreshing fixture data or adjusting your parameters.";
           toast({ 
-            title: data.code === "POOL_EMPTY" ? "No Valid Selections" : "Not Enough Valid Selections",
-            description: suggestions,
+            title: "No Qualifying Matches",
+            description: "No matches in the next 48h meet Safe Zone rules (PL/Championship/FA Cup + Goals O1.5 / Corners O9.5 + odds ≤2.30). Try again later.",
             duration: 8000,
           });
           return;
