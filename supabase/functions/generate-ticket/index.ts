@@ -681,29 +681,18 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         const leagueId = (sel as any).league_id;
         
-        // GREEN ALLOWLIST: Primary gate — replaces old blacklist + band checks
-        const allowCheck = isAllowlisted({
-          league_id: leagueId,
-          market: (sel as any).market,
-          side: (sel as any).side,
-          line: (sel as any).line,
-          odds: (sel as any).odds,
-        });
-        if (!allowCheck.allowed) {
-          droppedOutOfBand++;
-          logs.push(`[GREEN_ALLOWLIST_REJECT] fixture=${(sel as any).fixture_id} ${allowCheck.reason}`);
-          continue;
-        }
-        
-        // GREEN BUCKETS: Data-driven gate — candidate must exist in green_buckets table
-        if (greenBucketSet && greenBucketSet.size > 0) {
-          const lineNorm = normalizeLineAllowlist((sel as any).line);
-          const band = computeOddsBand(Number((sel as any).odds));
-          const bucketKey = `${leagueId}|${(sel as any).market}|${(sel as any).side}|${lineNorm}|${band}`;
-          
-          if (!greenBucketSet.has(bucketKey)) {
+        // GREEN BUCKETS: Single gate — candidate must exist in green_buckets table
+        if (gbContext) {
+          const gbCheck = isInGreenBucket(gbContext, {
+            league_id: leagueId,
+            market: (sel as any).market,
+            side: (sel as any).side,
+            line: (sel as any).line,
+            odds: (sel as any).odds,
+          });
+          if (!gbCheck.allowed) {
             droppedOutOfBand++;
-            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} no bucket for ${bucketKey}`);
+            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} ${gbCheck.reason}`);
             continue;
           }
         }
