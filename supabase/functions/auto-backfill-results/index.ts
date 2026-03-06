@@ -13,7 +13,7 @@ import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterS
 
 const SUPPORTED_LEAGUES = [39, 40, 78, 140, 135, 61, 2, 3, 848, 45, 48, 66, 81, 137, 143];
 const DEFAULT_BATCH_SIZE = 30; // Process 30 fixtures per run to stay within timeout
-const DEFAULT_LOOKBACK_DAYS = 14; // Look back 14 days for missing results
+const DEFAULT_LOOKBACK_DAYS = 30; // Look back 30 days (matches get_pending_ticket_fixture_ids)
 
 interface FixtureResultRow {
   fixture_id: number;
@@ -163,8 +163,8 @@ Deno.serve(async (req: Request) => {
     
     pipelineLogId = logData?.id || null;
 
-    // Use the new RPC function to find missing fixtures
-    console.log(`[auto-backfill] Calling get_fixtures_missing_results(lookback_days=${LOOKBACK_DAYS}, batch_limit=${BATCH_SIZE})`);
+    // PASS 1: Standard RPC - find missing fixtures from SUPPORTED_LEAGUES
+    console.log(`[auto-backfill] PASS 1: Calling get_fixtures_missing_results(lookback_days=${LOOKBACK_DAYS}, batch_limit=${BATCH_SIZE})`);
     
     const { data: missingFixtures, error: rpcError } = await supabase.rpc("get_fixtures_missing_results", {
       lookback_days: LOOKBACK_DAYS,
@@ -178,7 +178,46 @@ Deno.serve(async (req: Request) => {
       return errorResponse(`RPC error: ${rpcError.message}`, origin, 500, req);
     }
 
-    if (!missingFixtures || missingFixtures.length === 0) {
+    // PASS 2: Targeted backfill - find fixtures referenced by PENDING ticket legs
+    // that are missing from fixture_results (regardless of league)
+    const remainingSlots = Math.max(0, BATCH_SIZE - (missingFixtures?.length || 0));
+    let ticketMissingFixtures: Array<{ fixture_id: number; kickoff_at: string; league_id: number }> = [];
+    
+    if (remainingSlots > 0) {
+      console.log(`[auto-backfill] PASS 2: Calling get_pending_ticket_fixture_ids(${remainingSlots})`);
+      const { data: ticketFixtures, error: ticketRpcError } = await supabase.rpc("get_pending_ticket_fixture_ids", {
+        batch_limit: remainingSlots,
+      });
+      
+      if (ticketRpcError) {
+        console.warn("[auto-backfill] get_pending_ticket_fixture_ids error (non-fatal):", ticketRpcError.message);
+      } else if (ticketFixtures && ticketFixtures.length > 0) {
+        // Deduplicate against pass 1 results
+        const pass1Ids = new Set((missingFixtures || []).map((f: any) => f.fixture_id));
+        ticketMissingFixtures = ticketFixtures.filter((f: any) => !pass1Ids.has(f.fixture_id));
+        console.log(`[auto-backfill] PASS 2: Found ${ticketFixtures.length} ticket-referenced missing fixtures, ${ticketMissingFixtures.length} new after dedup`);
+      }
+    }
+
+    // Merge both passes into a unified list
+    const allMissing = [
+      ...(missingFixtures || []).map((f: any) => ({
+        fixture_id: f.fixture_id,
+        fixture_league_id: f.fixture_league_id,
+        fixture_timestamp: f.fixture_timestamp,
+        fixture_status: f.fixture_status,
+        source: "pass1_supported_leagues" as const,
+      })),
+      ...ticketMissingFixtures.map((f: any) => ({
+        fixture_id: f.fixture_id,
+        fixture_league_id: f.league_id,
+        fixture_timestamp: f.kickoff_at ? Math.floor(new Date(f.kickoff_at).getTime() / 1000) : null,
+        fixture_status: null as string | null,
+        source: "pass2_ticket_legs" as const,
+      })),
+    ];
+
+    if (allMissing.length === 0) {
       console.log("[auto-backfill] No missing fixtures found - all results up to date!");
       await finalizePipelineLog(supabase, pipelineLogId, true, 0, 0, [], { message: "No missing fixtures" });
       return jsonResponse({ 
@@ -186,16 +225,18 @@ Deno.serve(async (req: Request) => {
         missing_count: 0, 
         processed: 0, 
         inserted: 0, 
-        message: "All results up to date" 
+        message: "All results up to date",
+        pass1_count: missingFixtures?.length || 0,
+        pass2_count: ticketMissingFixtures.length,
       }, origin, 200, req);
     }
 
-    console.log(`[auto-backfill] Found ${missingFixtures.length} fixtures missing results`);
+    console.log(`[auto-backfill] Total missing: ${allMissing.length} (pass1=${missingFixtures?.length || 0}, pass2=${ticketMissingFixtures.length})`);
 
     // Track leagues
     const leagueSet = new Set<number>();
-    for (const f of missingFixtures) {
-      leagueSet.add(f.fixture_league_id);
+    for (const f of allMissing) {
+      if (f.fixture_league_id) leagueSet.add(f.fixture_league_id);
     }
     leaguesCovered.push(...leagueSet);
     console.log(`[auto-backfill] Leagues affected: ${leaguesCovered.join(", ")}`);
@@ -205,9 +246,9 @@ Deno.serve(async (req: Request) => {
     const errors: { fixture_id: number; error: string }[] = [];
     const statusUpdates: { id: number; status: string }[] = [];
 
-    for (const fixture of missingFixtures) {
+    for (const fixture of allMissing) {
       processed++;
-      console.log(`[auto-backfill] Processing ${processed}/${missingFixtures.length}: fixture ${fixture.fixture_id} (league ${fixture.fixture_league_id})`);
+      console.log(`[auto-backfill] Processing ${processed}/${allMissing.length}: fixture ${fixture.fixture_id} (league ${fixture.fixture_league_id}, source=${fixture.source})`);
 
       try {
         const apiFixture = await fetchFixtureById(fixture.fixture_id);
@@ -342,7 +383,9 @@ Deno.serve(async (req: Request) => {
 
     // Finalize pipeline log
     await finalizePipelineLog(supabase, pipelineLogId, true, processed, failed, leaguesCovered, {
-      missing_found: missingFixtures.length,
+      missing_found: allMissing.length,
+      pass1_count: missingFixtures?.length || 0,
+      pass2_count: ticketMissingFixtures.length,
       inserted,
       status_updates: statusUpdateCount,
       duration_ms: duration,
@@ -355,7 +398,7 @@ Deno.serve(async (req: Request) => {
       window_start: new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString(),
       window_end: new Date().toISOString(),
       scope: { leagues: SUPPORTED_LEAGUES, lookback_days: LOOKBACK_DAYS },
-      scanned: missingFixtures.length,
+      scanned: allMissing.length,
       upserted: inserted,
       skipped: 0,
       failed,
@@ -369,7 +412,9 @@ Deno.serve(async (req: Request) => {
 
     return jsonResponse({
       success: true,
-      missing_found: missingFixtures.length,
+      missing_found: allMissing.length,
+      pass1_count: missingFixtures?.length || 0,
+      pass2_count: ticketMissingFixtures.length,
       processed,
       inserted,
       failed,
