@@ -60,11 +60,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const fiveMonthsAgo = new Date(Date.now() - 5 * 30 * 24 * 60 * 60 * 1000).toISOString();
-    console.log(`[rebuild-green-buckets] Window: ${fiveMonthsAgo} → now`);
+    // Precise 5-month window using proper month arithmetic
+    const now = new Date();
+    const fiveMonthsAgo = new Date(now);
+    fiveMonthsAgo.setMonth(fiveMonthsAgo.getMonth() - 5);
+    const windowStart = fiveMonthsAgo.toISOString();
+    console.log(`[rebuild-green-buckets] Window: ${windowStart} → ${now.toISOString()}`);
 
     // Fetch all settled legs in last 5 months
-    // Must page through if >1000
+    // Deterministic ordering to prevent page skips/duplicates
     let allLegs: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -75,8 +79,10 @@ Deno.serve(async (req) => {
         .from("ticket_leg_outcomes")
         .select("league_id, market, side, line, odds, result_status, picked_at, kickoff_at")
         .in("result_status", ["WIN", "LOSS"])
-        .gte("kickoff_at", fiveMonthsAgo)
+        .gte("kickoff_at", windowStart)
         .not("market", "eq", "cards") // cards globally banned
+        .order("kickoff_at", { ascending: true })
+        .order("id", { ascending: true })
         .range(from, from + pageSize - 1);
 
       if (error) {
@@ -88,6 +94,8 @@ Deno.serve(async (req) => {
         hasMore = false;
       } else {
         // Filter: picked_at <= kickoff_at (no post-kickoff contamination)
+        // NOTE: This is done in JS because Supabase client can't compare two columns.
+        // The DB query already limits to settled legs in the 5-month window.
         const clean = data.filter((leg: any) => {
           if (!leg.picked_at || !leg.kickoff_at) return false;
           return new Date(leg.picked_at) <= new Date(leg.kickoff_at);
@@ -179,11 +187,12 @@ Deno.serve(async (req) => {
 
     console.log(`[rebuild-green-buckets] Buckets: total=${totalBuckets}, green=${greenBuckets}, dropped: lowSample=${droppedLowSample}, lowHitRate=${droppedLowHitRate}, lowROI=${droppedLowRoi}`);
 
-    // Truncate + insert (atomic replace)
+    // Atomic replace: delete all rows then insert new ones
+    // Using .neq() on UUID id to guarantee all rows are matched regardless of RLS
     const { error: deleteError } = await supabase
       .from("green_buckets")
       .delete()
-      .gte("updated_at", "1970-01-01"); // delete all
+      .neq("id", "00000000-0000-0000-0000-000000000000");
 
     if (deleteError) {
       console.error("[rebuild-green-buckets] Delete error:", deleteError);
@@ -223,6 +232,7 @@ Deno.serve(async (req) => {
           min_hit_rate_pct: MIN_HIT_RATE,
           min_roi_pct: MIN_ROI,
         },
+        window: { from: windowStart, to: now.toISOString() },
         buckets: rows,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

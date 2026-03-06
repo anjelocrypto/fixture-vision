@@ -61,10 +61,20 @@ Deno.serve(async (req) => {
 
     if (bucketsError) throw bucketsError;
 
+    // Build composite key set for O(1) lookups
     const bucketSet = new Set(
       (buckets || []).map((b: any) =>
         `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`
       )
+    );
+
+    // Build indexed sets for O(1) diagnostic lookups (avoids O(n²) .some() scans)
+    const leagueSet = new Set((buckets || []).map((b: any) => b.league_id));
+    const leagueMarketSet = new Set(
+      (buckets || []).map((b: any) => `${b.league_id}|${b.market}`)
+    );
+    const leagueMarketLineSet = new Set(
+      (buckets || []).map((b: any) => `${b.league_id}|${b.market}|${b.line_norm}`)
     );
 
     // Load upcoming optimized_selections (next 48h)
@@ -100,8 +110,8 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Odds > 2.30 banned
-      if (Number(c.odds) >= 2.30) {
+      // Odds > 2.30 banned (consistent: 2.30 itself is in "2.20-2.30" band, only reject strictly above)
+      if (Number(c.odds) > 2.30) {
         rejected++;
         const reason = "odds_above_2.30";
         rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
@@ -114,10 +124,10 @@ Deno.serve(async (req) => {
         results.push({ ...c, line_norm: lineNorm, odds_band: band, status: "ACCEPTED", reason: "green_bucket_match" });
       } else {
         rejected++;
-        // Diagnose WHY no match
-        const hasLeague = (buckets || []).some((b: any) => b.league_id === c.league_id);
-        const hasMarket = (buckets || []).some((b: any) => b.league_id === c.league_id && b.market === c.market);
-        const hasLine = (buckets || []).some((b: any) => b.league_id === c.league_id && b.market === c.market && b.line_norm === lineNorm);
+        // Diagnose WHY no match using O(1) indexed set lookups
+        const hasLeague = leagueSet.has(c.league_id);
+        const hasMarket = leagueMarketSet.has(`${c.league_id}|${c.market}`);
+        const hasLine = leagueMarketLineSet.has(`${c.league_id}|${c.market}|${lineNorm}`);
 
         let reason: string;
         if (!hasLeague) {
