@@ -1,16 +1,19 @@
 // ============================================================================
-// Populate Safe Zone Picks — GREEN ALLOWLIST enforced
+// Populate Safe Zone Picks — GREEN BUCKETS enforced (data-driven)
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 import {
   isAllowlisted,
   filterByAllowlist,
+  filterByGreenBuckets,
+  buildGreenBucketsContext,
   ALLOWED_LEAGUE_IDS,
   ALLOWED_MARKET_LINES,
   BANNED_MARKETS,
   GLOBAL_ODDS_CAP,
   normalizeLine,
+  type GreenBucketsContext,
 } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
@@ -75,17 +78,34 @@ Deno.serve(async (req) => {
     // 1) Delete expired rows
     await supabase.from("safe_zone_picks").delete().lt("utc_kickoff", now);
 
-    // 2) Fetch candidates — GREEN ALLOWLIST: only allowed leagues, markets, side=over
-    const allowedMarkets = ALLOWED_MARKET_LINES.map(ml => ml.market);
+    // 2) Load green_buckets for data-driven filtering
+    const { data: gbRows, error: gbErr } = await supabase
+      .from("green_buckets")
+      .select("league_id, market, side, line_norm, odds_band, hit_rate_pct, sample_size, roi_pct");
+
+    let gbContext: GreenBucketsContext | null = null;
+    if (gbErr) {
+      console.error("[safe-zone-populate] Failed to load green_buckets:", gbErr);
+    } else if (gbRows && gbRows.length > 0) {
+      gbContext = buildGreenBucketsContext(gbRows as any);
+      console.log(`[safe-zone-populate] Green buckets loaded: ${gbRows.length} buckets, leagues=[${gbContext.leagueIds.join(',')}], markets=[${gbContext.markets.join(',')}]`);
+    } else {
+      console.warn("[safe-zone-populate] green_buckets table is empty — using static allowlist fallback");
+    }
+
+    // Derive allowed leagues/markets from green_buckets (or fallback to static)
+    const effectiveLeagueIds = gbContext ? gbContext.leagueIds : ALLOWED_LEAGUE_IDS;
+    const effectiveMarkets = gbContext ? gbContext.markets.filter(m => !BANNED_MARKETS.includes(m)) : ALLOWED_MARKET_LINES.map(ml => ml.market);
+
+    // 3) Fetch candidates using green_buckets-derived constraints
     const { data: candidates, error: candErr } = await supabase
       .from("optimized_selections")
       .select("fixture_id, league_id, market, side, line, odds, bookmaker, edge_pct, model_prob, utc_kickoff")
       .gte("utc_kickoff", now)
       .lte("utc_kickoff", in48h)
-      .in("market", allowedMarkets)
-      .eq("side", "over")
+      .in("market", effectiveMarkets)
       .eq("is_live", false)
-      .in("league_id", ALLOWED_LEAGUE_IDS)
+      .in("league_id", effectiveLeagueIds)
       .not("odds", "is", null)
       .lte("odds", GLOBAL_ODDS_CAP);
 
@@ -95,21 +115,23 @@ Deno.serve(async (req) => {
     }
 
     const rawCount = candidates?.length || 0;
-    console.log(`[safe-zone-populate] ${rawCount} raw candidates (pre-allowlist filtered at query level)`);
+    console.log(`[safe-zone-populate] ${rawCount} raw candidates from ${effectiveLeagueIds.length} leagues`);
 
-    // 3) Filter through GREEN ALLOWLIST (market-specific odds bands + line matching)
-    const { passed: filtered, violations } = filterByAllowlist(candidates || []);
+    // 4) Filter through green_buckets (or static allowlist fallback)
+    const { passed: filtered, violations } = gbContext
+      ? filterByGreenBuckets(gbContext, candidates || [])
+      : filterByAllowlist(candidates || []);
     
-    console.log(`[safe-zone-populate] ${filtered.length} passed allowlist, ${violations.length} rejected`);
+    console.log(`[safe-zone-populate] ${filtered.length} passed filter, ${violations.length} rejected`);
     if (violations.length > 0) {
       const sampleViolations = violations.slice(0, 5).map(v => v.reason);
       console.log(`[safe-zone-populate] Sample violations: ${sampleViolations.join('; ')}`);
     }
 
     if (filtered.length === 0) {
-      const result = { status: "ok", picks: 0, message: "No candidates passed GREEN allowlist" };
+      const result = { status: "ok", picks: 0, message: "No candidates passed green_buckets filter" };
       if (diagnosticMode) {
-        Object.assign(result, { diagnostic: { candidates_raw: rawCount, after_allowlist: 0, violations_sample: violations.slice(0, 10).map(v => v.reason) } });
+        Object.assign(result, { diagnostic: { candidates_raw: rawCount, after_filter: 0, violations_sample: violations.slice(0, 10).map(v => v.reason) } });
       }
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

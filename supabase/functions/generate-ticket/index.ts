@@ -49,13 +49,18 @@ import {
 } from "../_shared/dynamic_weights.ts";
 import {
   isAllowlisted,
+  isInGreenBucket,
+  buildGreenBucketsContext,
+  makeBucketKey,
+  computeOddsBand,
+  normalizeLine as normalizeLineAllowlist,
   ALLOWED_LEAGUE_IDS,
   ALLOWED_MARKET_LINES,
   GLOBAL_ODDS_CAP,
   BANNED_MARKETS,
   MAX_TICKET_LEGS,
   DEFAULT_TICKET_LEGS,
-  normalizeLine as normalizeLineAllowlist,
+  type GreenBucketsContext,
 } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
@@ -533,9 +538,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], mode:${ticketMode}}`);
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
-  // === GREEN BUCKETS: Load from DB for data-driven filtering ===
-  let greenBucketSet: Set<string> | null = null;
-  let greenBucketMap: Map<string, { hit_rate_pct: number; sample_size: number; roi_pct: number }> | null = null;
+  // === GREEN BUCKETS: Load from DB — single source of truth for filtering ===
+  let gbContext: import("../_shared/green_allowlist.ts").GreenBucketsContext | null = null;
   {
     const { data: gbRows, error: gbError } = await supabase
       .from("green_buckets")
@@ -545,17 +549,9 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       console.error("[generate-ticket] Failed to load green_buckets:", gbError);
       logs.push(`[GREEN_BUCKETS] Warning: could not load green_buckets table: ${gbError.message}`);
     } else if (gbRows && gbRows.length > 0) {
-      greenBucketSet = new Set(
-        gbRows.map((b: any) => `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`)
-      );
-      greenBucketMap = new Map(
-        gbRows.map((b: any) => [
-          `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`,
-          { hit_rate_pct: b.hit_rate_pct, sample_size: b.sample_size, roi_pct: b.roi_pct }
-        ])
-      );
-      logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets for candidate filtering`);
-      console.log(`[generate-ticket] Loaded ${gbRows.length} green buckets`);
+      gbContext = buildGreenBucketsContext(gbRows as any);
+      logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets → ${gbContext.leagueIds.length} leagues, ${gbContext.markets.length} markets`);
+      console.log(`[generate-ticket] Green buckets: ${gbRows.length} buckets, leagues=[${gbContext.leagueIds.join(',')}], markets=[${gbContext.markets.join(',')}]`);
     } else {
       // P0: Empty green_buckets = no data-driven filtering possible. Hard stop.
       console.error(`[generate-ticket] green_buckets table is empty — cannot generate safe tickets`);
@@ -570,32 +566,17 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     }
   }
 
-  // Helper: compute odds band label (must match rebuild-green-buckets)
-  function computeOddsBand(odds: number): string {
-    if (odds < 1.20) return "<1.20";
-    if (odds < 1.30) return "1.20-1.30";
-    if (odds < 1.40) return "1.30-1.40";
-    if (odds < 1.50) return "1.40-1.50";
-    if (odds < 1.60) return "1.50-1.60";
-    if (odds < 1.70) return "1.60-1.70";
-    if (odds < 1.80) return "1.70-1.80";
-    if (odds < 1.90) return "1.80-1.90";
-    if (odds < 2.00) return "1.90-2.00";
-    if (odds < 2.10) return "2.00-2.10";
-    if (odds < 2.20) return "2.10-2.20";
-    if (odds < 2.30) return "2.20-2.30";
-    return "2.30+";
-  }
-
   // GLOBAL MODE: Query optimized_selections for selected date range
-  // GREEN ALLOWLIST: Only pull from allowed leagues and markets
+  // GREEN BUCKETS: derive allowed leagues/markets dynamically
+  const gbLeagueIds = gbContext ? gbContext.leagueIds : ALLOWED_LEAGUE_IDS;
+  const gbMarkets = gbContext ? gbContext.markets : ALLOWED_MARKET_LINES.map(ml => ml.market);
+
   if (globalMode) {
     logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN BUCKETS enforced)...`);
     
-    // Only query allowed markets (never cards)
-    const allowedMarketNames = ALLOWED_MARKET_LINES.map(ml => ml.market);
-    const effectiveMarkets = markets.filter(m => allowedMarketNames.includes(m) && !BANNED_MARKETS.includes(m));
-    logs.push(`[GREEN_ALLOWLIST] Effective markets: [${effectiveMarkets.join(',')}] (from requested: [${markets.join(',')}])`);
+    // Use green_buckets-derived markets, exclude banned
+    const effectiveMarkets = markets.filter(m => gbMarkets.includes(m) && !BANNED_MARKETS.includes(m));
+    logs.push(`[GREEN_BUCKETS] Effective markets: [${effectiveMarkets.join(',')}] | Leagues: [${gbLeagueIds.join(',')}]`);
     
     let query = supabase
       .from("optimized_selections")
@@ -604,16 +585,15 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
       .in("market", effectiveMarkets)
-      .in("league_id", ALLOWED_LEAGUE_IDS)
-      .eq("side", "over")
+      .in("league_id", gbLeagueIds)
       .not("odds", "is", null)
       .lte("odds", GLOBAL_ODDS_CAP);
     
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
-    // If user specified leagueIds, intersect with allowlist
+    // If user specified leagueIds, intersect with green_buckets leagues
     if (leagueIds && leagueIds.length > 0) {
-      const intersected = leagueIds.filter(id => ALLOWED_LEAGUE_IDS.includes(id));
+      const intersected = leagueIds.filter(id => gbLeagueIds.includes(id));
       if (intersected.length > 0) query = query.in("league_id", intersected);
     }
     
@@ -706,29 +686,18 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         const leagueId = (sel as any).league_id;
         
-        // GREEN ALLOWLIST: Primary gate — replaces old blacklist + band checks
-        const allowCheck = isAllowlisted({
-          league_id: leagueId,
-          market: (sel as any).market,
-          side: (sel as any).side,
-          line: (sel as any).line,
-          odds: (sel as any).odds,
-        });
-        if (!allowCheck.allowed) {
-          droppedOutOfBand++;
-          logs.push(`[GREEN_ALLOWLIST_REJECT] fixture=${(sel as any).fixture_id} ${allowCheck.reason}`);
-          continue;
-        }
-        
-        // GREEN BUCKETS: Data-driven gate — candidate must exist in green_buckets table
-        if (greenBucketSet && greenBucketSet.size > 0) {
-          const lineNorm = normalizeLineAllowlist((sel as any).line);
-          const band = computeOddsBand(Number((sel as any).odds));
-          const bucketKey = `${leagueId}|${(sel as any).market}|${(sel as any).side}|${lineNorm}|${band}`;
-          
-          if (!greenBucketSet.has(bucketKey)) {
+        // GREEN BUCKETS: Single gate — candidate must exist in green_buckets table
+        if (gbContext) {
+          const gbCheck = isInGreenBucket(gbContext, {
+            league_id: leagueId,
+            market: (sel as any).market,
+            side: (sel as any).side,
+            line: (sel as any).line,
+            odds: (sel as any).odds,
+          });
+          if (!gbCheck.allowed) {
             droppedOutOfBand++;
-            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} no bucket for ${bucketKey}`);
+            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} ${gbCheck.reason}`);
             continue;
           }
         }
@@ -920,12 +889,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // Compute bucket score using stored fields directly (no regex parsing)
         let bucketScore = 0;
-        if (greenBucketMap && leg.line != null && leg.side) {
-          const lineNorm = normalizeLineAllowlist(leg.line);
-          const band = computeOddsBand(leg.odds);
+        if (gbContext && leg.line != null && leg.side) {
           const lId = (leg as any)._leagueId || 0;
-          const bKey = `${lId}|${leg.market}|${leg.side}|${lineNorm}|${band}`;
-          const bucket = greenBucketMap.get(bKey);
+          const bKey = makeBucketKey(lId, leg.market, leg.side, leg.line, leg.odds);
+          const bucket = gbContext.bucketMap.get(bKey);
           if (bucket) {
             bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
             logs.push(`[BUCKET_SCORE] fixture=${leg.fixtureId} ${bKey} → hr=${bucket.hit_rate_pct}% n=${bucket.sample_size} roi=${bucket.roi_pct}% score=${bucketScore.toFixed(0)}`);
