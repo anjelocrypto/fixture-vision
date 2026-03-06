@@ -8,6 +8,7 @@ import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS, UPCOMING_WINDOW_HOURS } from "
 import { detectAvailableMarkets } from "../_shared/market_detection.ts";
 import { hasKeyAttackingInjuries } from "../_shared/injuries.ts";
 import { BLACKLISTED_LEAGUE_IDS } from "../_shared/dynamic_weights.ts";
+import { isAllowlisted, ALLOWED_LEAGUE_IDS, BANNED_MARKETS, GLOBAL_ODDS_CAP } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -203,8 +204,8 @@ serve(async (req) => {
     for (const fixture of fixtures) {
       scanned++;
       
-      // BLACKLISTED LEAGUES: Skip entirely (Feb/Mar 2026 audit)
-      if (fixture.league_id && BLACKLISTED_LEAGUE_IDS.includes(fixture.league_id)) {
+      // GREEN ALLOWLIST: Only process allowed leagues (replaces old blacklist)
+      if (fixture.league_id && !ALLOWED_LEAGUE_IDS.includes(fixture.league_id)) {
         skipped++;
         continue;
       }
@@ -261,15 +262,10 @@ serve(async (req) => {
         ? detectAvailableMarkets(oddsData.payload)
         : new Set();
       
-      // Only process markets we have odds for (goals, corners are most common)
-      // DISABLED: cards market removed due to catastrophic loss rates (Feb 2026 audit)
-      const allMarkets: StatMarket[] = ["goals", "corners", "fouls", "offsides"];
-      const markets = allMarkets.filter(m => {
-        // Always try goals, corners - they're most common
-        if (m === "goals" || m === "corners") return true;
-        // Skip fouls/offsides if not available (rare in lower leagues)
-        return availableMarkets.has(m);
-      });
+      // GREEN ALLOWLIST: Only process goals and corners (audit-qualified markets)
+      // Cards, fouls, offsides all removed based on 60-day performance data
+      const allMarkets: StatMarket[] = ["goals", "corners"];
+      const markets = allMarkets.filter(m => !BANNED_MARKETS.includes(m));
 
       for (const market of markets) {
         const combinedValue = combined[market];

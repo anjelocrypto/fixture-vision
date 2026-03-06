@@ -220,3 +220,6 @@ verify_jwt = false
 
 [functions.pipeline-health-snapshot]
 verify_jwt = false
+
+[functions.allowlist-compliance]
+verify_jwt = false
