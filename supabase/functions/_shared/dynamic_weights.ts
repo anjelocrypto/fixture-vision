@@ -248,4 +248,8 @@ export const STATIC_LEAGUE_WEIGHTS: Record<number, number> = {
 export const DISABLED_MARKETS: string[] = ["cards"];
 
 // League IDs fully blacklisted from ticket bot (win rate < 15%)
-export const BLACKLISTED_LEAGUE_IDS: number[] = [3, 61, 307];
+// Includes: Europa League (3), Ligue 1 (61), Saudi Pro League (307),
+// Eerste Divisie (172), Brazil Serie A (71), Copa del Rey (143),
+// Plus additional negative-EV leagues from March 2026 audit:
+// Serie B (136), Eredivisie (129), Belgian Pro League (235), Super Lig (271), League Cup (48)
+export const BLACKLISTED_LEAGUE_IDS: number[] = [3, 61, 307, 172, 71, 143, 235, 271, 129, 136, 48];
