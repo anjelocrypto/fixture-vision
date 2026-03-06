@@ -702,11 +702,11 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           }
         }
         
-        // MAX WIN RATE MODE: Apply mode-specific odds filter (minOdds from request)
-        // This is stricter than the global band for max_win_rate mode
-        if (isMaxWinRateMode && (sel as any).odds < minOdds) {
+        // Per-leg odds floor: use global ODDS_MIN (1.25), NOT the total ticket target
+        // minOdds is the total ticket odds target, not per-leg minimum
+        if ((sel as any).odds < ODDS_MIN) {
           droppedOutOfBand++;
-          logs.push(`[MAX_WIN_RATE] Odds ${(sel as any).odds} < minOdds ${minOdds} for fixture ${(sel as any).fixture_id} - DROPPED`);
+          logs.push(`[ODDS_FLOOR] Odds ${(sel as any).odds} < ODDS_MIN ${ODDS_MIN} for fixture ${(sel as any).fixture_id} - DROPPED`);
           continue;
         }
         
