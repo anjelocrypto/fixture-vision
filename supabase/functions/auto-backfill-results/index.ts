@@ -1,8 +1,9 @@
 /**
  * AUTO-BACKFILL-RESULTS: Self-healing cron job to automatically backfill missing fixture results
  * 
- * RUNS: Every 30 minutes via cron
+ * RUNS: Every 5 minutes via cron (drain mode) / every 30 minutes (steady state)
  * PURPOSE: Find fixtures that kicked off >3h ago but are missing from fixture_results, and fetch their results
+ * CHAINS: Automatically triggers score-ticket-legs after inserting results
  * 
  * This function uses the new get_fixtures_missing_results RPC to find gaps and fills them automatically.
  * Zero manual intervention required.
@@ -12,7 +13,8 @@ import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "..
 import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
 
 const SUPPORTED_LEAGUES = [39, 40, 78, 140, 135, 61, 2, 3, 848, 45, 48, 66, 81, 137, 143];
-const DEFAULT_BATCH_SIZE = 30; // Process 30 fixtures per run to stay within timeout
+const DEFAULT_BATCH_SIZE = 50; // Process 50 fixtures per run (drain mode)
+const WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD = 3;
 const DEFAULT_LOOKBACK_DAYS = 30; // Look back 30 days (matches get_pending_ticket_fixture_ids)
 
 interface FixtureResultRow {
@@ -415,6 +417,59 @@ Deno.serve(async (req: Request) => {
       notes: errors.length > 0 ? `Errors: ${JSON.stringify(errors.slice(0, 5))}` : "Clean run",
     });
 
+    // ===== CHAIN: Trigger scorer if we inserted results =====
+    let scorerResult: any = null;
+    if (inserted > 0) {
+      console.log(`[auto-backfill] Chaining score-ticket-legs after ${inserted} inserts...`);
+      try {
+        const scoreUrl = `${supabaseUrl}/functions/v1/score-ticket-legs`;
+        const scoreResp = await fetch(scoreUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ batch_size: 500 }),
+        });
+        scorerResult = await scoreResp.json();
+        console.log(`[auto-backfill] Scorer result: scored=${scorerResult?.scored_legs ?? 0}, tickets=${scorerResult?.updated_tickets ?? 0}`);
+      } catch (scoreErr) {
+        console.error("[auto-backfill] Scorer chain error:", scoreErr);
+        scorerResult = { error: String(scoreErr) };
+      }
+    }
+
+    // ===== WATCHDOG: Detect consecutive zero-insert runs =====
+    if (inserted === 0 && allMissing.length > 0) {
+      // Check last N runs for consecutive zeros
+      const { data: recentRuns } = await supabase
+        .from("pipeline_run_logs")
+        .select("id, details")
+        .eq("job_name", "auto-backfill-results")
+        .eq("success", true)
+        .order("run_started", { ascending: false })
+        .limit(WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD);
+      
+      const consecutiveZeros = (recentRuns || []).filter(
+        (r: any) => r.details && (r.details.inserted === 0 || r.details.inserted === null)
+      ).length;
+
+      if (consecutiveZeros >= WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD - 1) {
+        // This run is also zero, so total = threshold
+        console.warn(`[auto-backfill] WATCHDOG: ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive zero-insert runs with ${allMissing.length} missing fixtures!`);
+        await supabase.from("pipeline_alerts").insert({
+          alert_type: "backfill_stalled",
+          severity: "warning",
+          message: `Auto-backfill inserted 0 results for ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive runs despite ${allMissing.length} missing fixtures`,
+          details: {
+            consecutive_zeros: WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD,
+            missing_fixtures: allMissing.length,
+            last_errors: errors.slice(0, 5),
+          },
+        });
+      }
+    }
+
     console.log("[auto-backfill] ===== FUNCTION END =====");
 
     return jsonResponse({
@@ -429,6 +484,10 @@ Deno.serve(async (req: Request) => {
       leagues_covered: leaguesCovered,
       duration_ms: duration,
       rate_limiter: getRateLimiterStats(),
+      scorer: scorerResult ? {
+        scored_legs: scorerResult.scored_legs ?? 0,
+        updated_tickets: scorerResult.updated_tickets ?? 0,
+      } : null,
     }, origin, 200, req);
 
   } catch (error) {
