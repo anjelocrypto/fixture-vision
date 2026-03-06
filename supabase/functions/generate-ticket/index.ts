@@ -562,14 +562,16 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   }
 
   // GLOBAL MODE: Query optimized_selections for selected date range
-  // GREEN ALLOWLIST: Only pull from allowed leagues and markets
+  // GREEN BUCKETS: derive allowed leagues/markets dynamically
+  const gbLeagueIds = gbContext ? gbContext.leagueIds : ALLOWED_LEAGUE_IDS;
+  const gbMarkets = gbContext ? gbContext.markets : ALLOWED_MARKET_LINES.map(ml => ml.market);
+
   if (globalMode) {
     logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN BUCKETS enforced)...`);
     
-    // Only query allowed markets (never cards)
-    const allowedMarketNames = ALLOWED_MARKET_LINES.map(ml => ml.market);
-    const effectiveMarkets = markets.filter(m => allowedMarketNames.includes(m) && !BANNED_MARKETS.includes(m));
-    logs.push(`[GREEN_ALLOWLIST] Effective markets: [${effectiveMarkets.join(',')}] (from requested: [${markets.join(',')}])`);
+    // Use green_buckets-derived markets, exclude banned
+    const effectiveMarkets = markets.filter(m => gbMarkets.includes(m) && !BANNED_MARKETS.includes(m));
+    logs.push(`[GREEN_BUCKETS] Effective markets: [${effectiveMarkets.join(',')}] | Leagues: [${gbLeagueIds.join(',')}]`);
     
     let query = supabase
       .from("optimized_selections")
@@ -578,16 +580,15 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
       .in("market", effectiveMarkets)
-      .in("league_id", ALLOWED_LEAGUE_IDS)
-      .eq("side", "over")
+      .in("league_id", gbLeagueIds)
       .not("odds", "is", null)
       .lte("odds", GLOBAL_ODDS_CAP);
     
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
-    // If user specified leagueIds, intersect with allowlist
+    // If user specified leagueIds, intersect with green_buckets leagues
     if (leagueIds && leagueIds.length > 0) {
-      const intersected = leagueIds.filter(id => ALLOWED_LEAGUE_IDS.includes(id));
+      const intersected = leagueIds.filter(id => gbLeagueIds.includes(id));
       if (intersected.length > 0) query = query.in("league_id", intersected);
     }
     
