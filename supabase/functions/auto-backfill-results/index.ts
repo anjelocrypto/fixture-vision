@@ -390,34 +390,7 @@ Deno.serve(async (req: Request) => {
     const duration = Date.now() - startTime;
     console.log(`[auto-backfill] COMPLETE: ${inserted} inserted, ${failed} failed, ${statusUpdateCount} status updates, ${duration}ms`);
 
-    // Finalize pipeline log
-    await finalizePipelineLog(supabase, pipelineLogId, true, processed, failed, leaguesCovered, {
-      missing_found: allMissing.length,
-      pass1_count: missingFixtures?.length || 0,
-      pass2_count: ticketMissingFixtures.length,
-      inserted,
-      status_updates: statusUpdateCount,
-      duration_ms: duration,
-      errors: errors.slice(0, 10),
-    });
-
-    // Also log to optimizer_run_logs for consistency
-    await supabase.from("optimizer_run_logs").insert({
-      run_type: "auto-backfill-results",
-      window_start: new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString(),
-      window_end: new Date().toISOString(),
-      scope: { leagues: SUPPORTED_LEAGUES, lookback_days: LOOKBACK_DAYS },
-      scanned: allMissing.length,
-      upserted: inserted,
-      skipped: 0,
-      failed,
-      started_at: new Date(startTime).toISOString(),
-      finished_at: new Date().toISOString(),
-      duration_ms: duration,
-      notes: errors.length > 0 ? `Errors: ${JSON.stringify(errors.slice(0, 5))}` : "Clean run",
-    });
-
-    // ===== CHAIN: Trigger scorer if we inserted results =====
+    // ===== CHAIN: Trigger scorer BEFORE finalizing log so we capture results =====
     let scorerResult: any = null;
     if (inserted > 0) {
       console.log(`[auto-backfill] Chaining score-ticket-legs after ${inserted} inserts...`);
@@ -438,6 +411,39 @@ Deno.serve(async (req: Request) => {
         scorerResult = { error: String(scoreErr) };
       }
     }
+
+    // Finalize pipeline log WITH scorer results included
+    const finalDuration = Date.now() - startTime;
+    await finalizePipelineLog(supabase, pipelineLogId, true, processed, failed, leaguesCovered, {
+      missing_found: allMissing.length,
+      pass1_count: missingFixtures?.length || 0,
+      pass2_count: ticketMissingFixtures.length,
+      inserted,
+      status_updates: statusUpdateCount,
+      duration_ms: finalDuration,
+      errors: errors.slice(0, 10),
+      scorer: scorerResult ? {
+        scored_legs: scorerResult.scored_legs ?? 0,
+        updated_tickets: scorerResult.updated_tickets ?? 0,
+        error: scorerResult.error ?? null,
+      } : null,
+    });
+
+    // Also log to optimizer_run_logs for consistency
+    await supabase.from("optimizer_run_logs").insert({
+      run_type: "auto-backfill-results",
+      window_start: new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString(),
+      window_end: new Date().toISOString(),
+      scope: { leagues: SUPPORTED_LEAGUES, lookback_days: LOOKBACK_DAYS },
+      scanned: allMissing.length,
+      upserted: inserted,
+      skipped: 0,
+      failed,
+      started_at: new Date(startTime).toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: finalDuration,
+      notes: errors.length > 0 ? `Errors: ${JSON.stringify(errors.slice(0, 5))}` : "Clean run",
+    });
 
     // ===== WATCHDOG: Detect consecutive zero-insert runs =====
     if (inserted === 0 && allMissing.length > 0) {
@@ -482,7 +488,7 @@ Deno.serve(async (req: Request) => {
       failed,
       status_updates: statusUpdateCount,
       leagues_covered: leaguesCovered,
-      duration_ms: duration,
+      duration_ms: finalDuration,
       rate_limiter: getRateLimiterStats(),
       scorer: scorerResult ? {
         scored_legs: scorerResult.scored_legs ?? 0,

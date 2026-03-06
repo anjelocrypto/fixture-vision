@@ -47,84 +47,82 @@ Deno.serve(async (req: Request) => {
     console.log(`${LOG} Running health snapshot (auth: ${auth.method})`);
 
     // ===== Collect all metrics in parallel =====
+    // Use { count: "exact", head: true } properly — the count comes from the response metadata
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const sixHoursAgo = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
     const [
-      { data: missingData },
-      { data: ftData },
-      { data: older6hData },
-      { data: statusData },
-      { data: cardsData },
-      { data: blacklistData },
+      older6hResult,
+      statusData,
+      cardsResult,
+      blacklistResult,
+      pendingMissingResult,
+      pendingWithFtResult,
     ] = await Promise.all([
-      // pending_missing_fixture_results
-      supabase.rpc("get_pending_ticket_fixture_ids", { batch_limit: 100000 }),
-      // pending_with_ft_results
+      // pending_older_than_6h — head count
       supabase.from("ticket_leg_outcomes")
         .select("id", { count: "exact", head: true })
         .eq("result_status", "PENDING")
-        .lt("kickoff_at", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
-        .gt("kickoff_at", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString())
-        .not("fixture_id", "is", null),
-      // pending_older_than_6h
-      supabase.from("ticket_leg_outcomes")
-        .select("id", { count: "exact", head: true })
-        .eq("result_status", "PENDING")
-        .lt("kickoff_at", new Date(Date.now() - 6 * 3600 * 1000).toISOString())
-        .gt("kickoff_at", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
-      // status breakdown
+        .lt("kickoff_at", sixHoursAgo)
+        .gt("kickoff_at", thirtyDaysAgo),
+
+      // status breakdown (full rows needed for counting)
       supabase.from("ticket_leg_outcomes")
         .select("result_status")
-        .gt("kickoff_at", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
-      // cards leakage 24h
+        .gt("kickoff_at", thirtyDaysAgo),
+
+      // cards leakage 24h — head count
       supabase.from("ticket_leg_outcomes")
         .select("id", { count: "exact", head: true })
         .eq("market", "cards")
-        .gt("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-      // blacklist leakage 24h
+        .gt("created_at", twentyFourHoursAgo),
+
+      // blacklist leakage 24h — head count
       supabase.from("ticket_leg_outcomes")
         .select("id", { count: "exact", head: true })
         .in("league_id", [172, 71, 143, 235, 271, 129, 136, 48])
-        .gt("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-    ]);
+        .gt("created_at", twentyFourHoursAgo),
 
-    // For pending_with_ft we need a proper SQL query since the head count above
-    // doesn't join fixture_results. Use a raw count approach:
-    const { data: ftCountData } = await supabase.rpc("get_pending_with_ft_count" as any).maybeSingle();
-    
-    // Fallback: if RPC doesn't exist, query directly
-    let pendingWithFt = 0;
-    if (ftCountData && typeof ftCountData === "object" && "count" in (ftCountData as any)) {
-      pendingWithFt = (ftCountData as any).count;
-    } else {
-      // Direct query fallback
-      const { count } = await supabase
-        .from("ticket_leg_outcomes")
+      // pending_missing_fixture_results — lightweight count via head
+      // Count PENDING legs whose fixture has no fixture_results row
+      // We use get_pending_ticket_fixture_ids with a small limit just for count approximation
+      // Actually, use a direct count: pending legs with kickoff > 2h ago, no matching fixture_results
+      supabase.from("ticket_leg_outcomes")
+        .select("fixture_id", { count: "exact", head: true })
+        .eq("result_status", "PENDING")
+        .lt("kickoff_at", twoHoursAgo)
+        .gt("kickoff_at", thirtyDaysAgo),
+
+      // pending_with_ft_results — join with fixture_results via inner join
+      supabase.from("ticket_leg_outcomes")
         .select("id, fixture_results!inner(fixture_id)", { count: "exact", head: true })
         .eq("result_status", "PENDING")
         .eq("fixture_results.status", "FT")
-        .lt("kickoff_at", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
-        .gt("kickoff_at", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
-      pendingWithFt = count ?? 0;
-    }
+        .lt("kickoff_at", twoHoursAgo)
+        .gt("kickoff_at", thirtyDaysAgo),
+    ]);
 
     // Count statuses
     const statusCounts = { WIN: 0, LOSS: 0, VOID: 0, PENDING: 0, PUSH: 0 };
-    if (statusData) {
-      for (const row of statusData) {
+    if (statusData.data) {
+      for (const row of statusData.data) {
         const s = (row as any).result_status as string;
         if (s in statusCounts) statusCounts[s as keyof typeof statusCounts]++;
       }
     }
 
     const metrics: HealthMetrics = {
-      pending_missing_fixture_results: missingData?.length ?? 0,
-      pending_with_ft_results: pendingWithFt,
-      pending_older_than_6h: older6hData ?? 0,
+      pending_missing_fixture_results: (pendingMissingResult.count ?? 0) - (pendingWithFtResult.count ?? 0),
+      pending_with_ft_results: pendingWithFtResult.count ?? 0,
+      pending_older_than_6h: older6hResult.count ?? 0,
       total_win: statusCounts.WIN,
       total_loss: statusCounts.LOSS,
       total_void: statusCounts.VOID,
       total_pending: statusCounts.PENDING,
-      cards_leakage_24h: 0, // from head count
-      blacklist_leakage_24h: 0,
+      cards_leakage_24h: cardsResult.count ?? 0,
+      blacklist_leakage_24h: blacklistResult.count ?? 0,
     };
 
     console.log(`${LOG} Metrics:`, JSON.stringify(metrics));
@@ -143,7 +141,6 @@ Deno.serve(async (req: Request) => {
     });
 
     // ===== WATCHDOG 1: Scorer health =====
-    // If pending_with_ft > 0, check if previous snapshot also had > 0
     const alerts: string[] = [];
     if (metrics.pending_with_ft_results > 0) {
       const { data: prevSnapshots } = await supabase
@@ -172,9 +169,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ===== WATCHDOG 2: Backfill stall (already in auto-backfill, but double-check) =====
+    // ===== WATCHDOG 2: Backfill stall =====
     if (metrics.pending_missing_fixture_results > 50) {
-      // Check last 3 backfill runs
       const { data: recentBackfills } = await supabase
         .from("pipeline_run_logs")
         .select("details")
@@ -199,7 +195,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Overall health status
     const health = (metrics.pending_with_ft_results === 0 && alerts.length === 0) ? "GREEN" :
       (alerts.length > 0 ? "RED" : "YELLOW");
 
