@@ -258,9 +258,11 @@ serve(async (req) => {
       return await handleBetOptimizer(validation.data, supabase, user.id, token);
     }
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : JSON.stringify(error);
     console.error("[generate-ticket] Internal error:", {
-      message: error instanceof Error ? error.message : "Unknown",
-      stack: error instanceof Error ? error.stack : undefined,
+      message: errMsg,
+      stack: errStack,
       timestamp: new Date().toISOString(),
     });
     return new Response(
