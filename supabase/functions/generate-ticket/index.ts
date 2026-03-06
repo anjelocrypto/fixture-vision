@@ -531,10 +531,55 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], mode:${ticketMode}}`);
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
+  // === GREEN BUCKETS: Load from DB for data-driven filtering ===
+  let greenBucketSet: Set<string> | null = null;
+  let greenBucketMap: Map<string, { hit_rate_pct: number; sample_size: number; roi_pct: number }> | null = null;
+  {
+    const { data: gbRows, error: gbError } = await supabase
+      .from("green_buckets")
+      .select("league_id, market, side, line_norm, odds_band, hit_rate_pct, sample_size, roi_pct");
+    
+    if (gbError) {
+      console.error("[generate-ticket] Failed to load green_buckets:", gbError);
+      logs.push(`[GREEN_BUCKETS] Warning: could not load green_buckets table: ${gbError.message}`);
+    } else if (gbRows && gbRows.length > 0) {
+      greenBucketSet = new Set(
+        gbRows.map((b: any) => `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`)
+      );
+      greenBucketMap = new Map(
+        gbRows.map((b: any) => [
+          `${b.league_id}|${b.market}|${b.side}|${b.line_norm}|${b.odds_band}`,
+          { hit_rate_pct: b.hit_rate_pct, sample_size: b.sample_size, roi_pct: b.roi_pct }
+        ])
+      );
+      logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets for candidate filtering`);
+      console.log(`[generate-ticket] Loaded ${gbRows.length} green buckets`);
+    } else {
+      logs.push(`[GREEN_BUCKETS] Warning: green_buckets table is empty. Falling back to static allowlist only.`);
+    }
+  }
+
+  // Helper: compute odds band label (must match rebuild-green-buckets)
+  function computeOddsBand(odds: number): string {
+    if (odds < 1.20) return "<1.20";
+    if (odds < 1.30) return "1.20-1.30";
+    if (odds < 1.40) return "1.30-1.40";
+    if (odds < 1.50) return "1.40-1.50";
+    if (odds < 1.60) return "1.50-1.60";
+    if (odds < 1.70) return "1.60-1.70";
+    if (odds < 1.80) return "1.70-1.80";
+    if (odds < 1.90) return "1.80-1.90";
+    if (odds < 2.00) return "1.90-2.00";
+    if (odds < 2.10) return "2.00-2.10";
+    if (odds < 2.20) return "2.10-2.20";
+    if (odds < 2.30) return "2.20-2.30";
+    return "2.30+";
+  }
+
   // GLOBAL MODE: Query optimized_selections for selected date range
   // GREEN ALLOWLIST: Only pull from allowed leagues and markets
   if (globalMode) {
-    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN ALLOWLIST enforced)...`);
+    logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN BUCKETS enforced)...`);
     
     // Only query allowed markets (never cards)
     const allowedMarketNames = ALLOWED_MARKET_LINES.map(ml => ml.market);
