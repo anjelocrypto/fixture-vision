@@ -709,6 +709,19 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           continue;
         }
         
+        // GREEN BUCKETS: Data-driven gate — candidate must exist in green_buckets table
+        if (greenBucketSet && greenBucketSet.size > 0) {
+          const lineNorm = normalizeLineAllowlist((sel as any).line);
+          const band = computeOddsBand(Number((sel as any).odds));
+          const bucketKey = `${leagueId}|${(sel as any).market}|${(sel as any).side}|${lineNorm}|${band}`;
+          
+          if (!greenBucketSet.has(bucketKey)) {
+            droppedOutOfBand++;
+            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} no bucket for ${bucketKey}`);
+            continue;
+          }
+        }
+        
         // MAX WIN RATE MODE: Apply mode-specific odds filter (minOdds from request)
         // This is stricter than the global band for max_win_rate mode
         if (isMaxWinRateMode && (sel as any).odds < minOdds) {
