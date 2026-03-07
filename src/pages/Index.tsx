@@ -773,6 +773,7 @@ const Index = () => {
       return;
     } finally {
       clearTimeout(timeoutId);
+      if (invokeTimeoutId) clearTimeout(invokeTimeoutId);
       setGeneratingTicket(false);
     }
   };
