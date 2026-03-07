@@ -688,8 +688,6 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
-        );
-      }
     } else {
       logs.push(`[Global Mode] Found ${selections.length} pre-optimized selections`);
       
