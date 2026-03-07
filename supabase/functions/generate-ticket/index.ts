@@ -1178,6 +1178,14 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
 
   logs.push(`[Feasibility] OK: minPow=${minPowMinLegs.toFixed(2)}, maxPow=${maxPowMaxLegs.toFixed(2)}, target=[${minOdds}, ${maxOdds}]`);
 
+  if (isTimedOut()) {
+    return buildTimeoutResponse("pre_beam_search", {
+      pool_size: candidatePool.length,
+      legs_min: legsMin,
+      legs_max: legsMax,
+    });
+  }
+
   // 4. COMPOSE TICKET (with stochastic search)
   const ticket = generateOptimizedTicket(
     candidatePool,
