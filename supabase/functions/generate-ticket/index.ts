@@ -514,6 +514,37 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   let usedLive = false;
   let fallbackToPrematch = false;
 
+  const EXECUTION_TIMEOUT_MS = 12000;
+  const FALLBACK_FIXTURE_TIMEOUT_MS = 2500;
+  const FALLBACK_MAX_FIXTURES = 20;
+
+  const isTimedOut = () => Date.now() - startTime > EXECUTION_TIMEOUT_MS;
+
+  const withTimeout = async <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`TIMEOUT:${label}`)), ms)
+      ),
+    ]);
+  };
+
+  const buildTimeoutResponse = (stage: string, details: Record<string, unknown> = {}) =>
+    new Response(
+      JSON.stringify({
+        code: "TIMEOUT",
+        message: "Ticket generation exceeded time budget",
+        debug: {
+          stage,
+          elapsed_ms: Date.now() - startTime,
+          candidate_pool: candidatePool.length,
+          ...details,
+        },
+        logs,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    );
+
   // Calculate date range based on dayRange parameter
   const now = new Date();
   now.setHours(0, 0, 0, 0); // Start of today
@@ -611,24 +642,45 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         .select("id")
         .gte("timestamp", Math.floor(now.getTime() / 1000))
         .lte("timestamp", Math.floor(endDate.getTime() / 1000))
-        .limit(50);
+        .limit(FALLBACK_MAX_FIXTURES);
       
       if (fixtures && fixtures.length > 0) {
-        logs.push(`[Global Mode] Processing ${fixtures.length} fixtures...`);
-        for (const f of fixtures) {
-          try {
-            const result = await processFixtureToPool(f.id, supabase, token, markets, useLiveOdds);
-            if (result.legs.length > 0) {
-              candidatePool.push(...result.legs);
-              if (result.usedLive) usedLive = true;
-              if (result.fallback) fallbackToPrematch = true;
+        logs.push(`[Global Mode] Processing up to ${fixtures.length} fixtures with timeout guards...`);
+
+        const results = await Promise.allSettled(
+          fixtures.map((f) =>
+            withTimeout(
+              processFixtureToPool(f.id, supabase, token, markets, useLiveOdds),
+              FALLBACK_FIXTURE_TIMEOUT_MS,
+              `fixture:${f.id}`
+            )
+          )
+        );
+
+        for (let i = 0; i < results.length; i++) {
+          const fixtureId = fixtures[i].id;
+          const result = results[i];
+
+          if (result.status === "fulfilled") {
+            const value = result.value;
+            if (value.legs.length > 0) {
+              candidatePool.push(...value.legs);
+              if (value.usedLive) usedLive = true;
+              if (value.fallback) fallbackToPrematch = true;
             }
-            logs.push(...result.logs);
-          } catch (fixtureError) {
-            console.error(`[Global Mode] Error processing fixture ${f.id}:`, fixtureError);
-            logs.push(`[ERROR] fixture:${f.id} - ${fixtureError instanceof Error ? fixtureError.message : "Unknown error"}`);
-            // Continue with other fixtures instead of failing completely
+            logs.push(...value.logs);
+          } else {
+            const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            console.error(`[Global Mode] Error processing fixture ${fixtureId}:`, reason);
+            logs.push(`[ERROR] fixture:${fixtureId} - ${reason}`);
           }
+        }
+
+        if (isTimedOut()) {
+          return buildTimeoutResponse("global_fallback_processing", {
+            fixtures_considered: fixtures.length,
+            candidates_built: candidatePool.length,
+          });
         }
       } else {
         logs.push("[Global Mode] No fixtures found for next 48h");
