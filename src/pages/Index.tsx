@@ -743,9 +743,21 @@ const Index = () => {
         description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds • ${oddsSource}${fallbackNote}${winProbNote}`,
       });
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error?.name === 'AbortError' || controller.signal.aborted) {
+        console.error("[Ticket Creator] Request timed out after 20s");
+        toast({
+          title: "Request Timeout",
+          description: "Backend took too long. Try again — if the issue persists, there may not be enough fixtures right now.",
+          variant: "destructive",
+          duration: 8000,
+        });
+        return;
+      }
       console.error("Error generating AI ticket:", error);
       throw error; // Re-throw so dialog can catch it
     } finally {
+      clearTimeout(timeoutId);
       setGeneratingTicket(false);
     }
   };
