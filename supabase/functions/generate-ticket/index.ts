@@ -655,69 +655,39 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       console.error("[Global Mode] Error fetching selections:", selectionsError);
       logs.push(`[Global Mode] Error: ${selectionsError.message}`);
     } else if (!selections || selections.length === 0) {
-      logs.push("[Global Mode] No optimized selections found. Computing on-the-fly from fixtures...");
+      // No optimized selections at all — pipeline hasn't run or no qualifying matches
+      // Do NOT attempt on-the-fly fallback (calls analyze-fixture + fetch-odds per fixture = guaranteed timeout)
+      logs.push("[Global Mode] No optimized selections found in any window. Pipeline may need to run.");
       
-      const { data: fixtures } = await supabase
+      // Count available fixtures for diagnostics
+      const { data: fixtureCount } = await supabase
         .from("fixtures")
-        .select("id")
+        .select("id", { count: "exact", head: true })
         .gte("timestamp", Math.floor(now.getTime() / 1000))
-        .lte("timestamp", Math.floor(endDate.getTime() / 1000))
-        .limit(FALLBACK_MAX_FIXTURES);
+        .lte("timestamp", Math.floor(endDate.getTime() / 1000));
       
-      if (fixtures && fixtures.length > 0) {
-        logs.push(`[Global Mode] Processing up to ${fixtures.length} fixtures with timeout guards...`);
-
-        const results = await Promise.allSettled(
-          fixtures.map((f) =>
-            withTimeout(
-              processFixtureToPool(f.id, supabase, token, markets, useLiveOdds),
-              FALLBACK_FIXTURE_TIMEOUT_MS,
-              `fixture:${f.id}`
-            )
-          )
-        );
-
-        for (let i = 0; i < results.length; i++) {
-          const fixtureId = fixtures[i].id;
-          const result = results[i];
-
-          if (result.status === "fulfilled") {
-            const value = result.value;
-            if (value.legs.length > 0) {
-              candidatePool.push(...value.legs);
-              if (value.usedLive) usedLive = true;
-              if (value.fallback) fallbackToPrematch = true;
-            }
-            logs.push(...value.logs);
-          } else {
-            const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-            console.error(`[Global Mode] Error processing fixture ${fixtureId}:`, reason);
-            logs.push(`[ERROR] fixture:${fixtureId} - ${reason}`);
-          }
-        }
-
-        if (isTimedOut()) {
-          return buildTimeoutResponse("global_fallback_processing", {
-            fixtures_considered: fixtures.length,
-            candidates_built: candidatePool.length,
-          });
-        }
-      } else {
-        logs.push("[Global Mode] No fixtures found for next 48h");
-        
-        // Return specific error for no fixtures
-        return new Response(
-          JSON.stringify({
-            code: "NO_FIXTURES_AVAILABLE",
-            message: "No upcoming fixtures found in the next 48 hours. Please use 'Fetch Fixtures' to load matches first.",
-            suggestions: [
-              "Click the 'Fetch Fixtures' button to load upcoming matches",
-              "Select a country/league from the left sidebar first",
-              "Make sure you're viewing upcoming dates (today onwards)"
-            ],
-            logs,
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      const totalFixtures = fixtureCount?.length ?? 0;
+      
+      return new Response(
+        JSON.stringify({
+          code: "NO_CANDIDATES",
+          message: "No pre-computed selections available. The data pipeline needs to run first (Warmup → Optimizer).",
+          suggestions: [
+            "Click 'Warmup' in Admin panel to trigger the optimizer pipeline",
+            "Wait 2-3 minutes after warmup for selections to populate",
+            "Try the 'Next 2 Days' date range for more fixture coverage"
+          ],
+          debug: {
+            optimized_selections_total: 0,
+            green_buckets: gbContext ? gbContext.leagueIds.length : 0,
+            effective_markets: effectiveMarkets,
+            green_bucket_leagues: gbLeagueIds,
+            date_window: `${now.toISOString()} → ${endDate.toISOString()}`,
+          },
+          logs,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
         );
       }
     } else {
