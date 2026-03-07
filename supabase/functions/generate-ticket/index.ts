@@ -610,10 +610,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     const effectiveMarkets = markets.filter(m => gbMarkets.includes(m) && !BANNED_MARKETS.includes(m));
     logs.push(`[GREEN_BUCKETS] Effective markets: [${effectiveMarkets.join(',')}] | Leagues: [${gbLeagueIds.join(',')}]`);
     
+    // Primary query: strict date range
     let query = supabase
       .from("optimized_selections")
       .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
-      .eq("rules_version", RULES_VERSION)
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
       .in("market", effectiveMarkets)
@@ -623,13 +623,33 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
-    // If user specified leagueIds, intersect with green_buckets leagues
     if (leagueIds && leagueIds.length > 0) {
       const intersected = leagueIds.filter(id => gbLeagueIds.includes(id));
       if (intersected.length > 0) query = query.in("league_id", intersected);
     }
     
-    const { data: selections, error: selectionsError } = await query.limit(500);
+    let { data: selections, error: selectionsError } = await query.limit(500);
+    
+    // FALLBACK: If no selections in strict window, try extended 7-day window
+    if (!selectionsError && (!selections || selections.length === 0)) {
+      logs.push(`[Global Mode] No selections in ${dayRangeLabel} window. Trying extended 7-day window...`);
+      const extendedEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      let extQuery = supabase
+        .from("optimized_selections")
+        .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
+        .gte("utc_kickoff", now.toISOString())
+        .lt("utc_kickoff", extendedEnd.toISOString())
+        .in("market", effectiveMarkets)
+        .in("league_id", gbLeagueIds)
+        .not("odds", "is", null)
+        .lte("odds", GLOBAL_ODDS_CAP);
+      if (!useLiveOdds) extQuery = extQuery.eq("is_live", false);
+      const { data: extSelections, error: extError } = await extQuery.limit(500);
+      if (!extError && extSelections && extSelections.length > 0) {
+        selections = extSelections;
+        logs.push(`[Global Mode] Extended window found ${extSelections.length} selections`);
+      }
+    }
     
     if (selectionsError) {
       console.error("[Global Mode] Error fetching selections:", selectionsError);
