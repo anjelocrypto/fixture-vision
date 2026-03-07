@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, Sparkles, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Loader2, Sparkles, ShieldCheck, AlertTriangle, Zap } from "lucide-react";
 import { InfoTooltip } from "@/components/shared/InfoTooltip";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,7 +26,6 @@ export interface GenerateParams {
   ticketMode?: TicketMode;
 }
 
-// These match the backend green_buckets system
 const MAX_LEGS = 3;
 const ODDS_CAP = 2.30;
 
@@ -50,7 +49,6 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
-  // Compute odds range based on legs
   const targetMin = legs === 1 ? 1.20 : legs === 2 ? 1.80 : 2.50;
   const targetMax = legs === 1 ? ODDS_CAP : legs === 2 ? 5.29 : 12.0;
 
@@ -73,9 +71,7 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
       const msg = error.message || "Failed to generate ticket";
       
       if (msg.includes("INSUFFICIENT_CANDIDATES") || msg.includes("Not enough") || msg.includes("BUCKETS_NOT_BUILT")) {
-        setErrorMessage(
-          "No matches in the next 48h meet Safe Zone rules (verified leagues + markets with ≥65% hit rate + odds ≤2.30). Try again later or expand the day range."
-        );
+        setErrorMessage(t('ticket:no_matches_error'));
       } else {
         setErrorMessage(msg);
       }
@@ -103,40 +99,57 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
     }
   };
 
+  const legLabels: Record<number, string> = {
+    1: t('ticket:leg_safest'),
+    2: t('ticket:legs_two'),
+    3: t('ticket:legs_max'),
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-card border-border">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-foreground">
-            <ShieldCheck className="h-5 w-5 text-primary" />
-            {t('ticket:ai_ticket_title')}
-            <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">
-              Safe Mode
+      <DialogContent className="sm:max-w-lg bg-card border-primary/20 shadow-[0_0_40px_-10px_hsl(var(--primary)/0.15)]">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-2.5 text-foreground text-lg">
+            <div className="p-1.5 rounded-md bg-primary/10 border border-primary/20">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+            </div>
+            {t('ticket:title')}
+            <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] font-semibold tracking-wide uppercase">
+              {t('ticket:safe_mode')}
             </Badge>
             <InfoTooltip tooltipKey="ai_ticket" />
           </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Verified selections only — Data-driven from historical performance · Hit rate ≥65% · Odds ≤{ODDS_CAP}
+          <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+            {t('ticket:verified_selections_desc', { oddsCap: ODDS_CAP })}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4 pt-1">
           {/* Green Buckets Info */}
-          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 space-y-1.5">
-            <p className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Green Buckets Active
+          <div className="bg-primary/5 border border-primary/15 rounded-lg p-3.5 space-y-2">
+            <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5" />
+              {t('ticket:green_buckets_active')}
             </p>
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>✓ Leagues: All verified leagues with ≥65% hit rate (Champions League, Championship, Europa League, La Liga, Serie A, and more)</p>
-              <p>✓ Markets: Goals Over (1.5/2.5/3.5) — data-verified odds bands</p>
-              <p>✗ Cards: Disabled (negative EV)</p>
+            <div className="text-[11px] text-muted-foreground space-y-1 leading-relaxed">
+              <p className="flex items-start gap-1.5">
+                <span className="text-primary mt-px">✓</span>
+                {t('ticket:green_buckets_leagues')}
+              </p>
+              <p className="flex items-start gap-1.5">
+                <span className="text-primary mt-px">✓</span>
+                {t('ticket:green_buckets_markets')}
+              </p>
+              <p className="flex items-start gap-1.5">
+                <span className="text-destructive mt-px">✗</span>
+                {t('ticket:green_buckets_cards_disabled')}
+              </p>
             </div>
           </div>
 
           {/* Number of Legs */}
           <div>
-            <Label className="mb-2 block text-sm">Number of Legs</Label>
+            <Label className="mb-2 block text-sm font-medium">{t('ticket:number_of_legs')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {([1, 2, 3] as const).map((n) => (
                 <Button
@@ -144,27 +157,35 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
                   variant={legs === n ? "default" : "outline"}
                   size="sm"
                   onClick={() => setLegs(n)}
-                  className={legs === n ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                  className={
+                    legs === n
+                      ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20 transition-all"
+                      : "border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-all"
+                  }
                 >
-                  {n === 1 ? "1 Leg (Safest)" : n === 2 ? "2 Legs" : "3 Legs (Max)"}
+                  {legLabels[n]}
                 </Button>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              Safe mode supports max {MAX_LEGS} legs. Odds range: {targetMin.toFixed(2)}–{targetMax.toFixed(2)}
+            <p className="text-[11px] text-muted-foreground mt-2">
+              {t('ticket:safe_mode_note', { maxLegs: MAX_LEGS, min: targetMin.toFixed(2), max: targetMax.toFixed(2) })}
             </p>
           </div>
 
           {/* Match Day Range */}
           <div>
-            <Label className="mb-2 block text-sm">{t('ticket:match_day_range')}</Label>
+            <Label className="mb-2 block text-sm font-medium">{t('ticket:match_day_range')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {DAY_RANGES.map((range) => (
                 <Button
                   key={range.id}
                   variant={dayRange === range.id ? "default" : "outline"}
                   size="sm"
-                  className="text-xs"
+                  className={
+                    dayRange === range.id
+                      ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20 text-xs transition-all"
+                      : "border-border/60 hover:border-primary/40 hover:bg-primary/5 text-xs transition-all"
+                  }
                   onClick={() => setDayRange(range.id as "today" | "tomorrow" | "next_2_days")}
                 >
                   {t(`ticket:${range.label}`)}
@@ -173,22 +194,22 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             </div>
           </div>
 
-          {/* Markets Display (read-only) */}
+          {/* Markets Display */}
           <div>
-            <Label className="mb-2 block text-sm">Markets</Label>
+            <Label className="mb-2 block text-sm font-medium">{t('ticket:markets_label')}</Label>
             <div className="flex gap-2 flex-wrap">
-              <Badge className="bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/30">
-                ⚽ Goals Over
+              <Badge className="bg-primary/15 text-primary border-primary/25 font-medium">
+                ⚽ {t('ticket:goals_over')}
               </Badge>
-              <Badge variant="outline" className="opacity-40 line-through text-xs">
-                🟨 Cards
+              <Badge variant="outline" className="opacity-35 line-through text-xs">
+                🟨 {t('ticket:cards_label')}
               </Badge>
             </div>
           </div>
 
           {/* Generate Button */}
           <Button
-            className="w-full bg-green-600 hover:bg-green-700 text-white"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 font-semibold h-11 text-sm transition-all"
             onClick={handleGenerate}
             disabled={generating}
           >
@@ -200,28 +221,30 @@ export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCr
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate Safe Ticket ({legs} leg{legs > 1 ? "s" : ""})
+                {legs > 1
+                  ? t('ticket:generate_safe_ticket_plural', { count: legs })
+                  : t('ticket:generate_safe_ticket', { count: legs })}
               </>
             )}
           </Button>
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 p-3 rounded-md border border-amber-500/20 flex gap-2">
+            <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 flex gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* Debug Panel (dev-only info from backend) */}
+          {/* Debug Panel */}
           {debugInfo && (
-            <details className="text-[11px] text-muted-foreground bg-muted/30 p-2 rounded border">
-              <summary className="cursor-pointer font-medium">Debug: Generation Details</summary>
+            <details className="text-[11px] text-muted-foreground bg-muted/30 p-2.5 rounded-lg border border-border/50">
+              <summary className="cursor-pointer font-medium">{t('ticket:debug_title')}</summary>
               <div className="mt-2 space-y-1 font-mono">
-                <p>Candidates scanned: {debugInfo.candidatesScanned}</p>
+                <p>{t('ticket:debug_candidates')}: {debugInfo.candidatesScanned}</p>
                 {Object.keys(debugInfo.rejectionReasons).length > 0 && (
                   <div>
-                    <p className="font-semibold mt-1">Rejections:</p>
+                    <p className="font-semibold mt-1">{t('ticket:debug_rejections')}:</p>
                     {Object.entries(debugInfo.rejectionReasons).map(([reason, count]) => (
                       <p key={reason} className="pl-2">• {reason}: {count}</p>
                     ))}
