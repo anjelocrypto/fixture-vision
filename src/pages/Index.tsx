@@ -514,6 +514,7 @@ const Index = () => {
     const timeoutId = setTimeout(() => {
       console.error(`[Ticket Creator] Client timeout after ${FUNCTION_TIMEOUT_MS}ms`);
     }, FUNCTION_TIMEOUT_MS);
+    let invokeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
       const session = await supabase.auth.getSession();
@@ -536,7 +537,7 @@ const Index = () => {
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("FUNCTION_TIMEOUT")), FUNCTION_TIMEOUT_MS);
+        invokeTimeoutId = setTimeout(() => reject(new Error("FUNCTION_TIMEOUT")), FUNCTION_TIMEOUT_MS);
       });
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
