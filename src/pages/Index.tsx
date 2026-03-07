@@ -510,13 +510,17 @@ const Index = () => {
   // NEW AI Ticket Creator (with custom parameters) - GLOBAL MODE
   const generateAITicket = async (params: any) => {
     setGeneratingTicket(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s client timeout
+    const FUNCTION_TIMEOUT_MS = 15000;
+    const timeoutId = setTimeout(() => {
+      console.error(`[Ticket Creator] Client timeout after ${FUNCTION_TIMEOUT_MS}ms`);
+    }, FUNCTION_TIMEOUT_MS);
+    let invokeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
 
-      const { data, error } = await supabase.functions.invoke("generate-ticket", {
+      const invokePromise = supabase.functions.invoke("generate-ticket", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
           // Global mode - no fixtureIds required
@@ -531,6 +535,12 @@ const Index = () => {
           ticketMode: params.ticketMode,
         },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        invokeTimeoutId = setTimeout(() => reject(new Error("FUNCTION_TIMEOUT")), FUNCTION_TIMEOUT_MS);
+      });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
 
       // Check for NO_CANDIDATES (optimizer not populated yet)
       if (data?.code === "NO_CANDIDATES") {
@@ -743,9 +753,8 @@ const Index = () => {
         description: `${data.ticket.legs.length} selections with ${data.ticket.total_odds.toFixed(2)}x total odds • ${oddsSource}${fallbackNote}${winProbNote}`,
       });
     } catch (error: any) {
-      clearTimeout(timeoutId);
-      if (error?.name === 'AbortError' || controller.signal.aborted) {
-        console.error("[Ticket Creator] Request timed out after 20s");
+      if (error?.message === "FUNCTION_TIMEOUT") {
+        console.error("[Ticket Creator] Request timed out after 15s");
         toast({
           title: "Request Timeout",
           description: "Backend took too long. Try again — if the issue persists, there may not be enough fixtures right now.",
@@ -754,10 +763,17 @@ const Index = () => {
         });
         return;
       }
+
       console.error("Error generating AI ticket:", error);
-      throw error; // Re-throw so dialog can catch it
+      toast({
+        title: "Error",
+        description: "Failed to generate ticket. Please try again.",
+        variant: "destructive",
+      });
+      return;
     } finally {
       clearTimeout(timeoutId);
+      if (invokeTimeoutId) clearTimeout(invokeTimeoutId);
       setGeneratingTicket(false);
     }
   };
