@@ -510,6 +510,8 @@ const Index = () => {
   // NEW AI Ticket Creator (with custom parameters) - GLOBAL MODE
   const generateAITicket = async (params: any) => {
     setGeneratingTicket(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s client timeout
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -526,7 +528,7 @@ const Index = () => {
           legsMax: params.maxLegs,
           useLiveOdds: params.useLiveOdds,
           dayRange: params.dayRange,
-          ticketMode: params.ticketMode, // New: pass ticket mode to backend
+          ticketMode: params.ticketMode,
         },
       });
 
