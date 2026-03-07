@@ -48,7 +48,7 @@ export function getCorsHeaders(origin: string | null, _request?: Request): Heade
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key",
+      "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
     "Access-Control-Max-Age": "86400", // 24 hours
     Vary: "Origin",
   };
