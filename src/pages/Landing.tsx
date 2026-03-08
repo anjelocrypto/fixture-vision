@@ -583,6 +583,7 @@ export default function Landing() {
                   ))}
                 </motion.div>
               </motion.div>
+            </div>
 
             {/* Scroll Indicator */}
             <motion.div
