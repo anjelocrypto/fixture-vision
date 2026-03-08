@@ -141,7 +141,8 @@ const Pricing = () => {
     try {
       const { data, error } = await supabase.functions.invoke("billing-portal");
       if (error) throw error;
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
     } catch (error: any) {
       toast({
         title: "Error",

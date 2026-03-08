@@ -248,7 +248,8 @@ const Account = () => {
         throw new Error(detail);
       }
 
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
       toast({
         title: "Opening checkout...",
         description: "Complete your purchase in the new tab",
