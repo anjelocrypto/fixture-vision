@@ -150,7 +150,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
           </div>
 
           {/* Input */}
-          <div className="px-4 py-3 border-t border-border flex gap-2">
+          <div className="px-4 py-3 border-t border-border flex gap-2 sticky bottom-0 bg-background z-10">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
