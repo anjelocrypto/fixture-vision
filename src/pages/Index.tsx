@@ -143,6 +143,12 @@ const Index = () => {
   const [lastTicketParams, setLastTicketParams] = useState<any>(null);
   const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
 
+  // Register all overlays for Android back-button support
+  useRegisterOverlay("index-left-sheet", leftSheetOpen, () => setLeftSheetOpen(false));
+  useRegisterOverlay("index-right-sheet", rightSheetOpen, () => setRightSheetOpen(false));
+  useRegisterOverlay("index-ticket-drawer", ticketDrawerOpen, () => setTicketDrawerOpen(false));
+  useRegisterOverlay("index-ticket-creator", ticketCreatorOpen, () => setTicketCreatorOpen(false));
+
   const SEASON = 2025;
 
   // Preload ALL leagues once on mount (grouped by country)
