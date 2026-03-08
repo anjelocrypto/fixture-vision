@@ -311,44 +311,53 @@ export function CardWarPanel({ onClose }: CardWarPanelProps) {
               )}
             </div>
             
-            <div className="rounded-md border max-h-[400px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>{t('card_war_table_team', 'Team')}</TableHead>
-                    <TableHead className="text-right w-20">{t('card_war_table_avg', 'Avg')}</TableHead>
-                    <TableHead className="text-right w-16">{t('card_war_table_total', 'Total')}</TableHead>
-                    <TableHead className="text-right w-16">{t('card_war_table_used', 'Used')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.map((team) => (
-                    <TableRow key={team.team_id}>
-                      <TableCell>
-                        <Badge variant={getRankBadgeVariant(team.rank)} className="w-8 justify-center">
-                          {team.rank}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium truncate max-w-[140px]">
-                        {team.team_name}
-                      </TableCell>
-                      <TableCell className="text-right font-bold tabular-nums">
-                        {team.avg_value.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {team.total_value}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={team.matches_used < maxMatches ? "text-amber-500" : "text-muted-foreground"}>
-                          {team.matches_used}/{maxMatches}
-                        </span>
-                      </TableCell>
+            {isMobile ? (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {results.map((team) => (
+                  <div key={team.team_id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                    <Badge variant={getRankBadgeVariant(team.rank)} className="w-8 h-8 flex items-center justify-center shrink-0 text-sm">
+                      {team.rank}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{team.team_name}</div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>Total: {team.total_value}</span>
+                        <span className={team.matches_used < maxMatches ? "text-amber-500" : ""}>{team.matches_used}/{maxMatches} games</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold tabular-nums text-base">{team.avg_value.toFixed(2)}</div>
+                      <div className="text-[10px] text-muted-foreground">avg</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border max-h-[400px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>{t('card_war_table_team', 'Team')}</TableHead>
+                      <TableHead className="text-right w-20">{t('card_war_table_avg', 'Avg')}</TableHead>
+                      <TableHead className="text-right w-16">{t('card_war_table_total', 'Total')}</TableHead>
+                      <TableHead className="text-right w-16">{t('card_war_table_used', 'Used')}</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {results.map((team) => (
+                      <TableRow key={team.team_id}>
+                        <TableCell><Badge variant={getRankBadgeVariant(team.rank)} className="w-8 justify-center">{team.rank}</Badge></TableCell>
+                        <TableCell className="font-medium truncate max-w-[140px]">{team.team_name}</TableCell>
+                        <TableCell className="text-right font-bold tabular-nums">{team.avg_value.toFixed(2)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{team.total_value}</TableCell>
+                        <TableCell className="text-right"><span className={team.matches_used < maxMatches ? "text-amber-500" : "text-muted-foreground"}>{team.matches_used}/{maxMatches}</span></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
             <p className="text-xs text-muted-foreground text-center">
               {mode === 'cards' 
