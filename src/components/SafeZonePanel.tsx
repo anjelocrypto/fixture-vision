@@ -556,42 +556,77 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
               )}
             </div>
 
-            <div className="rounded-md border max-h-[400px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>{t('safe_zone_fixture', 'Fixture')}</TableHead>
-                    {renderTableHeaders()}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.map((fixture, idx) => (
-                    <TableRow key={fixture.fixture_id}>
-                      <TableCell>
-                        <Badge variant={getProbBadgeVariant(fixture.probability)} className="w-8 justify-center">
-                          {idx + 1}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-0.5">
-                          <div className="font-medium text-sm flex items-center gap-1">
-                            {fixture.home_team}
-                            <span className="text-muted-foreground mx-1">vs</span>
-                            {fixture.away_team}
-                            {getDataQualityIcon(fixture.data_quality)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatTime(fixture.kickoff_at)}
-                          </div>
+            {isMobile ? (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {results.map((fixture, idx) => {
+                  const stats = getMobileStats(fixture);
+                  return (
+                    <div key={fixture.fixture_id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                      <Badge variant={getProbBadgeVariant(fixture.probability)} className="w-8 h-8 flex items-center justify-center shrink-0 text-sm mt-0.5">
+                        {idx + 1}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm flex items-center gap-1">
+                          {fixture.home_team}
+                          <span className="text-muted-foreground">vs</span>
+                          {fixture.away_team}
+                          {getDataQualityIcon(fixture.data_quality)}
                         </div>
-                      </TableCell>
-                      {renderTableCells(fixture)}
+                        <div className="text-xs text-muted-foreground mt-0.5">{formatTime(fixture.kickoff_at)}</div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
+                          {stats.map((s: { label: string; value: string }, i: number) => (
+                            <span key={i}>
+                              {s.label}: <span className="tabular-nums font-medium text-foreground">{s.value}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-bold tabular-nums text-base">{formatProbability(fixture.probability)}</div>
+                        <div className="text-[10px] text-muted-foreground">{t('safe_zone_prob', 'Prob')}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-md border max-h-[400px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>{t('safe_zone_fixture', 'Fixture')}</TableHead>
+                      {renderTableHeaders()}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {results.map((fixture, idx) => (
+                      <TableRow key={fixture.fixture_id}>
+                        <TableCell>
+                          <Badge variant={getProbBadgeVariant(fixture.probability)} className="w-8 justify-center">
+                            {idx + 1}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-0.5">
+                            <div className="font-medium text-sm flex items-center gap-1">
+                              {fixture.home_team}
+                              <span className="text-muted-foreground mx-1">vs</span>
+                              {fixture.away_team}
+                              {getDataQualityIcon(fixture.data_quality)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatTime(fixture.kickoff_at)}
+                            </div>
+                          </div>
+                        </TableCell>
+                        {renderTableCells(fixture)}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
             {/* Disclaimer */}
             <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
