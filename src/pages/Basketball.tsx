@@ -12,6 +12,7 @@ import { Menu, Target, Calendar, ChartBar } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Helmet } from "react-helmet-async";
 import type { BasketballGame } from "@/hooks/useBasketballFixtures";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 type ViewMode = "calendar" | "safezone";
 
