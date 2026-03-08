@@ -196,7 +196,7 @@ export default function Auth() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-dvh flex flex-col">
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary/20 p-4">
           <Card className="w-full max-w-md">
             <CardHeader>

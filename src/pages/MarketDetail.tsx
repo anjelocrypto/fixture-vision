@@ -27,7 +27,7 @@ const MarketDetail = () => {
 
   if (marketLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-dvh bg-background">
         <AppHeader />
         <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex items-center justify-center py-24">
@@ -43,7 +43,7 @@ const MarketDetail = () => {
 
   if (!market) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-dvh bg-background">
         <AppHeader />
         <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <div className="text-center py-24">
@@ -62,7 +62,7 @@ const MarketDetail = () => {
   const isOpen = market.status === "open";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background pb-20 lg:pb-0">
       <AppHeader />
       <main className="container max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Back Button */}

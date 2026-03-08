@@ -1018,7 +1018,7 @@ const Index = () => {
   const displayFixtures = filterCriteria ? filteredFixtures : fixtures;
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-dvh flex flex-col">
       <AppHeader />
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -1088,9 +1088,17 @@ const Index = () => {
                 : t('fixtures:all_fixtures')}
             </h2>
             
-            {/* Admin controls - hidden on mobile */}
-            <div className="hidden sm:flex gap-2 shrink-0 items-center">
-              {isAdmin && <AdminRefreshButton />}
+            {/* Right: Admin + Analytics on mobile */}
+            <div className="flex gap-2 shrink-0 items-center">
+              {isAdmin && <div className="hidden sm:block"><AdminRefreshButton /></div>}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden shrink-0 h-9 w-9"
+                onClick={() => setRightSheetOpen(true)}
+              >
+                <BarChart3 className="h-5 w-5" />
+              </Button>
             </div>
           </div>
 
@@ -1517,31 +1525,8 @@ const Index = () => {
           </SheetContent>
         </Sheet>
 
-        {/* Mobile Floating Action Buttons - with safe area support */}
-        <div 
-          className="lg:hidden fixed right-4 z-40 flex flex-col gap-3"
-          style={{ bottom: 'calc(var(--safe-area-bottom) + 16px)' }}
-        >
-          {/* Analytics FAB */}
-          <Button
-            className="h-12 w-12 rounded-full shadow-lg"
-            size="icon"
-            onClick={() => setRightSheetOpen(true)}
-          >
-            <BarChart3 className="h-5 w-5" />
-          </Button>
-
-          {/* AI Ticket Creator FAB - Only show for paid users */}
-          {!ticketCreatorOpen && hasPaidAccess && (
-            <Button
-              className="h-12 gap-2 rounded-full shadow-lg px-4"
-              onClick={() => setTicketCreatorOpen(true)}
-            >
-              <Sparkles className="h-4 w-4" />
-              <span className="text-xs font-semibold">{t('common:ai_ticket_creator')}</span>
-            </Button>
-          )}
-        </div>
+        {/* Mobile bottom padding for bottom nav */}
+        <div className="lg:hidden h-16" />
       </div>
 
       {/* Ticket Creator Dialog - Only render for paid users */}

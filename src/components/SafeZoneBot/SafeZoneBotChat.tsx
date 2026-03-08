@@ -150,7 +150,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
           </div>
 
           {/* Input */}
-          <div className="px-4 py-3 border-t border-border flex gap-2">
+          <div className="px-4 py-3 border-t border-border flex gap-2 sticky bottom-0 bg-background z-10">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -171,7 +171,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="bottom" className="h-[85vh] p-0 flex flex-col">
+        <SheetContent side="bottom" className="h-[85dvh] p-0 flex flex-col">
           <SheetHeader className="sr-only">
             <SheetTitle>{t("safe_zone_bot_title")}</SheetTitle>
           </SheetHeader>

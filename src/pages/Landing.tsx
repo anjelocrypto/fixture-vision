@@ -261,7 +261,7 @@ export default function Landing() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div ref={containerRef} className="min-h-screen bg-background overflow-x-hidden">
+      <div ref={containerRef} className="min-h-dvh bg-background overflow-x-hidden">
         {/* Fixed Navigation */}
         <motion.nav 
           initial={{ y: -100 }}
@@ -342,7 +342,7 @@ export default function Landing() {
         </motion.nav>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center justify-center pt-24 overflow-hidden">
+        <section className="relative min-h-dvh flex items-center justify-center pt-24 overflow-hidden">
           <GradientBackground />
           <FloatingDots />
           

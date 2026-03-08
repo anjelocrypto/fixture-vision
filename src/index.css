@@ -98,9 +98,22 @@ All colors MUST be HSL.
   }
 }
 
+/* DVH fallback for older browsers */
+@supports not (height: 100dvh) {
+  .h-dvh { height: 100vh !important; }
+  .min-h-dvh { min-height: 100vh !important; }
+  .max-h-\[85dvh\] { max-height: 85vh !important; }
+  .max-h-85dvh { max-height: 85vh !important; }
+  .h-\[85dvh\] { height: 85vh !important; }
+}
+
 @layer base {
   * {
     @apply border-border;
+  }
+
+  html, body {
+    overscroll-behavior: none;
   }
 
   body {
@@ -142,6 +155,13 @@ All colors MUST be HSL.
         transition-duration: 0.01ms !important;
       }
     }
+  }
+
+  /* Keyboard safety: ensure focused inputs scroll into view */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    scroll-margin-bottom: 120px;
   }
 }
 

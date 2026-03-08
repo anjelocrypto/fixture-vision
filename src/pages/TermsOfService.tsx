@@ -11,7 +11,7 @@ const TermsOfService = () => {
         <link rel="canonical" href="https://ticketai.bet/legal/terms" />
       </Helmet>
       
-      <div className="min-h-screen bg-background">
+      <div className="min-h-dvh bg-background">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6">
             <ChevronLeft className="h-4 w-4 mr-1" />

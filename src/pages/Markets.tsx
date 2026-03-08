@@ -8,7 +8,7 @@ const Markets = () => {
   const { t } = useTranslation("markets");
 
   return (
-    <div className="min-h-screen bg-background" style={{ paddingBottom: 'var(--safe-area-bottom)' }}>
+    <div className="min-h-dvh bg-background pb-20 lg:pb-0" style={{ paddingBottom: undefined }}>
       <AppHeader />
       <main className="container max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Premium Header */}

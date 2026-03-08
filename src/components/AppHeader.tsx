@@ -194,11 +194,13 @@ export function AppHeader() {
             variant="ghost" 
             size="icon" 
             className="hidden sm:flex"
-            asChild
+            onClick={() => {
+              import("@/lib/openExternal").then(({ openExternal }) =>
+                openExternal("https://t.me/TICKETAIBET")
+              );
+            }}
           >
-            <a href="https://t.me/TICKETAIBET" target="_blank" rel="noopener noreferrer">
-              <Send className="h-5 w-5" />
-            </a>
+            <Send className="h-5 w-5" />
           </Button>
           
           {session ? (

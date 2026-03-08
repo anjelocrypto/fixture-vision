@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
 export function BTTSIndexPanel({ onClose }: BTTSIndexPanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [window, setWindow] = useState<Window>(10);
   const [selectedCountry, setSelectedCountry] = useState<string>("england");
@@ -278,58 +280,70 @@ export function BTTSIndexPanel({ onClose }: BTTSIndexPanelProps) {
               )}
             </div>
 
-            <div className="rounded-md border max-h-[400px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>{t('btts_team', 'Team')}</TableHead>
-                    <TableHead className="text-right w-20">{t('btts_rate', 'BTTS %')}</TableHead>
-                    <TableHead className="text-right w-16">{t('btts_count', 'BTTS')}</TableHead>
-                    <TableHead className="text-right w-16">{t('btts_matches', 'Games')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.map((team) => (
-                    <TableRow key={team.team_id}>
-                      <TableCell>
-                        <Badge variant={getBTTSBadgeVariant(team.btts_rate)} className="w-8 justify-center">
-                          {team.rank}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium truncate max-w-[140px]">
-                        <div className="flex items-center gap-1">
-                          {team.team_name}
-                          {team.sample_warning && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {t('btts_low_sample', 'Low sample size')}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-bold tabular-nums">
-                        {team.btts_rate.toFixed(1)}%
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {team.btts_count}/{team.matches}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={team.matches < window ? "text-amber-500" : "text-muted-foreground"}>
-                          {team.matches}/{window}
-                        </span>
-                      </TableCell>
+            {isMobile ? (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {results.map((team) => (
+                  <div key={team.team_id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                    <Badge variant={getBTTSBadgeVariant(team.btts_rate)} className="w-8 h-8 flex items-center justify-center shrink-0 text-sm">
+                      {team.rank}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate flex items-center gap-1">
+                        {team.team_name}
+                        {team.sample_warning && (
+                          <TooltipProvider><Tooltip><TooltipTrigger><AlertTriangle className="h-3 w-3 text-amber-500" /></TooltipTrigger><TooltipContent>{t('btts_low_sample', 'Low sample size')}</TooltipContent></Tooltip></TooltipProvider>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>BTTS: {team.btts_count}/{team.matches}</span>
+                        <span className={team.matches < window ? "text-amber-500" : ""}>{team.matches}/{window} games</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold tabular-nums text-base">{team.btts_rate.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border max-h-[400px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>{t('btts_team', 'Team')}</TableHead>
+                      <TableHead className="text-right w-20">{t('btts_rate', 'BTTS %')}</TableHead>
+                      <TableHead className="text-right w-16">{t('btts_count', 'BTTS')}</TableHead>
+                      <TableHead className="text-right w-16">{t('btts_matches', 'Games')}</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {results.map((team) => (
+                      <TableRow key={team.team_id}>
+                        <TableCell>
+                          <Badge variant={getBTTSBadgeVariant(team.btts_rate)} className="w-8 justify-center">
+                            {team.rank}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium truncate max-w-[140px]">
+                          <div className="flex items-center gap-1">
+                            {team.team_name}
+                            {team.sample_warning && (
+                              <TooltipProvider><Tooltip><TooltipTrigger><AlertTriangle className="h-3 w-3 text-amber-500" /></TooltipTrigger><TooltipContent>{t('btts_low_sample', 'Low sample size')}</TooltipContent></Tooltip></TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-bold tabular-nums">{team.btts_rate.toFixed(1)}%</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{team.btts_count}/{team.matches}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={team.matches < window ? "text-amber-500" : "text-muted-foreground"}>{team.matches}/{window}</span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
             <p className="text-xs text-muted-foreground text-center">
               {t('btts_footer', 'Teams at the top have the highest Both Teams To Score rate in their last {{n}} matches', { n: window })}

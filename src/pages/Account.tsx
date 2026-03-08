@@ -160,7 +160,8 @@ const Account = () => {
     try {
       const { data, error } = await supabase.functions.invoke("billing-portal");
       if (error) throw error;
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
       toast({
         title: "Opening billing portal...",
         description: "Manage your subscription in the new tab",
@@ -247,7 +248,8 @@ const Account = () => {
         throw new Error(detail);
       }
 
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
       toast({
         title: "Opening checkout...",
         description: "Complete your purchase in the new tab",
@@ -322,7 +324,7 @@ const Account = () => {
 
   if (accessLoading || !sessionReady) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-dvh bg-background flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Loading account details...</p>
@@ -332,7 +334,7 @@ const Account = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="min-h-dvh bg-gradient-to-b from-background via-background to-muted/20 pb-20 lg:pb-0">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <Button
           variant="ghost"

@@ -141,7 +141,8 @@ const Pricing = () => {
     try {
       const { data, error } = await supabase.functions.invoke("billing-portal");
       if (error) throw error;
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -162,7 +163,7 @@ const Pricing = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
+    <div className="min-h-dvh bg-background flex flex-col relative overflow-hidden">
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
