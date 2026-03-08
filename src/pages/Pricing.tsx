@@ -123,7 +123,9 @@ const Pricing = () => {
         throw new Error(detail);
       }
 
-      window.location.href = data.url;
+      // Use openExternal for Capacitor — opens Stripe in system browser, not WebView
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
     } catch (error: any) {
       console.error("Checkout error:", error);
       toast({
