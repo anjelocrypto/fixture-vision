@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Send, X, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface Props {
   open: boolean;
