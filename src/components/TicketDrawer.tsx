@@ -9,6 +9,7 @@ import { GeminiAnalysis } from "./GeminiAnalysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface TicketLeg {
   fixture_id: number;
@@ -56,6 +57,7 @@ interface TicketDrawerProps {
 export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, canShuffle = false }: TicketDrawerProps) {
   const { toast } = useToast();
   const { i18n } = useTranslation();
+  useRegisterOverlay("ticket-drawer", open, () => onOpenChange(false));
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [lockedLegIds, setLockedLegIds] = useState<Set<string>>(new Set());

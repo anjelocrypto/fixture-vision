@@ -12,6 +12,7 @@ import { Menu, Target, Calendar, ChartBar } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Helmet } from "react-helmet-async";
 import type { BasketballGame } from "@/hooks/useBasketballFixtures";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 type ViewMode = "calendar" | "safezone";
 
@@ -23,6 +24,10 @@ const Basketball = () => {
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [selectedDate, setSelectedDate] = useState<"today" | "tomorrow">("today");
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+
+  // Register overlays for Android back-button
+  useRegisterOverlay("bball-left-sheet", leftSheetOpen, () => setLeftSheetOpen(false));
+  useRegisterOverlay("bball-right-sheet", rightSheetOpen, () => setRightSheetOpen(false));
 
   const handleAnalyze = (game: BasketballGame) => {
     setSelectedGameId(game.id);

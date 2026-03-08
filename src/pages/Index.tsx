@@ -30,6 +30,7 @@ import { formatMarketLabel } from "@/lib/i18nFormatters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getEmptyStateMessage } from "@/lib/holidayMessages";
 import { SafeZoneBotButton } from "@/components/SafeZoneBot/SafeZoneBotButton";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
@@ -141,6 +142,12 @@ const Index = () => {
   const [rightSheetOpen, setRightSheetOpen] = useState(false);
   const [lastTicketParams, setLastTicketParams] = useState<any>(null);
   const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
+
+  // Register all overlays for Android back-button support
+  useRegisterOverlay("index-left-sheet", leftSheetOpen, () => setLeftSheetOpen(false));
+  useRegisterOverlay("index-right-sheet", rightSheetOpen, () => setRightSheetOpen(false));
+  useRegisterOverlay("index-ticket-drawer", ticketDrawerOpen, () => setTicketDrawerOpen(false));
+  useRegisterOverlay("index-ticket-creator", ticketCreatorOpen, () => setTicketCreatorOpen(false));
 
   const SEASON = 2025;
 
@@ -1371,134 +1378,52 @@ const Index = () => {
                   </div>
 
                   {/* Tool Buttons Grid */}
-                  <div className="px-4 py-3 border-b bg-card/30 space-y-2">
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showFilterizer ? "default" : "outline"}
-                      onClick={() => {
-                        setShowFilterizer(!showFilterizer);
-                        if (!showFilterizer) {
-                          setShowWinner(false);
-                          setShowTeamTotals(false);
-                          setShowWhoConcedes(false);
-                          setShowCardWar(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <Filter className="h-4 w-4" />
-                      {t('common:filterizer')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showWinner ? "default" : "outline"}
-                      onClick={() => {
-                        setShowWinner(!showWinner);
-                        if (!showWinner) {
-                          setShowFilterizer(false);
-                          setShowTeamTotals(false);
-                          setShowWhoConcedes(false);
-                          setShowCardWar(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <Trophy className="h-4 w-4" />
-                      {t('common:winner_1x2')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showTeamTotals ? "default" : "outline"}
-                      onClick={() => {
-                        setShowTeamTotals(!showTeamTotals);
-                        if (!showTeamTotals) {
-                          setShowFilterizer(false);
-                          setShowWinner(false);
-                          setShowWhoConcedes(false);
-                          setShowCardWar(false);
-                          setShowBTTSIndex(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <Target className="h-4 w-4" />
-                      {t('common:team_totals')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showWhoConcedes ? "default" : "outline"}
-                      onClick={() => {
-                        setShowWhoConcedes(!showWhoConcedes);
-                        if (!showWhoConcedes) {
-                          setShowFilterizer(false);
-                          setShowWinner(false);
-                          setShowTeamTotals(false);
-                          setShowCardWar(false);
-                          setShowBTTSIndex(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <ShieldAlert className="h-4 w-4" />
-                      {t('common:who_concedes')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showCardWar ? "default" : "outline"}
-                      onClick={() => {
-                        setShowCardWar(!showCardWar);
-                        if (!showCardWar) {
-                          setShowFilterizer(false);
-                          setShowWinner(false);
-                          setShowTeamTotals(false);
-                          setShowWhoConcedes(false);
-                          setShowBTTSIndex(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <Swords className="h-4 w-4" />
-                      {t('common:card_war')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showBTTSIndex ? "default" : "outline"}
-                      onClick={() => {
-                        setShowBTTSIndex(!showBTTSIndex);
-                        if (!showBTTSIndex) {
-                          setShowFilterizer(false);
-                          setShowWinner(false);
-                          setShowTeamTotals(false);
-                          setShowWhoConcedes(false);
-                          setShowCardWar(false);
-                          setShowSafeZone(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <Users className="h-4 w-4" />
-                      {t('common:btts_index')}
-                    </Button>
-                    <Button
-                      className="w-full gap-2 h-11 justify-start"
-                      variant={showSafeZone ? "default" : "outline"}
-                      onClick={() => {
-                        setShowSafeZone(!showSafeZone);
-                        if (!showSafeZone) {
-                          setShowFilterizer(false);
-                          setShowWinner(false);
-                          setShowTeamTotals(false);
-                          setShowWhoConcedes(false);
-                          setShowCardWar(false);
-                          setShowBTTSIndex(false);
-                        }
-                        setRightSheetOpen(false);
-                      }}
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                      {t('common:safe_zone', 'Safe Zone')}
-                    </Button>
-                  </div>
+                   {/* Categorized Tool Sections */}
+                    <div className="px-4 py-3 border-b bg-card/30 space-y-3">
+                      {/* Predictions Category */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1">{t('common:predictions', 'Predictions')}</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { show: showFilterizer, set: () => { setShowFilterizer(!showFilterizer); if (!showFilterizer) { setShowWinner(false); setShowTeamTotals(false); setShowWhoConcedes(false); setShowCardWar(false); } setRightSheetOpen(false); }, icon: Filter, label: t('common:filterizer') },
+                            { show: showWinner, set: () => { setShowWinner(!showWinner); if (!showWinner) { setShowFilterizer(false); setShowTeamTotals(false); setShowWhoConcedes(false); setShowCardWar(false); } setRightSheetOpen(false); }, icon: Trophy, label: t('common:winner_1x2') },
+                            { show: showTeamTotals, set: () => { setShowTeamTotals(!showTeamTotals); if (!showTeamTotals) { setShowFilterizer(false); setShowWinner(false); setShowWhoConcedes(false); setShowCardWar(false); setShowBTTSIndex(false); } setRightSheetOpen(false); }, icon: Target, label: t('common:team_totals') },
+                            { show: showWhoConcedes, set: () => { setShowWhoConcedes(!showWhoConcedes); if (!showWhoConcedes) { setShowFilterizer(false); setShowWinner(false); setShowTeamTotals(false); setShowCardWar(false); setShowBTTSIndex(false); } setRightSheetOpen(false); }, icon: ShieldAlert, label: t('common:who_concedes') },
+                          ].map((tool) => (
+                            <Button
+                              key={tool.label}
+                              className="gap-1.5 h-9 text-xs justify-start"
+                              variant={tool.show ? "default" : "outline"}
+                              onClick={tool.set}
+                            >
+                              <tool.icon className="h-3.5 w-3.5" />
+                              {tool.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Rankings Category */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1">{t('common:rankings', 'Rankings')}</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { show: showBTTSIndex, set: () => { setShowBTTSIndex(!showBTTSIndex); if (!showBTTSIndex) { setShowFilterizer(false); setShowWinner(false); setShowTeamTotals(false); setShowWhoConcedes(false); setShowCardWar(false); setShowSafeZone(false); } setRightSheetOpen(false); }, icon: Users, label: t('common:btts_index') },
+                            { show: showCardWar, set: () => { setShowCardWar(!showCardWar); if (!showCardWar) { setShowFilterizer(false); setShowWinner(false); setShowTeamTotals(false); setShowWhoConcedes(false); setShowBTTSIndex(false); } setRightSheetOpen(false); }, icon: Swords, label: t('common:card_war') },
+                            { show: showSafeZone, set: () => { setShowSafeZone(!showSafeZone); if (!showSafeZone) { setShowFilterizer(false); setShowWinner(false); setShowTeamTotals(false); setShowWhoConcedes(false); setShowCardWar(false); setShowBTTSIndex(false); } setRightSheetOpen(false); }, icon: ShieldCheck, label: t('common:safe_zone', 'Safe Zone') },
+                          ].map((tool) => (
+                            <Button
+                              key={tool.label}
+                              className="gap-1.5 h-9 text-xs justify-start"
+                              variant={tool.show ? "default" : "outline"}
+                              onClick={tool.set}
+                            >
+                              <tool.icon className="h-3.5 w-3.5" />
+                              {tool.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
                   {/* Analysis Results */}
                   <div className="pb-4">

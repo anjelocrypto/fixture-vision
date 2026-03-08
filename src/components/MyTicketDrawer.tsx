@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface MyTicketDrawerProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const { legs, stake, setStake, removeLeg, clear, refreshOdds } = useTicket();
   const { toast } = useToast();
   const { t, i18n } = useTranslation('common');
+  useRegisterOverlay("my-ticket-drawer", open, () => onOpenChange(false));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 

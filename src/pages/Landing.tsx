@@ -365,119 +365,17 @@ export default function Landing() {
             style={{ opacity: heroOpacity }}
             className="relative z-10 w-full px-6 lg:px-16"
           >
-            <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center min-h-[80vh]">
-              {/* Left: Hero Content */}
-              <motion.div 
-                initial={{ opacity: 0, x: -50 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-                className="space-y-8 text-center lg:text-left flex flex-col items-center lg:items-start"
-              >
-                {/* Badge */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20"
-                >
-                  <span className="text-sm font-medium text-primary">The Bloomberg Terminal for Sports</span>
-                </motion.div>
-
-                {/* Main Heading */}
-                <div className="space-y-2">
-                  <motion.h1 
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, duration: 0.8 }}
-                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
-                  >
-                    Where Your
-                  </motion.h1>
-                  <motion.h1 
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4, duration: 0.8 }}
-                    className="text-4xl sm:text-5xl lg:text-7xl font-black leading-[0.95] tracking-tight"
-                  >
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-400">
-                      Winning
-                    </span>
-                  </motion.h1>
-                  <motion.h1 
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.8 }}
-                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
-                  >
-                    Starts
-                  </motion.h1>
-                </div>
-
-                {/* Subtitle */}
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                  className="text-base sm:text-lg text-muted-foreground max-w-lg"
-                >
-                  AI-powered sports analytics and prediction markets. 
-                  Real-time odds across 100+ leagues.
-                </motion.p>
-
-                {/* CTA Buttons */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.7 }}
-                  className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto"
-                >
-                  <Button 
-                    size="lg" 
-                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold w-full sm:w-auto"
-                    onClick={() => document.getElementById('register-email')?.focus()}
-                  >
-                    Start Winning
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Button>
-                  <Button 
-                    size="lg" 
-                    variant="outline"
-                    className="rounded-full px-8 py-6 text-base font-semibold border-border/50 hover:bg-primary/5 w-full sm:w-auto"
-                    onClick={() => navigate('/demo')}
-                  >
-                    <Play className="mr-2 h-5 w-5" />
-                    Demo
-                  </Button>
-                </motion.div>
-
-                {/* Stats Row */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.9 }}
-                  className="flex items-center justify-center lg:justify-start gap-6 sm:gap-8 pt-4 w-full"
-                >
-                  {stats.map((stat, i) => (
-                    <div key={stat.label} className="text-center">
-                      <p className="text-xl sm:text-2xl font-bold text-foreground">
-                        <AnimatedCounter value={stat.value} suffix={stat.suffix} />
-                      </p>
-                      <p className="text-xs text-muted-foreground">{stat.label}</p>
-                    </div>
-                  ))}
-                </motion.div>
-              </motion.div>
-
-              {/* Right: Auth Form */}
+            <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[60dvh] lg:min-h-[80vh]">
+              {/* Auth Form — shown first on mobile for conversion */}
               <motion.div 
                 id="auth-section"
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
-                className="relative"
+                className="relative order-first lg:order-last"
               >
                 {/* Auth Card */}
-                <div className="relative bg-card/60 backdrop-blur-xl border border-border/30 rounded-3xl p-8 lg:p-10">
+                <div className="relative bg-card/60 backdrop-blur-xl border border-border/30 rounded-3xl p-6 lg:p-10">
                   <div className="space-y-6">
                     {/* Header */}
                     <div className="text-center space-y-2">
@@ -583,6 +481,107 @@ export default function Landing() {
                     </div>
                   </div>
                 </div>
+              </motion.div>
+              {/* Left: Hero Content */}
+              <motion.div 
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className="space-y-8 text-center lg:text-left flex flex-col items-center lg:items-start"
+              >
+                {/* Badge */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20"
+                >
+                  <span className="text-sm font-medium text-primary">The Bloomberg Terminal for Sports</span>
+                </motion.div>
+
+                {/* Main Heading */}
+                <div className="space-y-2">
+                  <motion.h1 
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3, duration: 0.8 }}
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
+                  >
+                    Where Your
+                  </motion.h1>
+                  <motion.h1 
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4, duration: 0.8 }}
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black leading-[0.95] tracking-tight"
+                  >
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-400">
+                      Winning
+                    </span>
+                  </motion.h1>
+                  <motion.h1 
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5, duration: 0.8 }}
+                    className="text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-[0.95] tracking-tight"
+                  >
+                    Starts
+                  </motion.h1>
+                </div>
+
+                {/* Subtitle */}
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
+                  className="text-base sm:text-lg text-muted-foreground max-w-lg"
+                >
+                  AI-powered sports analytics and prediction markets. 
+                  Real-time odds across 100+ leagues.
+                </motion.p>
+
+                {/* CTA Buttons */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7 }}
+                  className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto"
+                >
+                  <Button 
+                    size="lg" 
+                    className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold w-full sm:w-auto"
+                    onClick={() => document.getElementById('register-email')?.focus()}
+                  >
+                    Start Winning
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                  <Button 
+                    size="lg" 
+                    variant="outline"
+                    className="rounded-full px-8 py-6 text-base font-semibold border-border/50 hover:bg-primary/5 w-full sm:w-auto"
+                    onClick={() => navigate('/demo')}
+                  >
+                    <Play className="mr-2 h-5 w-5" />
+                    Demo
+                  </Button>
+                </motion.div>
+
+                {/* Stats Row */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.9 }}
+                  className="flex items-center justify-center lg:justify-start gap-6 sm:gap-8 pt-4 w-full"
+                >
+                  {stats.map((stat, i) => (
+                    <div key={stat.label} className="text-center">
+                      <p className="text-xl sm:text-2xl font-bold text-foreground">
+                        <AnimatedCounter value={stat.value} suffix={stat.suffix} />
+                      </p>
+                      <p className="text-xs text-muted-foreground">{stat.label}</p>
+                    </div>
+                  ))}
+                </motion.div>
               </motion.div>
             </div>
 

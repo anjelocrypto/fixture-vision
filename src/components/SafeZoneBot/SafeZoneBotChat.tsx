@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Send, X, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface Props {
   open: boolean;
@@ -28,6 +29,7 @@ const QUICK_CHIPS = [
 export function SafeZoneBotChat({ open, onClose }: Props) {
   const { t } = useTranslation("common");
   const { hasAccess, isWhitelisted, loading: accessLoading } = useAccess();
+  useRegisterOverlay("safezone-bot-chat", open, onClose);
   const hasPaidAccess = hasAccess || isWhitelisted;
   const { messages, loading, sendMessage } = useSafeZoneChat();
   const [input, setInput] = useState("");

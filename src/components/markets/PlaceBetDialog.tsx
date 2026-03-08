@@ -16,6 +16,7 @@ import { Coins, TrendingUp, AlertCircle, Loader2 } from "lucide-react";
 import { Market, usePlaceBet } from "@/hooks/useMarkets";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface PlaceBetDialogProps {
   market: Market | null;
@@ -32,6 +33,7 @@ export function PlaceBetDialog({ market, open, onOpenChange, userBalance }: Plac
   const { t } = useTranslation("markets");
   const [outcome, setOutcome] = useState<"yes" | "no">("yes");
   const [stake, setStake] = useState("");
+  useRegisterOverlay("place-bet-dialog", open, () => onOpenChange(false));
   
   const placeBet = usePlaceBet();
 
