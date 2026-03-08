@@ -160,7 +160,8 @@ const Account = () => {
     try {
       const { data, error } = await supabase.functions.invoke("billing-portal");
       if (error) throw error;
-      window.open(data.url, "_blank");
+      const { openExternal } = await import("@/lib/openExternal");
+      await openExternal(data.url);
       toast({
         title: "Opening billing portal...",
         description: "Manage your subscription in the new tab",
