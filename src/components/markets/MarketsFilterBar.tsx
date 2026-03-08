@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
+import { RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -52,11 +51,12 @@ export function MarketsFilterBar({
   const selectedLeague = leagues?.find((l) => l.id === leagueId);
 
   return (
-    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border pb-3 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2">
+    <div className="space-y-2">
+      {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary" className="h-8 px-3 gap-1.5 bg-primary/10 text-primary border-0">
+        <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg border border-primary/20">
           ⚽ {t("filter.football")}
-        </Badge>
+        </span>
 
         <Select
           value={countryId?.toString() || "all"}
@@ -66,7 +66,7 @@ export function MarketsFilterBar({
             if (newCountryId !== countryId) onLeagueChange(null);
           }}
         >
-          <SelectTrigger className="w-auto min-w-[140px] h-8 text-sm bg-card border-border">
+          <SelectTrigger className="w-auto min-w-[130px] h-8 text-xs bg-card border-border/50 rounded-lg">
             <SelectValue placeholder={t("filter.all_countries")} />
           </SelectTrigger>
           <SelectContent className="bg-card border-border">
@@ -86,7 +86,7 @@ export function MarketsFilterBar({
           value={leagueId?.toString() || "all"}
           onValueChange={(v) => onLeagueChange(v === "all" ? null : parseInt(v))}
         >
-          <SelectTrigger className="w-auto min-w-[160px] h-8 text-sm bg-card border-border">
+          <SelectTrigger className="w-auto min-w-[140px] h-8 text-xs bg-card border-border/50 rounded-lg">
             <SelectValue placeholder={t("filter.all_leagues")} />
           </SelectTrigger>
           <SelectContent className="bg-card border-border max-h-[300px]">
@@ -95,16 +95,16 @@ export function MarketsFilterBar({
               <SelectItem key={league.id} value={league.id.toString()}>
                 <span className="flex items-center gap-2">
                   {league.logo && <img src={league.logo} alt="" className="w-4 h-4 object-contain" />}
-                  <span className="truncate max-w-[180px]">{league.name}</span>
-                  <Badge variant="outline" className="ml-1 text-xs h-5 px-1.5">{league.marketCount}</Badge>
+                  <span className="truncate max-w-[160px]">{league.name}</span>
+                  <span className="text-[10px] text-muted-foreground ml-1">({league.marketCount})</span>
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        <Select value={sortBy} onValueChange={(v) => onSortChange(v as any)}>
-          <SelectTrigger className="w-auto min-w-[120px] h-8 text-sm bg-card border-border">
+        <Select value={sortBy} onValueChange={(v) => onSortChange(v as "kickoff" | "pool" | "newest")}>
+          <SelectTrigger className="w-auto min-w-[110px] h-8 text-xs bg-card border-border/50 rounded-lg">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-card border-border">
@@ -116,10 +116,16 @@ export function MarketsFilterBar({
 
         <Popover open={searchOpen} onOpenChange={setSearchOpen}>
           <PopoverTrigger asChild>
-            <Button variant={search ? "default" : "outline"} size="sm" className={cn("h-8 gap-1.5", search && "bg-primary")}>
+            <button
+              className={cn(
+                "h-8 w-8 flex items-center justify-center rounded-lg border transition-all active:scale-[0.95]",
+                search
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-border/50 text-muted-foreground hover:text-foreground"
+              )}
+            >
               <Search className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("filter.search")}</span>
-            </Button>
+            </button>
           </PopoverTrigger>
           <PopoverContent className="w-64 p-2 bg-card border-border" align="end">
             <div className="flex gap-2">
@@ -127,7 +133,7 @@ export function MarketsFilterBar({
                 placeholder={t("filter.search_teams")}
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="h-8 text-sm bg-background"
+                className="h-8 text-sm bg-background rounded-lg"
                 autoFocus
               />
               {search && (
@@ -140,35 +146,47 @@ export function MarketsFilterBar({
         </Popover>
 
         {activeFilters > 0 && (
-          <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground" onClick={onReset}>
-            <RotateCcw className="h-3.5 w-3.5" />
+          <button
+            onClick={onReset}
+            className="h-8 flex items-center gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-lg active:scale-[0.95]"
+          >
+            <RotateCcw className="h-3 w-3" />
             {t("filter.reset")}
-          </Button>
+          </button>
         )}
       </div>
 
+      {/* Active filter chips */}
       {(selectedCountry || selectedLeague || search) && (
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <span className="text-xs text-muted-foreground mr-1">{t("filter.filters")}:</span>
+        <div className="flex flex-wrap items-center gap-1.5">
           {selectedCountry && (
-            <Badge variant="secondary" className="h-6 text-xs gap-1 cursor-pointer hover:bg-destructive/20" onClick={() => { onCountryChange(null); onLeagueChange(null); }}>
+            <button
+              onClick={() => { onCountryChange(null); onLeagueChange(null); }}
+              className="flex items-center gap-1 h-6 px-2 text-[11px] rounded-lg bg-muted/40 border border-border/30 text-foreground hover:bg-destructive/15 hover:border-destructive/30 transition-colors active:scale-[0.95]"
+            >
               {selectedCountry.flag && <img src={selectedCountry.flag} alt="" className="w-3 h-2 object-cover rounded-sm" />}
               {selectedCountry.name}
-              <X className="h-3 w-3" />
-            </Badge>
+              <X className="h-2.5 w-2.5 ml-0.5" />
+            </button>
           )}
           {selectedLeague && (
-            <Badge variant="secondary" className="h-6 text-xs gap-1 cursor-pointer hover:bg-destructive/20" onClick={() => onLeagueChange(null)}>
+            <button
+              onClick={() => onLeagueChange(null)}
+              className="flex items-center gap-1 h-6 px-2 text-[11px] rounded-lg bg-muted/40 border border-border/30 text-foreground hover:bg-destructive/15 hover:border-destructive/30 transition-colors active:scale-[0.95]"
+            >
               {selectedLeague.logo && <img src={selectedLeague.logo} alt="" className="w-3 h-3 object-contain" />}
               {selectedLeague.name}
-              <X className="h-3 w-3" />
-            </Badge>
+              <X className="h-2.5 w-2.5 ml-0.5" />
+            </button>
           )}
           {search && (
-            <Badge variant="secondary" className="h-6 text-xs gap-1 cursor-pointer hover:bg-destructive/20" onClick={() => onSearchChange("")}>
+            <button
+              onClick={() => onSearchChange("")}
+              className="flex items-center gap-1 h-6 px-2 text-[11px] rounded-lg bg-muted/40 border border-border/30 text-foreground hover:bg-destructive/15 hover:border-destructive/30 transition-colors active:scale-[0.95]"
+            >
               "{search}"
-              <X className="h-3 w-3" />
-            </Badge>
+              <X className="h-2.5 w-2.5 ml-0.5" />
+            </button>
           )}
         </div>
       )}
@@ -191,16 +209,19 @@ export function QuickLeagueChips({
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
       {topLeagues.map((league) => (
-        <Button
+        <button
           key={league.id}
-          variant={selectedLeagueId === league.id ? "default" : "outline"}
-          size="sm"
-          className={cn("h-7 px-3 text-xs whitespace-nowrap gap-1.5 shrink-0", selectedLeagueId === league.id && "bg-primary text-primary-foreground")}
+          className={cn(
+            "flex items-center gap-1.5 h-7 px-3 text-xs whitespace-nowrap shrink-0 rounded-lg border font-medium transition-all active:scale-[0.95]",
+            selectedLeagueId === league.id
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+          )}
           onClick={() => onSelect(selectedLeagueId === league.id ? null : league.id)}
         >
           {league.logo && <img src={league.logo} alt="" className="w-3.5 h-3.5 object-contain" />}
           {league.name}
-        </Button>
+        </button>
       ))}
     </div>
   );

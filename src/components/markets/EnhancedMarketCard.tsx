@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clock, Coins, TrendingUp, Trophy, Target } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Clock, Coins, TrendingUp, Trophy, Target, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketWithMetadata } from "@/hooks/useMarketsFiltered";
@@ -25,14 +24,14 @@ export function EnhancedMarketCard({
   const navigate = useNavigate();
 
   const totalStaked = market.total_staked_yes + market.total_staked_no;
-  const yesPercent = totalStaked > 0 
-    ? Math.round((market.total_staked_yes / totalStaked) * 100) 
-    : Math.round((1 / market.odds_yes) * 100);
+  const yesPercent =
+    totalStaked > 0
+      ? Math.round((market.total_staked_yes / totalStaked) * 100)
+      : Math.round((1 / market.odds_yes) * 100);
   const noPercent = 100 - yesPercent;
 
-  // Calculate time until kickoff
-  const kickoffTime = market.fixture?.timestamp 
-    ? new Date(market.fixture.timestamp * 1000) 
+  const kickoffTime = market.fixture?.timestamp
+    ? new Date(market.fixture.timestamp * 1000)
     : new Date(market.closes_at);
   const now = new Date();
   const hoursUntil = Math.max(0, (kickoffTime.getTime() - now.getTime()) / (1000 * 60 * 60));
@@ -46,7 +45,6 @@ export function EnhancedMarketCard({
     return `${Math.round(hoursUntil / 24)}d`;
   };
 
-  // Determine market type from resolution rule
   const getMarketTypeLabel = () => {
     const rule = market.resolution_rule || "";
     if (rule.includes("btts")) return "BTTS";
@@ -65,7 +63,6 @@ export function EnhancedMarketCard({
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking the bet button
     if ((e.target as HTMLElement).closest("button")) return;
     navigate(`/markets/${market.id}`);
   };
@@ -74,156 +71,144 @@ export function EnhancedMarketCard({
   const isClosed = market.status === "closed";
 
   return (
-    <Card
+    <div
       className={cn(
-        "group relative overflow-hidden cursor-pointer transition-all duration-200",
-        "hover:shadow-lg hover:border-primary/30 hover:bg-accent/30",
-        userHasPosition && "ring-1 ring-primary/40"
+        "group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 border bg-card/60 backdrop-blur-sm active:scale-[0.99]",
+        "hover:shadow-lg hover:border-primary/30",
+        userHasPosition ? "border-primary/40 ring-1 ring-primary/20" : "border-border/40"
       )}
       onClick={handleCardClick}
     >
-      <CardContent className="p-3 sm:p-4">
-        {/* Top Row: League + Time */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {/* Country Flag */}
+      <div className="p-3.5 sm:p-4">
+        {/* Top Row: League + Market Type + Time */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
             {market.country?.flag && (
-              <img 
-                src={market.country.flag} 
-                alt="" 
-                className="w-5 h-3.5 object-cover rounded-sm shadow-sm"
+              <img
+                src={market.country.flag}
+                alt=""
+                className="w-4 h-3 object-cover rounded-sm shadow-sm flex-shrink-0"
               />
             )}
-            
-            {/* League Badge */}
-            <Badge 
-              variant="outline" 
-              className="h-5 text-[10px] px-1.5 gap-1 bg-muted/50 border-0"
-            >
-              {market.league?.logo && (
-                <img src={market.league.logo} alt="" className="w-3 h-3 object-contain" />
-              )}
-              <span className="truncate max-w-[100px]">{market.league?.name || t("filter.football")}</span>
-            </Badge>
-
-            {/* Market Type */}
-            <Badge 
-              variant="secondary" 
-              className="h-5 text-[10px] px-1.5 bg-primary/10 text-primary border-0"
-            >
+            <span className="text-[11px] text-muted-foreground truncate max-w-[100px]">
+              {market.league?.name || t("filter.football")}
+            </span>
+            <span className="text-border/60">·</span>
+            <span className="text-[11px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
               {getMarketTypeLabel()}
-            </Badge>
+            </span>
           </div>
 
-          {/* Time / Status */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {isResolved ? (
-              <Badge variant="default" className="bg-green-500/20 text-green-400 border-0 h-5 text-[10px]">
-                <Trophy className="h-3 w-3 mr-0.5" />
+              <span className="text-[10px] font-semibold text-green-400 bg-green-500/15 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                <Trophy className="h-2.5 w-2.5" />
                 {t("status.resolved")}
-              </Badge>
+              </span>
             ) : isClosed ? (
-              <Badge variant="secondary" className="bg-amber-500/20 text-amber-400 border-0 h-5 text-[10px]">
+              <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-lg">
                 {t("status.closed")}
-              </Badge>
+              </span>
             ) : (
-              <Badge variant="outline" className="h-5 text-[10px] px-1.5 gap-1 border-primary/30">
+              <span className="text-[10px] font-medium text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-lg flex items-center gap-1 border border-border/30">
                 <Clock className="h-2.5 w-2.5" />
                 {getTimeLabel()}
-              </Badge>
+              </span>
             )}
-
-            {/* User Position Indicator */}
             {userHasPosition && (
-              <Badge className="h-5 text-[10px] px-1.5 bg-primary text-primary-foreground">
-                <Target className="h-2.5 w-2.5 mr-0.5" />
-                {t("card.active")}
-              </Badge>
+              <span className="text-[10px] font-bold text-primary-foreground bg-primary px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                <Target className="h-2.5 w-2.5" />
+              </span>
             )}
           </div>
         </div>
 
         {/* Match Title */}
-        <h3 className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-          {market.fixture 
+        <h3 className="font-semibold text-sm sm:text-base mb-1 line-clamp-2 group-hover:text-primary transition-colors leading-tight">
+          {market.fixture
             ? `${market.fixture.home_team} vs ${market.fixture.away_team}`
-            : market.title
-          }
+            : market.title}
         </h3>
 
-        {/* Market Question */}
         {market.description && (
-          <p className="text-xs text-muted-foreground mb-3 line-clamp-1">
-            {market.description}
-          </p>
+          <p className="text-[11px] text-muted-foreground mb-3 line-clamp-1">{market.description}</p>
         )}
 
         {/* Odds Display */}
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className={cn(
-            "rounded-lg p-2 text-center transition-all",
-            "bg-green-500/10 border border-green-500/20",
-            !isResolved && !isClosed && "hover:bg-green-500/20"
-          )}>
-            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">{t("card.yes")}</div>
-            <div className="text-lg font-bold text-green-500">{market.odds_yes.toFixed(2)}</div>
-            <div className="text-[10px] text-green-400/80">{yesPercent}%</div>
-          </div>
-          <div className={cn(
-            "rounded-lg p-2 text-center transition-all",
-            "bg-red-500/10 border border-red-500/20",
-            !isResolved && !isClosed && "hover:bg-red-500/20"
-          )}>
-            <div className="text-[10px] text-muted-foreground uppercase mb-0.5">{t("card.no")}</div>
-            <div className="text-lg font-bold text-red-500">{market.odds_no.toFixed(2)}</div>
-            <div className="text-[10px] text-red-400/80">{noPercent}%</div>
-          </div>
+          <button
+            className={cn(
+              "rounded-xl p-2.5 text-center transition-all duration-200 border",
+              "bg-green-500/8 border-green-500/15",
+              !isResolved && !isClosed && "hover:bg-green-500/15 active:scale-[0.97]"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isResolved && !isClosed) onBet(market);
+            }}
+          >
+            <div className="text-[10px] text-muted-foreground uppercase font-medium mb-0.5">{t("card.yes")}</div>
+            <div className="text-xl font-bold text-green-500 tabular-nums">{market.odds_yes.toFixed(2)}</div>
+            <div className="text-[10px] text-green-400/70 tabular-nums">{yesPercent}%</div>
+          </button>
+          <button
+            className={cn(
+              "rounded-xl p-2.5 text-center transition-all duration-200 border",
+              "bg-red-500/8 border-red-500/15",
+              !isResolved && !isClosed && "hover:bg-red-500/15 active:scale-[0.97]"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isResolved && !isClosed) onBet(market);
+            }}
+          >
+            <div className="text-[10px] text-muted-foreground uppercase font-medium mb-0.5">{t("card.no")}</div>
+            <div className="text-xl font-bold text-red-500 tabular-nums">{market.odds_no.toFixed(2)}</div>
+            <div className="text-[10px] text-red-400/70 tabular-nums">{noPercent}%</div>
+          </button>
         </div>
 
-        {/* Stats Row */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <Coins className="h-3 w-3" />
-              {totalStaked.toLocaleString()}
-            </span>
+        {/* Bottom Row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Coins className="h-3 w-3" />
+            <span className="tabular-nums font-medium">{totalStaked.toLocaleString()}</span>
+            <span>pool</span>
           </div>
 
-          {/* Bet Button */}
           {showBetButton && !isResolved && !isClosed && (
             <Button
               size="sm"
-              className="h-7 text-xs px-3"
+              className="h-8 text-xs px-4 rounded-xl gap-1.5 shadow-[0_2px_10px_hsl(var(--primary)/0.2)] active:scale-[0.96]"
               onClick={(e) => {
                 e.stopPropagation();
                 onBet(market);
               }}
             >
-              <TrendingUp className="h-3 w-3 mr-1" />
+              <TrendingUp className="h-3 w-3" />
               {t("card.place_bet")}
             </Button>
           )}
 
-          {/* Final Outcome for resolved markets */}
           {isResolved && market.winning_outcome && (
-            <Badge
+            <span
               className={cn(
-                "capitalize",
-                market.winning_outcome === "yes" 
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
+                "text-xs font-semibold px-2.5 py-1 rounded-lg capitalize",
+                market.winning_outcome === "yes"
+                  ? "bg-green-500/15 text-green-400"
+                  : "bg-red-500/15 text-red-400"
               )}
             >
               {market.winning_outcome === "yes" ? t("card.yes") : t("card.no")} {t("card.won")}
-            </Badge>
+            </span>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-// Grouped League Section
+// League Section
 export function LeagueSection({
   league,
   country,
@@ -245,25 +230,22 @@ export function LeagueSection({
   const hasMore = markets.length > maxVisible;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {/* League Header */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          {country?.flag && (
-            <img src={country.flag} alt="" className="w-5 h-3.5 object-cover rounded-sm" />
-          )}
-          {league.logo && (
-            <img src={league.logo} alt="" className="w-5 h-5 object-contain" />
-          )}
-          <h3 className="font-semibold text-sm">{league.name}</h3>
-          <Badge variant="outline" className="h-5 text-[10px] px-1.5">
-            {markets.length} {markets.length === 1 ? t("card.market") : t("card.markets")}
-          </Badge>
-        </div>
+      <div className="flex items-center gap-2 px-1">
+        {country?.flag && (
+          <img src={country.flag} alt="" className="w-5 h-3.5 object-cover rounded-sm" />
+        )}
+        {league.logo && (
+          <img src={league.logo} alt="" className="w-5 h-5 object-contain" />
+        )}
+        <h3 className="font-semibold text-sm">{league.name}</h3>
+        <span className="text-[10px] text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded-md border border-border/30">
+          {markets.length}
+        </span>
       </div>
 
-      {/* Markets */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {visibleMarkets.map((market) => (
           <EnhancedMarketCard
             key={market.id}
@@ -274,16 +256,14 @@ export function LeagueSection({
         ))}
       </div>
 
-      {/* Show More Button */}
       {hasMore && !expanded && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-xs text-muted-foreground"
+        <button
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-xl border border-dashed border-border/40 hover:border-border active:scale-[0.98]"
           onClick={() => setExpanded(true)}
         >
+          <ChevronDown className="h-3.5 w-3.5" />
           {t("card.show_more", { count: markets.length - maxVisible })}
-        </Button>
+        </button>
       )}
     </div>
   );
