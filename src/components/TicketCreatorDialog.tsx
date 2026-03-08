@@ -44,6 +44,7 @@ interface DebugInfo {
 
 export function TicketCreatorDialog({ open, onOpenChange, onGenerate }: TicketCreatorDialogProps) {
   const { t } = useTranslation(['ticket']);
+  useRegisterOverlay("ticket-creator-dialog", open, () => onOpenChange(false));
   const [legs, setLegs] = useState<1 | 2 | 3>(1);
   const [dayRange, setDayRange] = useState<"today" | "tomorrow" | "next_2_days">("next_2_days");
   const [generating, setGenerating] = useState(false);

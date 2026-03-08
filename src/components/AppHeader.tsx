@@ -143,15 +143,6 @@ export function AppHeader() {
 
         {/* Right Utils - Simplified on mobile */}
         <div className="flex items-center gap-0.5 sm:gap-3">
-          {/* Markets Button - Mobile only */}
-          <Button
-            onClick={() => navigate("/markets")}
-            size="sm"
-            className="md:hidden rounded-full font-semibold bg-white text-black hover:bg-white/90 h-8 w-8 p-0"
-          >
-            <TrendingUp className="h-4 w-4" />
-          </Button>
-
           {/* Guide Button - Only for paid users, hidden on mobile */}
           {hasAccess && (
             <Button
@@ -166,24 +157,24 @@ export function AppHeader() {
             </Button>
           )}
           
-          {/* Language Switcher - Compact on mobile */}
+          {/* Language Switcher - Desktop only */}
           <div className="hidden sm:block">
             <LanguageSwitcher />
           </div>
           
-          {/* My Ticket Button */}
+          {/* My Ticket Button - Desktop only (mobile uses bottom nav) */}
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => setTicketDrawerOpen(true)}
-            className="relative h-8 w-8 sm:h-10 sm:w-10"
+            className="relative hidden sm:flex h-10 w-10"
             data-tutorial="my-ticket"
           >
-            <Ticket className="h-4 w-4 sm:h-5 sm:w-5" />
+            <Ticket className="h-5 w-5" />
             {legs.length > 0 && (
               <Badge 
                 variant="destructive" 
-                className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[10px] sm:text-xs"
+                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
               >
                 {legs.length}
               </Badge>

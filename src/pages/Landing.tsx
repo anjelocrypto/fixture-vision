@@ -365,7 +365,123 @@ export default function Landing() {
             style={{ opacity: heroOpacity }}
             className="relative z-10 w-full px-6 lg:px-16"
           >
-            <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center min-h-[80vh]">
+            <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[60dvh] lg:min-h-[80vh]">
+              {/* Auth Form — shown first on mobile for conversion */}
+              <motion.div 
+                id="auth-section"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                className="relative order-first lg:order-last"
+              >
+                {/* Auth Card */}
+                <div className="relative bg-card/60 backdrop-blur-xl border border-border/30 rounded-3xl p-6 lg:p-10">
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="text-center space-y-2">
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.5, type: "spring" }}
+                        className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 mb-4"
+                      >
+                        <Rocket className="h-7 w-7 text-primary" />
+                      </motion.div>
+                      <h2 className="text-2xl font-bold text-foreground">
+                        {isSignUp ? "Create Account" : "Welcome Back"}
+                      </h2>
+                      <p className="text-muted-foreground text-sm">
+                        {isSignUp ? "Start your winning journey" : "Sign in to continue"}
+                      </p>
+                    </div>
+
+                    {/* Form */}
+                    <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="register-email" className="text-foreground text-sm">Email</Label>
+                        <div className="relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="register-email"
+                            type="email"
+                            placeholder="you@example.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                            disabled={loading}
+                            className="bg-background/50 border-border/30 rounded-xl h-12 pl-11 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="password" className="text-foreground text-sm">Password</Label>
+                          {!isSignUp && (
+                            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+                              Forgot?
+                            </Link>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <Shield className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            disabled={loading}
+                            minLength={6}
+                            className="bg-background/50 border-border/30 rounded-xl h-12 pl-11 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {isSignUp && (
+                        <div className="flex items-start space-x-3 p-3 bg-background/30 rounded-xl border border-border/20">
+                          <Checkbox 
+                            id="terms" 
+                            checked={acceptedTerms}
+                            onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                            disabled={loading}
+                            className="mt-0.5"
+                          />
+                          <label htmlFor="terms" className="text-xs text-muted-foreground leading-tight">
+                            I agree to the{" "}
+                            <Link to="/legal/terms" className="text-primary hover:underline" target="_blank">Terms</Link>
+                            {" "}and{" "}
+                            <Link to="/legal/privacy" className="text-primary hover:underline" target="_blank">Privacy</Link>
+                          </label>
+                        </div>
+                      )}
+
+                      <Button 
+                        type="submit" 
+                        className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" 
+                        disabled={loading || (isSignUp && !acceptedTerms)}
+                      >
+                        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isSignUp ? "Create Account" : "Sign In"}
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </form>
+
+                    {/* Toggle */}
+                    <div className="text-center pt-2">
+                      <button 
+                        type="button"
+                        onClick={() => setIsSignUp(!isSignUp)}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {isSignUp ? "Have an account? " : "No account? "}
+                        <span className="text-primary font-medium">{isSignUp ? "Sign In" : "Sign Up"}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
               {/* Left: Hero Content */}
               <motion.div 
                 initial={{ opacity: 0, x: -50 }}
