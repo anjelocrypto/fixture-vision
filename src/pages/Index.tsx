@@ -30,6 +30,7 @@ import { formatMarketLabel } from "@/lib/i18nFormatters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getEmptyStateMessage } from "@/lib/holidayMessages";
 import { SafeZoneBotButton } from "@/components/SafeZoneBot/SafeZoneBotButton";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 // Helper function to convert country code to flag emoji
 const getCountryFlag = (code: string): string => {
