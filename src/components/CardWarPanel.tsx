@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTranslation } from "react-i18next";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -9,12 +8,7 @@ import { Loader2, RefreshCw, X, Swords, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 
 interface CardWarPanelProps {
@@ -38,7 +32,6 @@ interface LeagueInfo {
   country: string;
 }
 
-// Supported leagues grouped by country (same as Who Concedes / Scores)
 const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
   england: [
     { id: 39, name: "Premier League" },
@@ -46,22 +39,10 @@ const LEAGUES_BY_COUNTRY: Record<string, { id: number; name: string }[]> = {
     { id: 41, name: "League One" },
     { id: 42, name: "League Two" },
   ],
-  spain: [
-    { id: 140, name: "La Liga" },
-    { id: 141, name: "La Liga 2" },
-  ],
-  germany: [
-    { id: 78, name: "Bundesliga" },
-    { id: 79, name: "2. Bundesliga" },
-  ],
-  italy: [
-    { id: 135, name: "Serie A" },
-    { id: 136, name: "Serie B" },
-  ],
-  netherlands: [
-    { id: 88, name: "Eredivisie" },
-    { id: 89, name: "Eerste Divisie" },
-  ],
+  spain: [{ id: 140, name: "La Liga" }, { id: 141, name: "La Liga 2" }],
+  germany: [{ id: 78, name: "Bundesliga" }, { id: 79, name: "2. Bundesliga" }],
+  italy: [{ id: 135, name: "Serie A" }, { id: 136, name: "Serie B" }],
+  netherlands: [{ id: 88, name: "Eredivisie" }, { id: 89, name: "Eerste Divisie" }],
 };
 
 const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
@@ -73,7 +54,7 @@ export function CardWarPanel({ onClose }: CardWarPanelProps) {
 
   const [mode, setMode] = useState<Mode>('cards');
   const [selectedCountry, setSelectedCountry] = useState<string>("england");
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number>(39); // Premier League default
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number>(39);
   const [maxMatches, setMaxMatches] = useState<number>(10);
   const [results, setResults] = useState<TeamRanking[]>([]);
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null);
@@ -84,256 +65,188 @@ export function CardWarPanel({ onClose }: CardWarPanelProps) {
 
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
-    setResults([]);
-    setLeagueInfo(null);
-    setGeneratedAt(null);
+    setResults([]); setLeagueInfo(null); setGeneratedAt(null);
   };
 
   const handleCountryChange = (country: string) => {
     setSelectedCountry(country);
     const leagues = LEAGUES_BY_COUNTRY[country];
-    if (leagues && leagues.length > 0) {
-      setSelectedLeagueId(leagues[0].id);
-    }
-    setResults([]);
-    setLeagueInfo(null);
-    setGeneratedAt(null);
+    if (leagues && leagues.length > 0) setSelectedLeagueId(leagues[0].id);
+    setResults([]); setLeagueInfo(null); setGeneratedAt(null);
   };
 
   const handleGenerate = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("card-war", {
-        body: { 
-          league_id: selectedLeagueId,
-          max_matches: maxMatches,
-          mode,
-        },
+        body: { league_id: selectedLeagueId, max_matches: maxMatches, mode },
       });
-
       if (error) throw error;
-
-      if (!data || !data.rankings) {
-        throw new Error("Invalid response from server");
-      }
-
+      if (!data || !data.rankings) throw new Error("Invalid response from server");
       setResults(data.rankings);
       setLeagueInfo(data.league);
       setGeneratedAt(data.generated_at);
-
       if (data.rankings.length === 0) {
-        toast({
-          title: t('card_war_no_data_title', 'Not enough data'),
-          description: t('card_war_no_data_desc', 'There is not enough card/foul data for this league yet. Try another one.'),
-        });
+        toast({ title: t('card_war_no_data_title', 'Not enough data'), description: t('card_war_no_data_desc', 'Not enough card/foul data for this league yet.') });
       } else {
-        toast({
-          title: t('ranking_generated', 'Ranking generated'),
-          description: t('card_war_ranking_desc', '{{count}} teams ranked by {{mode}}', { 
-            count: data.rankings.length,
-            mode: mode === 'cards' ? t('card_war_mode_cards', 'Cards') : t('card_war_mode_fouls', 'Fouls')
-          }),
-        });
+        toast({ title: t('ranking_generated', 'Ranking generated'), description: t('card_war_ranking_desc', '{{count}} teams ranked by {{mode}}', { count: data.rankings.length, mode: mode === 'cards' ? t('card_war_mode_cards', 'Cards') : t('card_war_mode_fouls', 'Fouls') }) });
       }
     } catch (error: any) {
       console.error("Error fetching Card War data:", error);
-      toast({
-        title: t('error', 'Error'),
-        description: error.message || "Failed to generate ranking",
-        variant: "destructive",
-      });
+      toast({ title: t('error', 'Error'), description: error.message || "Failed to generate ranking", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefresh = () => {
-    if (selectedLeagueId) {
-      handleGenerate();
-    }
-  };
-
-  // Get color class based on rank (top teams are most aggressive)
   const getRankBadgeVariant = (rank: number): "destructive" | "secondary" | "outline" => {
-    if (rank <= 3) return "destructive"; // Top 3 (most aggressive)
+    if (rank <= 3) return "destructive";
     if (rank <= 6) return "secondary";
     return "outline";
   };
 
+  const getRankEmoji = (rank: number) => {
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
+    return null;
+  };
+
   return (
-    <Card className="w-full shadow-lg">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Swords className="h-5 w-5 text-destructive" />
-            {t('card_war_title', 'Card War – Cards & Fouls Radar')}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+    <div className="w-full rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-lg">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/30">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-xl bg-destructive/15 flex items-center justify-center">
+            <Swords className="h-4 w-4 text-destructive" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-sm">{t('card_war_title', 'Card War – Cards & Fouls')}</h2>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {t('card_war_description', 'Most aggressive teams by cards & fouls')}
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {t('card_war_description', 'Find the most aggressive teams by cards and fouls in each league.')}
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/50 active:scale-90 transition-all">
+          <X className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </div>
+
+      <div className="p-3 space-y-3">
         {/* Mode Toggle */}
-        <div className="flex gap-2">
-          <Button
-            variant={mode === 'cards' ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => handleModeChange('cards')}
-          >
-            <AlertTriangle className="h-4 w-4" />
-            {t('card_war_mode_cards', 'Cards')}
-          </Button>
-          <Button
-            variant={mode === 'fouls' ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => handleModeChange('fouls')}
-          >
-            <Swords className="h-4 w-4" />
-            {t('card_war_mode_fouls', 'Fouls')}
-          </Button>
+        <div className="grid grid-cols-2 gap-1.5">
+          {(['cards', 'fouls'] as Mode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleModeChange(m)}
+              className={`h-9 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] ${
+                mode === m
+                  ? "bg-destructive/15 text-destructive border border-destructive/30"
+                  : "bg-muted/40 border border-border/50 text-muted-foreground"
+              }`}
+            >
+              {m === 'cards' ? <AlertTriangle className="h-3.5 w-3.5" /> : <Swords className="h-3.5 w-3.5" />}
+              {m === 'cards' ? t('card_war_mode_cards', 'Cards') : t('card_war_mode_fouls', 'Fouls')}
+            </button>
+          ))}
         </div>
 
         {/* Selectors */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Country Selector */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              {t('who_concedes_country', 'Country')}
-            </label>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{t('who_concedes_country', 'Country')}</span>
             <Select value={selectedCountry} onValueChange={handleCountryChange}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('who_concedes_country', 'Country')} />
-              </SelectTrigger>
+              <SelectTrigger className="h-9 text-xs rounded-xl"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {COUNTRY_KEYS.map((countryKey) => (
-                  <SelectItem key={countryKey} value={countryKey}>
-                    {t(`country_${countryKey}`, countryKey.charAt(0).toUpperCase() + countryKey.slice(1))}
-                  </SelectItem>
+                {COUNTRY_KEYS.map((k) => (
+                  <SelectItem key={k} value={k}>{t(`country_${k}`, k.charAt(0).toUpperCase() + k.slice(1))}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{t('who_concedes_league', 'League')}</span>
+            <Select value={selectedLeagueId.toString()} onValueChange={(v) => { setSelectedLeagueId(parseInt(v)); setResults([]); setLeagueInfo(null); setGeneratedAt(null); }}>
+              <SelectTrigger className="h-9 text-xs rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {availableLeagues.map((l) => (
+                  <SelectItem key={l.id} value={l.id.toString()}>{l.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-          {/* League Selector */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              {t('who_concedes_league', 'League')}
-            </label>
-            <Select 
-              value={selectedLeagueId.toString()} 
-              onValueChange={(v) => {
-                setSelectedLeagueId(parseInt(v));
-                setResults([]);
-                setLeagueInfo(null);
-                setGeneratedAt(null);
-              }}
+        {/* Matches Span */}
+        <div className="grid grid-cols-3 gap-1.5">
+          {[5, 10, 15].map((n) => (
+            <button
+              key={n}
+              onClick={() => { setMaxMatches(n); setResults([]); setLeagueInfo(null); setGeneratedAt(null); }}
+              className={`h-8 rounded-xl text-[11px] font-medium transition-all active:scale-[0.96] ${
+                maxMatches === n
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "bg-muted/40 border border-border/50 text-muted-foreground"
+              }`}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('who_concedes_league', 'League')} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableLeagues.map((league) => (
-                  <SelectItem key={league.id} value={league.id.toString()}>
-                    {league.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {n} {t('matches', 'matches')}
+            </button>
+          ))}
         </div>
 
-        {/* Matches Span Selector */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            {t('card_war_matches_span', 'Matches span')}
-          </label>
-          <Select 
-            value={maxMatches.toString()} 
-            onValueChange={(v) => {
-              setMaxMatches(parseInt(v));
-              setResults([]);
-              setLeagueInfo(null);
-              setGeneratedAt(null);
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="5">5 {t('matches', 'matches')}</SelectItem>
-              <SelectItem value="10">10 {t('matches', 'matches')}</SelectItem>
-              <SelectItem value="15">15 {t('matches', 'matches')}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Action Buttons */}
+        {/* Generate */}
         <div className="flex gap-2">
-          <Button onClick={handleGenerate} disabled={loading} className="flex-1 gap-2">
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('generating', 'Generating...')}
-              </>
-            ) : (
-              t('card_war_generate', 'Show ranking')
-            )}
+          <Button onClick={handleGenerate} disabled={loading} size="sm" className="flex-1 h-10 rounded-xl text-xs font-semibold active:scale-[0.97] transition-transform">
+            {loading ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t('generating', 'Generating...')}</> : t('card_war_generate', 'Show ranking')}
           </Button>
           {results.length > 0 && (
-            <Button
-              onClick={handleRefresh}
-              disabled={loading}
-              variant="outline"
-              size="icon"
-            >
-              <RefreshCw className="h-4 w-4" />
+            <Button onClick={handleGenerate} disabled={loading} variant="outline" size="icon" className="h-10 w-10 rounded-xl active:scale-[0.95]">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>
           )}
         </div>
 
-        {/* Results Table */}
+        {/* Results */}
         {results.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-muted-foreground">
-                {leagueInfo?.name} • {t('who_concedes_teams_count', '{{count}} teams', { count: results.length })}
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {leagueInfo?.name} · {results.length} teams
               </span>
-              {generatedAt && (
-                <span className="text-xs text-muted-foreground">
-                  {new Date(generatedAt).toLocaleTimeString()}
-                </span>
-              )}
+              {generatedAt && <span className="text-[10px] text-muted-foreground">{new Date(generatedAt).toLocaleTimeString()}</span>}
             </div>
-            
+
             {isMobile ? (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {results.map((team) => (
-                  <div key={team.team_id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
-                    <Badge variant={getRankBadgeVariant(team.rank)} className="w-8 h-8 flex items-center justify-center shrink-0 text-sm">
-                      {team.rank}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{team.team_name}</div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>Total: {team.total_value}</span>
-                        <span className={team.matches_used < maxMatches ? "text-amber-500" : ""}>{team.matches_used}/{maxMatches} games</span>
+              <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-0.5">
+                {results.map((team) => {
+                  const emoji = getRankEmoji(team.rank);
+                  return (
+                    <div
+                      key={team.team_id}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border transition-colors ${
+                        team.rank <= 3 ? "bg-destructive/5 border-destructive/20" : "bg-muted/20 border-border/40"
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+                        {emoji ? <span className="text-sm">{emoji}</span> : <span className="text-xs font-bold text-muted-foreground">{team.rank}</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-xs truncate">{team.team_name}</p>
+                        <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                          <span>Total: <span className="tabular-nums font-medium text-foreground">{team.total_value}</span></span>
+                          <span className={team.matches_used < maxMatches ? "text-amber-500" : ""}>{team.matches_used}/{maxMatches}</span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold tabular-nums text-sm">{team.avg_value.toFixed(2)}</p>
+                        <p className="text-[9px] text-muted-foreground">avg/match</p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="font-bold tabular-nums text-base">{team.avg_value.toFixed(2)}</div>
-                      <div className="text-[10px] text-muted-foreground">avg</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="rounded-md border max-h-[400px] overflow-y-auto">
+              <div className="rounded-xl border border-border/40 max-h-[400px] overflow-y-auto">
                 <Table>
                   <TableHeader className="sticky top-0 bg-background">
                     <TableRow>
@@ -359,22 +272,26 @@ export function CardWarPanel({ onClose }: CardWarPanelProps) {
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground text-center">
-              {mode === 'cards' 
-                ? t('card_war_footer_cards', 'Teams at the top receive the most cards • Based on last {{count}} matches', { count: maxMatches })
-                : t('card_war_footer_fouls', 'Teams at the top commit the most fouls • Based on last {{count}} matches', { count: maxMatches })
-              }
+            <p className="text-[10px] text-muted-foreground text-center">
+              {mode === 'cards'
+                ? t('card_war_footer_cards', 'Most cards · Last {{count}} matches', { count: maxMatches })
+                : t('card_war_footer_fouls', 'Most fouls · Last {{count}} matches', { count: maxMatches })}
             </p>
           </div>
         )}
 
         {/* Empty State */}
         {!loading && results.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            {t('card_war_empty', 'Select a league and click "Show ranking" to see which teams get the most cards and fouls.')}
+          <div className="text-center py-8 space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-muted/40 flex items-center justify-center mx-auto">
+              <Swords className="h-6 w-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-xs text-muted-foreground px-4">
+              {t('card_war_empty', 'Select a league and click "Show ranking" to see which teams get the most cards and fouls.')}
+            </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
