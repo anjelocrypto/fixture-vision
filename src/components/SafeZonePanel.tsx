@@ -145,6 +145,7 @@ const MODE_CONFIG: Record<Mode, { icon: any; label: string; description: string 
 export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [mode, setMode] = useState<Mode>("O25");
   const [selectedCountry, setSelectedCountry] = useState<string>("england");
@@ -152,6 +153,30 @@ export function SafeZonePanel({ onClose }: SafeZonePanelProps) {
   const [results, setResults] = useState<SafeZoneFixture[]>([]);
   const [loading, setLoading] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+
+  const getMobileStats = (fixture: SafeZoneFixture) => {
+    switch (mode) {
+      case "O25":
+        return [
+          { label: "xG", value: `${fixture.mu_home.toFixed(1)}-${fixture.mu_away.toFixed(1)}` },
+          { label: "O2.5%", value: `${((fixture.o25_home_10 || 0) * 100).toFixed(0)}/${((fixture.o25_away_10 || 0) * 100).toFixed(0)}` },
+        ];
+      case "BTTS":
+        return [
+          { label: "xG", value: `${fixture.mu_home.toFixed(1)}-${fixture.mu_away.toFixed(1)}` },
+        ];
+      case "CORNERS":
+        return [
+          { label: "xC", value: `${(fixture.mu_home + fixture.mu_away).toFixed(1)}` },
+        ];
+      case "FOULS":
+        return [
+          { label: "xF", value: `${(fixture.mu_home + fixture.mu_away).toFixed(1)}` },
+        ];
+      default:
+        return [];
+    }
+  };
 
   const availableLeagues = LEAGUES_BY_COUNTRY[selectedCountry] || [];
 
