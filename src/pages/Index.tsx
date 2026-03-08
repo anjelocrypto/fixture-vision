@@ -1088,9 +1088,17 @@ const Index = () => {
                 : t('fixtures:all_fixtures')}
             </h2>
             
-            {/* Admin controls - hidden on mobile */}
-            <div className="hidden sm:flex gap-2 shrink-0 items-center">
-              {isAdmin && <AdminRefreshButton />}
+            {/* Right: Admin + Analytics on mobile */}
+            <div className="flex gap-2 shrink-0 items-center">
+              {isAdmin && <div className="hidden sm:block"><AdminRefreshButton /></div>}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden shrink-0 h-9 w-9"
+                onClick={() => setRightSheetOpen(true)}
+              >
+                <BarChart3 className="h-5 w-5" />
+              </Button>
             </div>
           </div>
 

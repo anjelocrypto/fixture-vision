@@ -334,7 +334,7 @@ const Account = () => {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="min-h-dvh bg-gradient-to-b from-background via-background to-muted/20 pb-20 lg:pb-0">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <Button
           variant="ghost"
