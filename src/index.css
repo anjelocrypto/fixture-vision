@@ -156,6 +156,13 @@ All colors MUST be HSL.
       }
     }
   }
+
+  /* Keyboard safety: ensure focused inputs scroll into view */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    scroll-margin-bottom: 120px;
+  }
 }
 
 @layer utilities {
