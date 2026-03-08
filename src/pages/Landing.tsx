@@ -261,7 +261,7 @@ export default function Landing() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div ref={containerRef} className="min-h-screen bg-background overflow-x-hidden">
+      <div ref={containerRef} className="min-h-dvh bg-background overflow-x-hidden">
         {/* Fixed Navigation */}
         <motion.nav 
           initial={{ y: -100 }}
