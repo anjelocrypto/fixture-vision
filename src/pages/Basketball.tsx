@@ -43,7 +43,7 @@ const Basketball = () => {
         <meta name="description" content="Basketball betting predictions - analyze games, view team stats, and find high scoring matchups for NBA, EuroLeague, and more." />
       </Helmet>
       
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-dvh flex flex-col bg-background">
         <AppHeader />
 
         <div className="flex-1 flex overflow-hidden">

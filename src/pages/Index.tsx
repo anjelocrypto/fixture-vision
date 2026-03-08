@@ -1018,7 +1018,7 @@ const Index = () => {
   const displayFixtures = filterCriteria ? filteredFixtures : fixtures;
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-dvh flex flex-col">
       <AppHeader />
 
       <div className="flex flex-1 overflow-hidden relative">

@@ -342,7 +342,7 @@ export default function Landing() {
         </motion.nav>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center justify-center pt-24 overflow-hidden">
+        <section className="relative min-h-dvh flex items-center justify-center pt-24 overflow-hidden">
           <GradientBackground />
           <FloatingDots />
           

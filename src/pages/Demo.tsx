@@ -110,7 +110,7 @@ function DemoContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       {/* Demo Mode Banner */}
       <div className="bg-primary/10 border-b border-primary/30 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

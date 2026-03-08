@@ -171,7 +171,7 @@ export function SafeZoneBotChat({ open, onClose }: Props) {
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="bottom" className="h-[85vh] p-0 flex flex-col">
+        <SheetContent side="bottom" className="h-[85dvh] p-0 flex flex-col">
           <SheetHeader className="sr-only">
             <SheetTitle>{t("safe_zone_bot_title")}</SheetTitle>
           </SheetHeader>
