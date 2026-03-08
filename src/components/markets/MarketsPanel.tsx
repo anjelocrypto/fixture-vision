@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Card, CardContent } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Coins, TrendingUp, TrendingDown, Clock, Trophy, Target, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Market, useMyCoins, useMyPositions, useLeaderboard } from "@/hooks/useMarkets";
@@ -11,26 +11,24 @@ import { MarketsFilterBar, QuickLeagueChips } from "./MarketsFilterBar";
 import { PlaceBetDialog } from "./PlaceBetDialog";
 import { LeaderboardPanel } from "./LeaderboardPanel";
 import { AdminMarketControls } from "./AdminMarketControls";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 type MarketStatus = "open" | "closed" | "resolved";
 
 export function MarketsPanel() {
   const { t } = useTranslation("markets");
-  
-  // Filter state
+
   const [countryId, setCountryId] = useState<number | null>(null);
   const [leagueId, setLeagueId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"kickoff" | "pool" | "newest">("kickoff");
   const [marketStatusFilter, setMarketStatusFilter] = useState<MarketStatus>("open");
+  const [activeTab, setActiveTab] = useState<"markets" | "positions" | "leaderboard">("markets");
 
-  // Bet dialog state
   const [selectedMarket, setSelectedMarket] = useState<MarketWithMetadata | null>(null);
   const [betDialogOpen, setBetDialogOpen] = useState(false);
 
-  // Data queries
   const { data: isAdmin } = useIsAdmin();
   const { data: markets, isLoading: marketsLoading } = useMarketsFiltered({
     status: marketStatusFilter,
@@ -44,19 +42,16 @@ export function MarketsPanel() {
   const { data: positions } = useMyPositions();
   const { data: leaderboard } = useLeaderboard(10);
 
-  // Positions categorized
   const pendingPositions = positions?.filter((p) => p.status === "pending") || [];
   const wonPositions = positions?.filter((p) => p.status === "won") || [];
   const lostPositions = positions?.filter((p) => p.status === "lost") || [];
   const refundedPositions = positions?.filter((p) => p.status === "refunded") || [];
 
-  // User's active market IDs
-  const userPositionMarketIds = useMemo(() => 
-    new Set(positions?.map((p) => p.market_id) || []),
+  const userPositionMarketIds = useMemo(
+    () => new Set(positions?.map((p) => p.market_id) || []),
     [positions]
   );
 
-  // Group markets by league when no specific league is selected
   const groupedMarkets = useMemo(() => {
     if (!markets || leagueId) return null;
     return groupMarketsByLeague(markets);
@@ -74,63 +69,94 @@ export function MarketsPanel() {
     setSortBy("kickoff");
   };
 
+  const tabs = [
+    { id: "markets" as const, icon: Target, label: t("tabs.markets"), badge: null },
+    {
+      id: "positions" as const,
+      icon: Clock,
+      label: t("tabs.my_bets"),
+      badge: pendingPositions.length > 0 ? pendingPositions.length : null,
+    },
+    { id: "leaderboard" as const, icon: Trophy, label: t("tabs.leaderboard"), badge: null },
+  ];
+
   return (
-    <div className="space-y-4">
-      {/* Balance Card */}
-      <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-primary/20">
-                <Coins className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{t("balance.your_balance")}</p>
-                <p className="text-2xl font-bold text-primary">
-                  {coinsLoading ? "..." : coins?.balance.toLocaleString() ?? "0"}
-                </p>
-              </div>
+    <div className="space-y-3">
+      {/* ── Balance Card ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="rounded-2xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent"
+      >
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 border border-primary/25">
+              <Coins className="h-6 w-6 text-primary" />
             </div>
-            <div className="text-right text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <TrendingUp className="h-3 w-3 text-green-500" />
-                <span>{t("balance.won")}: {coins?.total_won.toLocaleString() ?? 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <TrendingDown className="h-3 w-3 text-red-500" />
-                <span>{t("balance.wagered")}: {coins?.total_wagered.toLocaleString() ?? 0}</span>
-              </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">{t("balance.your_balance")}</p>
+              <p className="text-2xl font-bold text-primary tabular-nums">
+                {coinsLoading ? "..." : coins?.balance.toLocaleString() ?? "0"}
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="text-right space-y-1">
+            <div className="flex items-center gap-1.5 justify-end text-xs">
+              <TrendingUp className="h-3 w-3 text-green-500" />
+              <span className="text-muted-foreground">
+                {t("balance.won")}: <span className="text-green-500 font-semibold tabular-nums">{coins?.total_won.toLocaleString() ?? 0}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 justify-end text-xs">
+              <TrendingDown className="h-3 w-3 text-red-500" />
+              <span className="text-muted-foreground">
+                {t("balance.wagered")}: <span className="text-red-400 font-semibold tabular-nums">{coins?.total_wagered.toLocaleString() ?? 0}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
 
-      {/* Admin Controls - only visible to admins */}
+      {/* Admin Controls */}
       {isAdmin && <AdminMarketControls />}
 
-      <Tabs defaultValue="markets" className="w-full">
-        <TabsList className="w-full grid grid-cols-3">
-          <TabsTrigger value="markets" className="text-xs">
-            <Target className="h-3 w-3 mr-1" />
-            {t("tabs.markets")}
-          </TabsTrigger>
-          <TabsTrigger value="positions" className="text-xs">
-            <Clock className="h-3 w-3 mr-1" />
-            {t("tabs.my_bets")}
-            {pendingPositions.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">
-                {pendingPositions.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="leaderboard" className="text-xs">
-            <Trophy className="h-3 w-3 mr-1" />
-            {t("tabs.leaderboard")}
-          </TabsTrigger>
-        </TabsList>
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 p-1 rounded-xl bg-muted/30 border border-border/40">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs font-medium transition-all duration-200 active:scale-[0.97]",
+                isActive
+                  ? "bg-card text-foreground shadow-sm border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span className="truncate">{tab.label}</span>
+              {tab.badge && (
+                <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Markets Tab */}
-        <TabsContent value="markets" className="mt-4 space-y-4">
+      {/* ── Markets Tab ── */}
+      {activeTab === "markets" && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="space-y-3"
+        >
           <MarketsFilterBar
             countryId={countryId}
             leagueId={leagueId}
@@ -144,69 +170,69 @@ export function MarketsPanel() {
           />
 
           {leagues && leagues.length > 0 && !leagueId && (
-            <QuickLeagueChips
-              leagues={leagues}
-              selectedLeagueId={leagueId}
-              onSelect={setLeagueId}
-            />
+            <QuickLeagueChips leagues={leagues} selectedLeagueId={leagueId} onSelect={setLeagueId} />
           )}
 
-          {/* Market Status Filter */}
+          {/* Status Filter */}
           <div className="flex gap-2">
             {(["open", "closed", "resolved"] as MarketStatus[]).map((status) => (
-              <Badge
+              <button
                 key={status}
-                variant={marketStatusFilter === status ? "default" : "outline"}
-                className="cursor-pointer capitalize h-7"
                 onClick={() => setMarketStatusFilter(status)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all duration-200 active:scale-[0.96]",
+                  marketStatusFilter === status
+                    ? "bg-primary/15 border-primary/40 text-primary"
+                    : "bg-muted/20 border-border/50 text-muted-foreground hover:bg-muted/40"
+                )}
               >
-                {status === "open" && <Target className="h-3 w-3 mr-1" />}
-                {status === "closed" && <Clock className="h-3 w-3 mr-1" />}
-                {status === "resolved" && <CheckCircle className="h-3 w-3 mr-1" />}
+                {status === "open" && <Target className="h-3 w-3" />}
+                {status === "closed" && <Clock className="h-3 w-3" />}
+                {status === "resolved" && <CheckCircle className="h-3 w-3" />}
                 {t(`status.${status}`)}
-              </Badge>
+              </button>
             ))}
           </div>
 
-          {/* Loading State */}
+          {/* Content */}
           {marketsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <Card key={i} className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <Skeleton className="h-5 w-20" />
-                      <Skeleton className="h-5 w-16" />
-                    </div>
-                    <Skeleton className="h-6 w-3/4" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Skeleton className="h-16" />
-                      <Skeleton className="h-16" />
-                    </div>
+                <div key={i} className="rounded-2xl border border-border/40 p-4 space-y-3">
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-20 rounded-lg" />
+                    <Skeleton className="h-5 w-16 rounded-lg" />
                   </div>
-                </Card>
+                  <Skeleton className="h-5 w-3/4 rounded-lg" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Skeleton className="h-16 rounded-xl" />
+                    <Skeleton className="h-16 rounded-xl" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : !markets?.length ? (
-            <Card className="p-8 text-center">
-              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-              <h3 className="font-semibold text-lg mb-1">{t("empty_state.no_markets_found")}</h3>
+            <div className="rounded-2xl border border-border/40 p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+              <h3 className="font-semibold text-base mb-1">{t("empty_state.no_markets_found")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                {search 
+                {search
                   ? t("empty_state.no_markets_search", { search })
-                  : leagueId 
-                    ? t("empty_state.no_markets_league")
-                    : countryId
-                      ? t("empty_state.no_markets_country")
-                      : t("empty_state.no_status_markets", { status: t(`status.${marketStatusFilter}`) })
-                }
+                  : leagueId
+                  ? t("empty_state.no_markets_league")
+                  : countryId
+                  ? t("empty_state.no_markets_country")
+                  : t("empty_state.no_status_markets", { status: t(`status.${marketStatusFilter}`) })}
               </p>
               {(countryId || leagueId || search) && (
-                <Badge variant="outline" className="cursor-pointer" onClick={handleReset}>
+                <button
+                  onClick={handleReset}
+                  className="text-xs text-primary font-medium hover:underline"
+                >
                   {t("empty_state.clear_filters")}
-                </Badge>
+                </button>
               )}
-            </Card>
+            </div>
           ) : leagueId || search ? (
             <div className="space-y-3">
               {markets.map((market) => (
@@ -220,7 +246,7 @@ export function MarketsPanel() {
               ))}
             </div>
           ) : groupedMarkets && groupedMarkets.length > 0 ? (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {groupedMarkets.map((group) => (
                 <LeagueSection
                   key={group.league?.id}
@@ -246,10 +272,17 @@ export function MarketsPanel() {
               ))}
             </div>
           )}
-        </TabsContent>
+        </motion.div>
+      )}
 
-        {/* My Positions Tab */}
-        <TabsContent value="positions" className="mt-4 space-y-4">
+      {/* ── Positions Tab ── */}
+      {activeTab === "positions" && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="space-y-4"
+        >
           {pendingPositions.length > 0 && (
             <PositionSection title={t("positions.pending")} icon={<Clock className="h-4 w-4 text-yellow-500" />} positions={pendingPositions} />
           )}
@@ -263,16 +296,24 @@ export function MarketsPanel() {
             <PositionSection title={t("positions.refunded")} icon={<Coins className="h-4 w-4 text-muted-foreground" />} positions={refundedPositions} />
           )}
           {!positions?.length && (
-            <div className="text-center py-8 text-muted-foreground">
-              {t("positions.no_bets_yet")}
+            <div className="text-center py-12 text-muted-foreground">
+              <Clock className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">{t("positions.no_bets_yet")}</p>
             </div>
           )}
-        </TabsContent>
+        </motion.div>
+      )}
 
-        <TabsContent value="leaderboard" className="mt-4">
+      {/* ── Leaderboard Tab ── */}
+      {activeTab === "leaderboard" && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+        >
           <LeaderboardPanel entries={leaderboard || []} />
-        </TabsContent>
-      </Tabs>
+        </motion.div>
+      )}
 
       <PlaceBetDialog
         market={selectedMarket as Market | null}
@@ -287,7 +328,7 @@ export function MarketsPanel() {
 function PositionSection({ title, icon, positions }: { title: string; icon: React.ReactNode; positions: any[] }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
         {icon}
         <span>{title} ({positions.length})</span>
       </div>
@@ -299,41 +340,44 @@ function PositionSection({ title, icon, positions }: { title: string; icon: Reac
 }
 
 function PositionCard({ position }: { position: any }) {
-  const statusColors: Record<string, string> = {
-    pending: "bg-yellow-500/20 text-yellow-600",
-    won: "bg-green-500/20 text-green-600",
-    lost: "bg-red-500/20 text-red-600",
-    refunded: "bg-gray-500/20 text-gray-600",
-  };
-
   return (
-    <Card className="bg-card/50">
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className={position.outcome === "yes" ? "bg-green-500/20 text-green-600" : "bg-red-500/20 text-red-600"}
-            >
-              {position.outcome.toUpperCase()}
-            </Badge>
-            <span className="text-sm">@ {position.odds_at_placement.toFixed(2)}</span>
-          </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1">
-              <Coins className="h-3 w-3" />
-              <span className="font-medium">{position.stake}</span>
-            </div>
-            <Badge className={statusColors[position.status] || ""}>
-              {position.status === "won"
-                ? `+${position.payout_amount}`
-                : position.status === "pending"
-                ? `→ ${position.potential_payout}`
-                : position.status}
-            </Badge>
-          </div>
+    <div className="rounded-xl border border-border/40 bg-card/50 p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span
+            className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold uppercase",
+              position.outcome === "yes"
+                ? "bg-green-500/15 text-green-500 border border-green-500/20"
+                : "bg-red-500/15 text-red-500 border border-red-500/20"
+            )}
+          >
+            {position.outcome}
+          </span>
+          <span className="text-sm text-muted-foreground tabular-nums">@ {position.odds_at_placement.toFixed(2)}</span>
         </div>
-      </CardContent>
-    </Card>
+        <div className="text-right">
+          <div className="flex items-center gap-1 text-sm font-semibold tabular-nums">
+            <Coins className="h-3 w-3 text-primary" />
+            {position.stake}
+          </div>
+          <span
+            className={cn(
+              "text-[11px] font-semibold tabular-nums",
+              position.status === "won" && "text-green-500",
+              position.status === "lost" && "text-red-500",
+              position.status === "pending" && "text-yellow-500",
+              position.status === "refunded" && "text-muted-foreground"
+            )}
+          >
+            {position.status === "won"
+              ? `+${position.payout_amount}`
+              : position.status === "pending"
+              ? `→ ${position.potential_payout}`
+              : position.status}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
