@@ -9,6 +9,7 @@ import { GeminiAnalysis } from "./GeminiAnalysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 
 interface TicketLeg {
   fixture_id: number;
