@@ -295,20 +295,20 @@ export function FilterizerPanel({ onApplyFilters, onClearFilters, isActive }: Fi
         </motion.div>
 
         {/* ── Actions ── */}
-        <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" className="pt-2 pb-1 flex gap-3">
+        <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" className="pt-2 pb-1 grid grid-cols-[1fr_auto] gap-3">
           <Button
             onClick={handleApply}
-            className="flex-[2] h-12 rounded-xl text-sm font-semibold gap-2 shadow-[0_4px_20px_hsl(var(--primary)/0.25)] active:scale-[0.97] transition-transform"
+            className="h-12 rounded-xl text-sm font-semibold gap-2 shadow-[0_4px_20px_hsl(var(--primary)/0.25)] active:scale-[0.97] transition-transform"
           >
-            <Sparkles className="h-4 w-4" />
-            {t("filterizer:apply_filters")}
+            <Sparkles className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t("filterizer:apply_filters")}</span>
           </Button>
           <Button
             variant="outline"
             onClick={handleClear}
-            className="flex-1 h-12 rounded-xl text-sm font-medium gap-2 active:scale-[0.97] transition-transform"
+            className="h-12 rounded-xl text-sm font-medium gap-2 px-4 active:scale-[0.97] transition-transform whitespace-nowrap"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="h-3.5 w-3.5 shrink-0" />
             {t("filterizer:clear")}
           </Button>
         </motion.div>
