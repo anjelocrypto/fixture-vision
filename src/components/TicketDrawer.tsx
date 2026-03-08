@@ -57,6 +57,7 @@ interface TicketDrawerProps {
 export function TicketDrawer({ open, onOpenChange, ticket, loading, onShuffle, canShuffle = false }: TicketDrawerProps) {
   const { toast } = useToast();
   const { i18n } = useTranslation();
+  useRegisterOverlay("ticket-drawer", open, () => onOpenChange(false));
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [lockedLegIds, setLockedLegIds] = useState<Set<string>>(new Set());

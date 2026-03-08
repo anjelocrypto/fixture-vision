@@ -25,6 +25,10 @@ const Basketball = () => {
   const [selectedDate, setSelectedDate] = useState<"today" | "tomorrow">("today");
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
 
+  // Register overlays for Android back-button
+  useRegisterOverlay("bball-left-sheet", leftSheetOpen, () => setLeftSheetOpen(false));
+  useRegisterOverlay("bball-right-sheet", rightSheetOpen, () => setRightSheetOpen(false));
+
   const handleAnalyze = (game: BasketballGame) => {
     setSelectedGameId(game.id);
     if (isMobile) {
