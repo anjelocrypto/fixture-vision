@@ -73,6 +73,7 @@ const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
 export function BTTSIndexPanel({ onClose }: BTTSIndexPanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [window, setWindow] = useState<Window>(10);
   const [selectedCountry, setSelectedCountry] = useState<string>("england");

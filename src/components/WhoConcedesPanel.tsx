@@ -74,6 +74,7 @@ const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
 export function WhoConcedesPanel({ onClose }: WhoConcedesPanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [mode, setMode] = useState<Mode>('concedes');
   const [selectedCountry, setSelectedCountry] = useState<string>("england");

@@ -69,6 +69,7 @@ const COUNTRY_KEYS = Object.keys(LEAGUES_BY_COUNTRY);
 export function CardWarPanel({ onClose }: CardWarPanelProps) {
   const { t } = useTranslation("common");
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [mode, setMode] = useState<Mode>('cards');
   const [selectedCountry, setSelectedCountry] = useState<string>("england");
