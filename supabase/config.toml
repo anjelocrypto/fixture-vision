@@ -229,3 +229,10 @@ verify_jwt = false
 
 [functions.green-bucket-diagnostics]
 verify_jwt = false
+
+# Hockey pipeline
+[functions.hockey-sync-fixtures]
+verify_jwt = false
+
+[functions.hockey-sync-results]
+verify_jwt = false
