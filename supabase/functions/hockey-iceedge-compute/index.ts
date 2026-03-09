@@ -246,8 +246,10 @@ serve(async (req) => {
     for (const g of games) {
       const homeKey = `${g.home_team_id}:${g.league_id}:${g.season}`;
       const awayKey = `${g.away_team_id}:${g.league_id}:${g.season}`;
-      const home = statsMap.get(homeKey);
-      const away = statsMap.get(awayKey);
+      const homeFallbackKey = `${g.home_team_id}:${g.league_id}`;
+      const awayFallbackKey = `${g.away_team_id}:${g.league_id}`;
+      const home = statsMap.get(homeKey) ?? statsLatestMap.get(homeFallbackKey);
+      const away = statsMap.get(awayKey) ?? statsLatestMap.get(awayFallbackKey);
 
       if (!home || !away) {
         skipped.push(`Game ${g.id}: missing stats (home=${!!home}, away=${!!away})`);
