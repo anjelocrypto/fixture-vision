@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { RULES_VERSION } from "../_shared/rules.ts";
+import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,34 +30,73 @@ serve(async (req) => {
   }
 
   try {
+    // 1) Auth: verify JWT via getClaims
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authentication required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    
-    const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
-    if (authError || !user) {
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const userId = claimsData.claims.sub;
+
+    // 2) Premium entitlement check (no trial credits consumed)
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: entitlement } = await supabase
+      .from("user_entitlements")
+      .select("plan, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const hasPaidAccess =
+      entitlement &&
+      entitlement.plan !== "free" &&
+      entitlement.current_period_end &&
+      new Date(entitlement.current_period_end) > new Date();
+
+    let isAdmin = false;
+    if (!hasPaidAccess) {
+      const { data: wl } = await userClient.rpc("is_user_whitelisted");
+      isAdmin = wl === true;
+    }
+
+    if (!hasPaidAccess && !isAdmin) {
+      return new Response(
+        JSON.stringify({ error: "Premium subscription required", code: "PAYWALL" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 402 }
+      );
+    }
+
+    // 3) Rate limiting (5 req/min)
+    const rateLimitResult = await checkUserRateLimit({
+      supabase,
+      userId,
+      feature: "shuffle_ticket",
+      maxPerMinute: 5,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return buildRateLimitResponse("shuffle_ticket", rateLimitResult.retryAfterSeconds || 60, corsHeaders);
+    }
 
     const bodyRaw = await req.json().catch(() => null);
     if (!bodyRaw) {
@@ -90,7 +130,7 @@ serve(async (req) => {
       seed,
     } = validation.data;
 
-    console.log(`[shuffle-ticket] User: ${user.id}, Target: ${targetLegs} legs, Locked: ${lockedLegIds.length}, Markets: ${includeMarkets.join(",")}, DayRange: ${dayRange}`);
+    console.log(`[shuffle-ticket] User: ${userId}, Target: ${targetLegs} legs, Locked: ${lockedLegIds.length}, Markets: ${includeMarkets.join(",")}, DayRange: ${dayRange}`);
 
     // Calculate date range based on dayRange parameter
     const now = new Date();
@@ -156,7 +196,7 @@ serve(async (req) => {
       );
     }
 
-    // Filter out locked fixture IDs (extract from locked leg IDs: "{fixtureId}-{market}-{side}-{line}")
+    // Filter out locked fixture IDs
     const lockedFixtureIds = new Set(
       lockedLegIds.map(id => {
         const parts = id.split('-');
@@ -164,7 +204,6 @@ serve(async (req) => {
       }).filter(id => !isNaN(id))
     );
 
-    // Remove locked fixtures from candidates
     const unlocked = candidateSelections.filter((sel: any) => 
       !lockedFixtureIds.has(sel.fixture_id)
     );
@@ -183,26 +222,20 @@ serve(async (req) => {
       );
     }
 
-    // Initialize RNG first (use provided seed or timestamp)
+    // Initialize RNG
     const usedSeed = seed ?? Date.now();
     const rng = seededRandom(usedSeed);
     
-    // Add randomness to weights to prevent deterministic selection
     const withWeights = unlocked.map((sel: any) => {
       const edge = sel.edge_pct || 0;
       const odds = sel.odds || 1.5;
-      
-      // 65% edge, 25% odds, 10% random variation
       const baseWeight = (0.65 * Math.max(0, edge)) + (0.25 * (odds / 10));
       const randomBoost = 0.10 * rng();
-      
       return { ...sel, weight: baseWeight + randomBoost };
     });
 
-    // Fisher-Yates shuffle with weights
     const shuffled = weightedShuffle(withWeights, rng);
     
-    // Enforce one leg per fixture
     const selectedFixtures = new Set<number>(Array.from(lockedFixtureIds));
     const selected: any[] = [];
     
@@ -233,7 +266,6 @@ serve(async (req) => {
     
     const fixtureMap = new Map((fixtures || []).map((f: any) => [f.id, f]));
 
-    // Fetch league details
     const leagueIdsToFetch = [...new Set(selected.map((s: any) => s.league_id))];
     const { data: leagues } = await supabase
       .from("leagues")
@@ -242,7 +274,6 @@ serve(async (req) => {
     
     const leagueMap = new Map((leagues || []).map((l: any) => [l.id, l]));
 
-    // Build ticket legs
     const legs = selected.map((sel: any) => {
       const fixture = fixtureMap.get(sel.fixture_id);
       const league = leagueMap.get(sel.league_id);
@@ -264,13 +295,11 @@ serve(async (req) => {
       };
     });
 
-    // Calculate total odds
     const totalOdds = legs.reduce((acc, leg) => acc * leg.odds, 1);
     const estimatedWinProb = legs.reduce((acc, leg) => 
       acc * (leg.model_prob || (1 / leg.odds)), 1
     ) * 100;
 
-    // Check if different from previous (if hash provided)
     const currentHash = legs.map(l => `${l.fixture_id}-${l.market}-${l.side}-${l.line}`).sort().join("|");
     const isDifferent = !previousTicketHash || currentHash !== previousTicketHash;
 
