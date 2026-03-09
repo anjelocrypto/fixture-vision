@@ -236,3 +236,9 @@ verify_jwt = false
 
 [functions.hockey-sync-results]
 verify_jwt = false
+
+[functions.hockey-stats-refresh]
+verify_jwt = false
+
+[functions.hockey-sync-odds]
+verify_jwt = false
