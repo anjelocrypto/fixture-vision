@@ -668,6 +668,386 @@ export type Database = {
         }
         Relationships: []
       }
+      hockey_games: {
+        Row: {
+          away_score: number | null
+          away_team_id: number
+          created_at: string
+          home_score: number | null
+          home_team_id: number
+          id: number
+          league_id: number
+          period_scores: Json | null
+          puck_drop: string
+          season: number
+          status: string
+          updated_at: string
+          went_to_ot: boolean
+        }
+        Insert: {
+          away_score?: number | null
+          away_team_id: number
+          created_at?: string
+          home_score?: number | null
+          home_team_id: number
+          id: number
+          league_id: number
+          period_scores?: Json | null
+          puck_drop: string
+          season: number
+          status?: string
+          updated_at?: string
+          went_to_ot?: boolean
+        }
+        Update: {
+          away_score?: number | null
+          away_team_id?: number
+          created_at?: string
+          home_score?: number | null
+          home_team_id?: number
+          id?: number
+          league_id?: number
+          period_scores?: Json | null
+          puck_drop?: string
+          season?: number
+          status?: string
+          updated_at?: string
+          went_to_ot?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hockey_games_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_games_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_games_league_id_season_fkey"
+            columns: ["league_id", "season"]
+            isOneToOne: false
+            referencedRelation: "hockey_leagues"
+            referencedColumns: ["id", "season"]
+          },
+        ]
+      }
+      hockey_h2h_cache: {
+        Row: {
+          avg_total_goals: number
+          computed_at: string
+          gp: number
+          last_game_ids: number[]
+          ot_pct: number
+          team_hi: number
+          team_lo: number
+        }
+        Insert: {
+          avg_total_goals?: number
+          computed_at?: string
+          gp?: number
+          last_game_ids?: number[]
+          ot_pct?: number
+          team_hi: number
+          team_lo: number
+        }
+        Update: {
+          avg_total_goals?: number
+          computed_at?: string
+          gp?: number
+          last_game_ids?: number[]
+          ot_pct?: number
+          team_hi?: number
+          team_lo?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hockey_h2h_cache_team_hi_fkey"
+            columns: ["team_hi"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_h2h_cache_team_lo_fkey"
+            columns: ["team_lo"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hockey_iceedge_cache: {
+        Row: {
+          away_team_id: number
+          chaos_score: number
+          computed_at: string
+          confidence_tier: string
+          game_id: number
+          home_team_id: number
+          iceedge_rank: number | null
+          league_id: number
+          ot_risk: number
+          p1_heat: number
+          projected_total: number
+          puck_drop: string
+          reasoning: string | null
+          recommended_markets: Json
+          regulation_lean: string
+          season: number
+          value_score: number
+        }
+        Insert: {
+          away_team_id: number
+          chaos_score?: number
+          computed_at?: string
+          confidence_tier?: string
+          game_id: number
+          home_team_id: number
+          iceedge_rank?: number | null
+          league_id: number
+          ot_risk?: number
+          p1_heat?: number
+          projected_total?: number
+          puck_drop: string
+          reasoning?: string | null
+          recommended_markets?: Json
+          regulation_lean?: string
+          season: number
+          value_score?: number
+        }
+        Update: {
+          away_team_id?: number
+          chaos_score?: number
+          computed_at?: string
+          confidence_tier?: string
+          game_id?: number
+          home_team_id?: number
+          iceedge_rank?: number | null
+          league_id?: number
+          ot_risk?: number
+          p1_heat?: number
+          projected_total?: number
+          puck_drop?: string
+          reasoning?: string | null
+          recommended_markets?: Json
+          regulation_lean?: string
+          season?: number
+          value_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hockey_iceedge_cache_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_iceedge_cache_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "hockey_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_iceedge_cache_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hockey_iceedge_cache_league_id_season_fkey"
+            columns: ["league_id", "season"]
+            isOneToOne: false
+            referencedRelation: "hockey_leagues"
+            referencedColumns: ["id", "season"]
+          },
+        ]
+      }
+      hockey_leagues: {
+        Row: {
+          country: string | null
+          created_at: string
+          id: number
+          logo: string | null
+          name: string
+          season: number
+          updated_at: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          id: number
+          logo?: string | null
+          name: string
+          season: number
+          updated_at?: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          id?: number
+          logo?: string | null
+          name?: string
+          season?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hockey_odds_cache: {
+        Row: {
+          bookmaker: string
+          captured_at: string
+          game_id: number
+          id: number
+          line: number
+          market: string
+          odds: number
+          selection: string
+        }
+        Insert: {
+          bookmaker: string
+          captured_at?: string
+          game_id: number
+          id?: never
+          line?: number
+          market: string
+          odds: number
+          selection: string
+        }
+        Update: {
+          bookmaker?: string
+          captured_at?: string
+          game_id?: number
+          id?: never
+          line?: number
+          market?: string
+          odds?: number
+          selection?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hockey_odds_cache_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hockey_team_stats_cache: {
+        Row: {
+          ga_pg: number
+          gp: number
+          gpg: number
+          last5_game_ids: number[]
+          last5_gapg: number
+          last5_gpg: number
+          league_id: number
+          ot_pct: number
+          p1_gapg: number
+          p1_gpg: number
+          pk_pct: number
+          pp_pct: number
+          sa_pg: number
+          season: number
+          sog_pg: number
+          team_id: number
+          updated_at: string
+        }
+        Insert: {
+          ga_pg?: number
+          gp?: number
+          gpg?: number
+          last5_game_ids?: number[]
+          last5_gapg?: number
+          last5_gpg?: number
+          league_id: number
+          ot_pct?: number
+          p1_gapg?: number
+          p1_gpg?: number
+          pk_pct?: number
+          pp_pct?: number
+          sa_pg?: number
+          season: number
+          sog_pg?: number
+          team_id: number
+          updated_at?: string
+        }
+        Update: {
+          ga_pg?: number
+          gp?: number
+          gpg?: number
+          last5_game_ids?: number[]
+          last5_gapg?: number
+          last5_gpg?: number
+          league_id?: number
+          ot_pct?: number
+          p1_gapg?: number
+          p1_gpg?: number
+          pk_pct?: number
+          pp_pct?: number
+          sa_pg?: number
+          season?: number
+          sog_pg?: number
+          team_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hockey_team_stats_cache_league_id_season_fkey"
+            columns: ["league_id", "season"]
+            isOneToOne: false
+            referencedRelation: "hockey_leagues"
+            referencedColumns: ["id", "season"]
+          },
+          {
+            foreignKeyName: "hockey_team_stats_cache_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "hockey_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hockey_teams: {
+        Row: {
+          country: string | null
+          created_at: string
+          id: number
+          logo: string | null
+          name: string
+          short_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          id: number
+          logo?: string | null
+          name: string
+          short_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          id?: number
+          logo?: string | null
+          name?: string
+          short_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       league_history_sync_state: {
         Row: {
           created_at: string | null
