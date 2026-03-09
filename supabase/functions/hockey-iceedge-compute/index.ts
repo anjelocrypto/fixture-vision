@@ -176,12 +176,18 @@ serve(async (req) => {
     const { data: allStats } = await supabase
       .from("hockey_team_stats_cache")
       .select("team_id, league_id, season, gp, gpg, ga_pg, p1_gpg, p1_gapg, ot_pct, last5_gpg, last5_gapg")
-      .in("team_id", teamIds);
+      .in("team_id", teamIds)
+      .order("season", { ascending: false });
 
-    // Index by "teamId:leagueId:season"
+    // Index by exact key AND by team:league (latest season fallback)
     const statsMap = new Map<string, any>();
+    const statsLatestMap = new Map<string, any>();
     for (const s of (allStats ?? [])) {
       statsMap.set(`${s.team_id}:${s.league_id}:${s.season}`, s);
+      const latestKey = `${s.team_id}:${s.league_id}`;
+      if (!statsLatestMap.has(latestKey)) {
+        statsLatestMap.set(latestKey, s); // first = highest season due to order
+      }
     }
 
     // ── Load H2H cache ───────────────────────────────────────────────────
