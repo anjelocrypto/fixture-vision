@@ -21,6 +21,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Demo from "./pages/Demo";
 import Basketball from "./pages/Basketball";
+import Hockey from "./pages/Hockey";
 import Markets from "./pages/Markets";
 import MarketDetail from "./pages/MarketDetail";
 import { Navigate } from "react-router-dom";
@@ -54,6 +55,7 @@ const App = () => {
                   <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                   <Route path="/demo" element={<Demo />} />
                   <Route path="/basketball" element={<ProtectedRoute><Basketball /></ProtectedRoute>} />
+                  <Route path="/hockey" element={<ProtectedRoute><Hockey /></ProtectedRoute>} />
                   <Route path="/markets" element={<Markets />} />
                   <Route path="/markets/:id" element={<MarketDetail />} />
                   <Route

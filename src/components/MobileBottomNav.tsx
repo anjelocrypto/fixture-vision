@@ -15,6 +15,7 @@ const NAV_ITEMS = [
 const BOTTOM_NAV_ROUTES = [
   "/",
   "/basketball",
+  "/hockey",
   "/markets",
   "/account",
   "/admin/health",

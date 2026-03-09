@@ -17,11 +17,11 @@ import { useTutorial } from "@/contexts/TutorialContext";
 
 // Sports configuration with routes
 const sports = [
-  { name: "Football", route: "/", active: true },
-  { name: "Basketball", route: "/basketball", active: true },
-  { name: "UFC", route: null, active: false },
-  { name: "Tennis", route: null, active: false },
-  { name: "NFL", route: null, active: false },
+  { name: "Football", emoji: "⚽", route: "/", active: true },
+  { name: "Basketball", emoji: "🏀", route: "/basketball", active: true },
+  { name: "Hockey", emoji: "🏒", route: "/hockey", active: true },
+  { name: "UFC", emoji: "🥊", route: null, active: false },
+  { name: "Tennis", emoji: "🎾", route: null, active: false },
 ];
 
 export function AppHeader() {
@@ -36,7 +36,9 @@ export function AppHeader() {
   const { startTutorial } = useTutorial();
 
   // Determine current sport from route
-  const currentSport = location.pathname === "/basketball" ? "Basketball" : "Football";
+  const currentSport = location.pathname === "/basketball" ? "Basketball" 
+    : location.pathname === "/hockey" ? "Hockey" 
+    : "Football";
 
   useEffect(() => {
     loadFromStorage();
@@ -78,22 +80,17 @@ export function AppHeader() {
           
           {/* Mobile Sport Toggle */}
           <div className="flex md:hidden items-center bg-secondary/50 rounded-full p-0.5">
-            <Button
-              variant={currentSport === "Football" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => navigate("/")}
-              className={`rounded-full h-7 px-2.5 text-xs ${currentSport === "Football" ? "" : "text-muted-foreground/60"}`}
-            >
-              ⚽
-            </Button>
-            <Button
-              variant={currentSport === "Basketball" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => navigate("/basketball")}
-              className={`rounded-full h-7 px-2.5 text-xs ${currentSport === "Basketball" ? "" : "text-muted-foreground/60"}`}
-            >
-              🏀
-            </Button>
+            {sports.filter(s => s.active).map((sport) => (
+              <Button
+                key={sport.name}
+                variant={currentSport === sport.name ? "default" : "ghost"}
+                size="sm"
+                onClick={() => sport.route && navigate(sport.route)}
+                className={`rounded-full h-7 px-2.5 text-xs ${currentSport === sport.name ? "" : "text-muted-foreground/60"}`}
+              >
+                {sport.emoji}
+              </Button>
+            ))}
           </div>
         </div>
 
