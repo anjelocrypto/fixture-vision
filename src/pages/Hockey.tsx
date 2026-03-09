@@ -82,7 +82,7 @@ export default function Hockey() {
             </>
           )}
         </main>
-        <MobileBottomNav />
+        <MobileBottomNav onTicketOpen={() => {}} />
       </div>
 
       <IceEdgeDetailDrawer
