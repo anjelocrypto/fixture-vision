@@ -51,7 +51,6 @@ const SAMPLE_THRESHOLDS = {
 serve(async (req) => {
   const origin = req.headers.get("origin") || "*";
 
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return handlePreflight(origin);
   }
@@ -59,6 +58,81 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // 1) Auth: verify JWT via getClaims
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return errorResponse("Authentication required", origin, 401, req);
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return errorResponse("Invalid authentication token", origin, 401, req);
+    }
+
+    const userId = claimsData.claims.sub;
+
+    // 2) Premium entitlement check (no trial credits consumed)
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: entitlement } = await supabase
+      .from("user_entitlements")
+      .select("plan, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const hasPaidAccess =
+      entitlement &&
+      entitlement.plan !== "free" &&
+      entitlement.current_period_end &&
+      new Date(entitlement.current_period_end) > new Date();
+
+    let isAdmin = false;
+    if (!hasPaidAccess) {
+      const { data: wl } = await userClient.rpc("is_user_whitelisted");
+      isAdmin = wl === true;
+    }
+
+    if (!hasPaidAccess && !isAdmin) {
+      return jsonResponse({ error: "Premium subscription required", code: "PAYWALL" }, origin, 402);
+    }
+
+    // 3) Rate limiting (10 req/min)
+    const { checkUserRateLimit } = await import("../_shared/rate_limit.ts");
+    const rateLimitResult = await checkUserRateLimit({
+      supabase,
+      userId,
+      feature: "btts_index" as any,
+      maxPerMinute: 10,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return new Response(
+        JSON.stringify({
+          code: "RATE_LIMITED",
+          feature: "btts_index",
+          message: "Too many requests. Please wait a bit and try again.",
+          retry_after_seconds: rateLimitResult.retryAfterSeconds || 60,
+        }),
+        {
+          status: 429,
+          headers: {
+            ...getCorsHeaders(origin),
+            "Content-Type": "application/json",
+            "Retry-After": String(rateLimitResult.retryAfterSeconds || 60),
+          },
+        }
+      );
+    }
+
     // Parse request body
     let body: { 
       mode?: Mode; 
@@ -74,11 +148,6 @@ serve(async (req) => {
 
     const mode: Mode = body.mode || 'league_rankings';
     const window = [5, 10, 15].includes(body.window || 10) ? (body.window || 10) : 10;
-
-    // Create Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (mode === 'fixture') {
       return await handleFixtureMode(supabase, body.fixture_id, window, origin, startTime);

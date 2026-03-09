@@ -171,6 +171,81 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // 1) Auth: verify JWT via getClaims
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return errorResponse("Authentication required", origin, 401, req);
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return errorResponse("Invalid authentication token", origin, 401, req);
+    }
+
+    const userId = claimsData.claims.sub;
+
+    // 2) Premium entitlement check (no trial credits consumed)
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: entitlement } = await supabase
+      .from("user_entitlements")
+      .select("plan, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const hasPaidAccess =
+      entitlement &&
+      entitlement.plan !== "free" &&
+      entitlement.current_period_end &&
+      new Date(entitlement.current_period_end) > new Date();
+
+    let isAdmin = false;
+    if (!hasPaidAccess) {
+      const { data: wl } = await userClient.rpc("is_user_whitelisted");
+      isAdmin = wl === true;
+    }
+
+    if (!hasPaidAccess && !isAdmin) {
+      return jsonResponse({ error: "Premium subscription required", code: "PAYWALL" }, origin, 402);
+    }
+
+    // 3) Rate limiting (10 req/min)
+    const { checkUserRateLimit, buildRateLimitResponse } = await import("../_shared/rate_limit.ts");
+    const rateLimitResult = await checkUserRateLimit({
+      supabase,
+      userId,
+      feature: "safe_zone" as any,
+      maxPerMinute: 10,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return new Response(
+        JSON.stringify({
+          code: "RATE_LIMITED",
+          feature: "safe_zone",
+          message: "Too many requests. Please wait a bit and try again.",
+          retry_after_seconds: rateLimitResult.retryAfterSeconds || 60,
+        }),
+        {
+          status: 429,
+          headers: {
+            ...getCorsHeaders(origin),
+            "Content-Type": "application/json",
+            "Retry-After": String(rateLimitResult.retryAfterSeconds || 60),
+          },
+        }
+      );
+    }
+
     let body: SafeZoneRequest;
     try {
       body = await req.json();
@@ -179,26 +254,6 @@ serve(async (req) => {
     }
 
     const { mode, league_ids, matchday = "next", limit = 50 } = body;
-
-    // Validate input
-    if (!mode || !["O25", "BTTS", "CORNERS", "FOULS"].includes(mode)) {
-      return errorResponse("mode must be 'O25', 'BTTS', 'CORNERS', or 'FOULS'", origin, 400);
-    }
-    if (!league_ids || !Array.isArray(league_ids) || league_ids.length === 0) {
-      return errorResponse("league_ids must be a non-empty array", origin, 400);
-    }
-    if (league_ids.length > 20) {
-      return errorResponse("Maximum 20 leagues allowed", origin, 400);
-    }
-
-    const effectiveLimit = Math.min(Math.max(1, limit), 100);
-
-    // Create Supabase client with service role for stats_cache access
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    console.log(`[safe-zone] mode=${mode}, leagues=${league_ids.join(",")}, matchday=${matchday}, limit=${effectiveLimit}`);
 
     // Step 1: Get fixtures for the next matchday
     const fixtures = await getNextMatchdayFixtures(supabase, league_ids, matchday, effectiveLimit);
