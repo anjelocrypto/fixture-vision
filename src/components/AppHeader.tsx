@@ -17,11 +17,11 @@ import { useTutorial } from "@/contexts/TutorialContext";
 
 // Sports configuration with routes
 const sports = [
-  { name: "Football", route: "/", active: true },
-  { name: "Basketball", route: "/basketball", active: true },
-  { name: "UFC", route: null, active: false },
-  { name: "Tennis", route: null, active: false },
-  { name: "NFL", route: null, active: false },
+  { name: "Football", emoji: "⚽", route: "/", active: true },
+  { name: "Basketball", emoji: "🏀", route: "/basketball", active: true },
+  { name: "Hockey", emoji: "🏒", route: "/hockey", active: true },
+  { name: "UFC", emoji: "🥊", route: null, active: false },
+  { name: "Tennis", emoji: "🎾", route: null, active: false },
 ];
 
 export function AppHeader() {
