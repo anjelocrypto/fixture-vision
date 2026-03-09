@@ -129,11 +129,12 @@ serve(async (req) => {
     );
 
     // Build list of dates to query (hockey API uses ?date=YYYY-MM-DD, no range params)
-    const now      = new Date();
+    // Allow override for backfill / testing: body.start_date = "YYYY-MM-DD"
+    const baseDate = body.start_date ? new Date(body.start_date + "T00:00:00Z") : new Date();
     const dayCount = Math.ceil(windowHours / 24);
     const dates: string[] = [];
     for (let d = 0; d < dayCount; d++) {
-      const day = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+      const day = new Date(baseDate.getTime() + d * 24 * 60 * 60 * 1000);
       dates.push(day.toISOString().split("T")[0]);
     }
 
