@@ -197,44 +197,44 @@ serve(async (req) => {
       teamCache.set(teamId, true);
     }
 
-    // ── Main fetch loop (priority order) ─────────────────────────────────────
+    // ── Main fetch loop (priority order, per-date like basketball) ─────────────
     for (const leagueId of leagueIds) {
       const leagueConfig = LEAGUE_PRIORITY.find((l) => l.id === leagueId);
       const leagueLabel  = leagueConfig?.name ?? String(leagueId);
 
-      console.log(`[hockey-sync-fixtures] → Fetching ${leagueLabel} (id=${leagueId}) from=${from} to=${to}`);
-
-      const url = `${HOCKEY_BASE}/games?league=${leagueId}&from=${from}&to=${to}`;
+      console.log(`[hockey-sync-fixtures] → Fetching ${leagueLabel} (id=${leagueId})`);
 
       let apiData: any[] = [];
-      try {
-        const response = await fetch(url, {
-          headers: { "x-apisports-key": apiKey },
-        });
-        apiCalls++;
 
-        if (!response.ok) {
-          errors.push(`API ${response.status} for league ${leagueId}`);
-          console.error(`[hockey-sync-fixtures] API error ${response.status} for league ${leagueId}`);
-          continue;
+      // Query each date separately (hockey API uses ?date=YYYY-MM-DD, not from/to)
+      for (const dateStr of dates) {
+        const url = `${HOCKEY_BASE}/games?league=${leagueId}&date=${dateStr}`;
+        try {
+          const response = await fetch(url, {
+            headers: { "x-apisports-key": apiKey },
+          });
+          apiCalls++;
+
+          if (!response.ok) {
+            errors.push(`API ${response.status} for league ${leagueId} date=${dateStr}`);
+            continue;
+          }
+
+          const json = await response.json();
+          const dayGames = json.response ?? [];
+
+          if (!Array.isArray(dayGames)) {
+            errors.push(`Unexpected API shape for league ${leagueId} date=${dateStr}`);
+            continue;
+          }
+
+          apiData.push(...dayGames);
+        } catch (fetchErr: any) {
+          errors.push(`Fetch error league ${leagueId} date=${dateStr}: ${fetchErr.message}`);
         }
-
-        const json = await response.json();
-        apiData = json.response ?? [];
-
-        // Fail loudly if provider shape is unexpected
-        if (!Array.isArray(apiData)) {
-          errors.push(`Unexpected API shape for league ${leagueId}: response not an array`);
-          console.error(`[hockey-sync-fixtures] BLOCKER: unexpected shape for league ${leagueId}`);
-          continue;
-        }
-
-        console.log(`[hockey-sync-fixtures] ${leagueLabel}: ${apiData.length} games from API`);
-      } catch (fetchErr: any) {
-        errors.push(`Fetch error league ${leagueId}: ${fetchErr.message}`);
-        console.error(`[hockey-sync-fixtures] Fetch error for league ${leagueId}:`, fetchErr.message);
-        continue;
       }
+
+      console.log(`[hockey-sync-fixtures] ${leagueLabel}: ${apiData.length} games from API`);
 
       for (const game of apiData) {
         try {
