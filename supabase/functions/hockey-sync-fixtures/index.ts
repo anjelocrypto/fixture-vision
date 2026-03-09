@@ -62,10 +62,6 @@ const LEAGUE_PRIORITY: Array<{ id: number; name: string }> = [
 // Terminal finished statuses from the hockey API
 const FINISHED_STATUSES = new Set(["FT", "AOT", "AP", "AET"]);
 
-// Statuses that indicate the game is scheduled / upcoming
-// (not live, not finished)
-const UPCOMING_STATUSES = new Set(["NS", "TBD"]);
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -123,14 +119,17 @@ serve(async (req) => {
     // Allow caller to override league list; default = all in priority order
     const leagueIds: number[] =
       body.league_ids ?? LEAGUE_PRIORITY.map((l) => l.id);
+    // Allow start_date override for backfill / testing: "YYYY-MM-DD"
+    const startDate = body.start_date ?? null;
+    // Debug mode: return raw API response for inspection
+    const debugProbe = body.debug_probe === true;
 
     console.log(
-      `[hockey-sync-fixtures] Window: ${windowHours}h, Leagues: ${leagueIds.join(", ")}`
+      `[hockey-sync-fixtures] Window: ${windowHours}h, Leagues: ${leagueIds.join(", ")}${startDate ? `, start_date=${startDate}` : ""}`
     );
 
     // Build list of dates to query (hockey API uses ?date=YYYY-MM-DD, no range params)
-    // Allow override for backfill / testing: body.start_date = "YYYY-MM-DD"
-    const baseDate = body.start_date ? new Date(body.start_date + "T00:00:00Z") : new Date();
+    const baseDate = startDate ? new Date(startDate + "T00:00:00Z") : new Date();
     const dayCount = Math.ceil(windowHours / 24);
     const dates: string[] = [];
     for (let d = 0; d < dayCount; d++) {
@@ -140,6 +139,34 @@ serve(async (req) => {
 
     console.log(`[hockey-sync-fixtures] Querying ${dates.length} dates: ${dates[0]} → ${dates[dates.length - 1]}`);
 
+    // ── Debug probe mode: just hit one endpoint and return raw response ─────
+    if (debugProbe) {
+      const probeLeague = leagueIds[0] ?? 57;
+      const probeDate = dates[0];
+      const probeUrl = `${HOCKEY_BASE}/games?league=${probeLeague}&date=${probeDate}`;
+      console.log(`[hockey-sync-fixtures] DEBUG PROBE: ${probeUrl}`);
+      
+      const probeRes = await fetch(probeUrl, {
+        headers: { "x-apisports-key": apiKey },
+      });
+      const probeJson = await probeRes.json();
+      
+      return new Response(
+        JSON.stringify({
+          debug: true,
+          probe_url: probeUrl,
+          http_status: probeRes.status,
+          results_count: Array.isArray(probeJson.response) ? probeJson.response.length : null,
+          errors: probeJson.errors,
+          paging: probeJson.paging,
+          parameters: probeJson.parameters,
+          // Include first 2 games for inspection (if any)
+          sample_games: Array.isArray(probeJson.response) ? probeJson.response.slice(0, 2) : null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ── Counters ──────────────────────────────────────────────────────────────
     let leaguesUpserted = 0;
     let teamsUpserted   = 0;
@@ -148,8 +175,8 @@ serve(async (req) => {
     const errors: string[] = [];
 
     // In-memory caches to avoid repeated DB round-trips
-    const teamCache:   Map<number, boolean> = new Map(); // provider team id → upserted
-    const leagueCache: Map<string, boolean> = new Map(); // "leagueId:season" → upserted
+    const teamCache:   Map<number, boolean> = new Map();
+    const leagueCache: Map<string, boolean> = new Map();
 
     // ── Helper: upsert a league row ───────────────────────────────────────────
     async function ensureLeague(
@@ -198,7 +225,7 @@ serve(async (req) => {
       teamCache.set(teamId, true);
     }
 
-    // ── Main fetch loop (priority order, per-date like basketball) ─────────────
+    // ── Main fetch loop (priority order, per-date) ─────────────────────────────
     for (const leagueId of leagueIds) {
       const leagueConfig = LEAGUE_PRIORITY.find((l) => l.id === leagueId);
       const leagueLabel  = leagueConfig?.name ?? String(leagueId);
@@ -207,7 +234,6 @@ serve(async (req) => {
 
       let apiData: any[] = [];
 
-      // Query each date separately (hockey API uses ?date=YYYY-MM-DD, not from/to)
       for (const dateStr of dates) {
         const url = `${HOCKEY_BASE}/games?league=${leagueId}&date=${dateStr}`;
         try {
@@ -222,6 +248,13 @@ serve(async (req) => {
           }
 
           const json = await response.json();
+          
+          // Log raw API metadata for debugging
+          if (json.errors && Object.keys(json.errors).length > 0) {
+            console.warn(`[hockey-sync-fixtures] API errors for league=${leagueId} date=${dateStr}:`, JSON.stringify(json.errors));
+            errors.push(`API errors league ${leagueId} date=${dateStr}: ${JSON.stringify(json.errors)}`);
+          }
+          
           const dayGames = json.response ?? [];
 
           if (!Array.isArray(dayGames)) {
@@ -229,6 +262,7 @@ serve(async (req) => {
             continue;
           }
 
+          console.log(`[hockey-sync-fixtures] league=${leagueId} date=${dateStr}: ${dayGames.length} games`);
           apiData.push(...dayGames);
         } catch (fetchErr: any) {
           errors.push(`Fetch error league ${leagueId} date=${dateStr}: ${fetchErr.message}`);
@@ -259,7 +293,6 @@ serve(async (req) => {
 
           if (!homeId || !awayId) {
             errors.push(`Game ${game.id}: missing team IDs (home=${homeId}, away=${awayId})`);
-            console.warn(`[hockey-sync-fixtures] Game ${game.id}: missing team IDs, skipping`);
             continue;
           }
 
@@ -268,14 +301,14 @@ serve(async (req) => {
             game.teams.home.name ?? "Unknown",
             null,
             game.teams.home.logo ?? null,
-            game.teams.home.country?.name ?? null
+            null
           );
           await ensureTeam(
             awayId,
             game.teams.away.name ?? "Unknown",
             null,
             game.teams.away.logo ?? null,
-            game.teams.away.country?.name ?? null
+            null
           );
 
           // ── Status mapping ────────────────────────────────────────────────
@@ -285,7 +318,6 @@ serve(async (req) => {
           const puckDrop: string | null = game.date ?? null;
           if (!puckDrop) {
             errors.push(`Game ${game.id}: missing date`);
-            console.warn(`[hockey-sync-fixtures] Game ${game.id}: missing date, skipping`);
             continue;
           }
 
@@ -299,15 +331,11 @@ serve(async (req) => {
             : null;
 
           // ── went_to_ot: for upcoming games always false ───────────────────
-          // For finished games we read from the game status:
-          //   "AOT" = After Overtime, "AP" = After Penalties → OT occurred
-          // We do NOT derive from scores to avoid ambiguity.
           const wentToOt: boolean = isFinished
             ? (statusShort === "AOT" || statusShort === "AP" || statusShort === "AET")
             : false;
 
           // ── period_scores ─────────────────────────────────────────────────
-          // For upcoming games, periods is null.  We only populate on results sync.
           const periodScores: any | null = isFinished
             ? (game.periods ?? null)
             : null;
@@ -370,6 +398,7 @@ serve(async (req) => {
       failed:       errors.length,
       details: {
         window_hours:     windowHours,
+        start_date:       startDate,
         leagues_requested: leagueIds,
         leagues_upserted: leaguesUpserted,
         teams_upserted:   teamsUpserted,
