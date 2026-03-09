@@ -36,7 +36,9 @@ export function AppHeader() {
   const { startTutorial } = useTutorial();
 
   // Determine current sport from route
-  const currentSport = location.pathname === "/basketball" ? "Basketball" : "Football";
+  const currentSport = location.pathname === "/basketball" ? "Basketball" 
+    : location.pathname === "/hockey" ? "Hockey" 
+    : "Football";
 
   useEffect(() => {
     loadFromStorage();
