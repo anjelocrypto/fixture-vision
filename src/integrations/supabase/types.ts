@@ -2475,6 +2475,7 @@ export type Database = {
         Args: { _market_id: string; _outcome: string; _stake: number }
         Returns: Json
       }
+      prune_operational_logs: { Args: never; Returns: Json }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
       resolve_market: {
         Args: {
