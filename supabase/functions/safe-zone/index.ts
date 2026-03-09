@@ -256,7 +256,7 @@ serve(async (req) => {
     const { mode, league_ids, matchday = "next", limit = 50 } = body;
 
     // Step 1: Get fixtures for the next matchday
-    const fixtures = await getNextMatchdayFixtures(supabase, league_ids, matchday, effectiveLimit);
+    const fixtures = await getNextMatchdayFixtures(supabase, league_ids, matchday, limit);
     
     if (fixtures.length === 0) {
       return jsonResponse({
