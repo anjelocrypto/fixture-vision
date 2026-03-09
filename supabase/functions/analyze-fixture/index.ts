@@ -3,13 +3,8 @@
 // ============================================================================
 // Provides detailed stats analysis for a fixture.
 // 
-// STATS INTEGRITY (CACHE-BASED ONLY):
-// - Validates stats_cache exists for both teams
-// - Validates sample_size >= 3
-// - Returns stats_available: false if integrity checks fail
-// 
-// NOTE: stats_health_violations is NOT used as a blocker - it's monitoring-only.
-// The current stats_cache state is the single source of truth.
+// ACCESS: Premium-only (direct entitlement check, no trial credits)
+// RATE LIMIT: 15 req/min per user
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -39,33 +34,66 @@ serve(async (req) => {
   }
 
   try {
-    // Verify authentication
+    // 1) Auth: verify JWT via getClaims
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authentication required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    if (authError || !user) {
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    // P0: Per-user rate limiting (15 requests/minute for Analyzer)
+    const userId = claimsData.claims.sub;
+
+    // 2) Premium entitlement check (no trial credits consumed)
+    const supabaseClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: entitlement } = await supabaseClient
+      .from("user_entitlements")
+      .select("plan, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const hasPaidAccess =
+      entitlement &&
+      entitlement.plan !== "free" &&
+      entitlement.current_period_end &&
+      new Date(entitlement.current_period_end) > new Date();
+
+    let isAdmin = false;
+    if (!hasPaidAccess) {
+      const { data: wl } = await userClient.rpc("is_user_whitelisted");
+      isAdmin = wl === true;
+    }
+
+    if (!hasPaidAccess && !isAdmin) {
+      return new Response(
+        JSON.stringify({ error: "Premium subscription required", code: "PAYWALL" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 402 }
+      );
+    }
+
+    // 3) Rate limiting (15 req/min)
     const rateLimitResult = await checkUserRateLimit({
       supabase: supabaseClient,
-      userId: user.id,
+      userId,
       feature: "analyzer",
       maxPerMinute: 15,
     });
@@ -93,7 +121,7 @@ serve(async (req) => {
     }
 
     const { fixtureId, homeTeamId, awayTeamId } = validation.data;
-    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}, user=${user.email}`);
+    console.log(`[analyze-fixture] Analyzing fixture ${fixtureId}: home=${homeTeamId}, away=${awayTeamId}, user=${userId}`);
 
     // STATS INTEGRITY CHECK - validate before returning any stats
     console.log(`[analyze-fixture] Running stats integrity validation for fixture ${fixtureId}`);
@@ -102,7 +130,6 @@ serve(async (req) => {
     if (!integrityCheck.isValid) {
       console.warn(`[analyze-fixture] STATS INTEGRITY FAIL for fixture ${fixtureId}: ${integrityCheck.reason}`);
       
-      // Return a structured response indicating stats are not available
       return new Response(
         JSON.stringify({
           stats_available: false,
@@ -127,7 +154,6 @@ serve(async (req) => {
 
     // Helper to get or compute team stats
     const getTeamStats = async (teamId: number) => {
-      // Try cache first
       const { data: cached } = await supabaseClient
         .from("stats_cache")
         .select("*")
@@ -135,7 +161,6 @@ serve(async (req) => {
         .single();
 
       if (cached && cached.last_five_fixture_ids && cached.last_five_fixture_ids.length > 0) {
-        // Check if cache is fresh (computed within last 2 hours)
         const cacheAge = Date.now() - new Date(cached.computed_at).getTime();
         const TWO_HOURS = 2 * 60 * 60 * 1000;
         if (cacheAge < TWO_HOURS) {
@@ -144,10 +169,9 @@ serve(async (req) => {
         }
       }
 
-    console.log(`[analyze-fixture] Cache miss or stale for team ${teamId}, computing fresh stats`);
-    const freshStats = await computeLastFiveAverages(teamId, supabaseClient);
+      console.log(`[analyze-fixture] Cache miss or stale for team ${teamId}, computing fresh stats`);
+      const freshStats = await computeLastFiveAverages(teamId, supabaseClient);
 
-    // Upsert to cache
       await supabaseClient.from("stats_cache").upsert({
         team_id: freshStats.team_id,
         goals: freshStats.goals,
@@ -165,7 +189,6 @@ serve(async (req) => {
       return freshStats;
     };
 
-    // Fetch stats for both teams
     const [homeStats, awayStats] = await Promise.all([
       getTeamStats(homeTeamId),
       getTeamStats(awayTeamId)
@@ -206,11 +229,9 @@ serve(async (req) => {
     console.log(`[analyze-fixture] Returning stats for fixture ${fixtureId}:`, {
       home: { team_id: homeStats.team_id, goals: homeStats.goals, sample_size: homeStats.sample_size },
       away: { team_id: awayStats.team_id, goals: awayStats.goals, sample_size: awayStats.sample_size },
-      user: user.email
+      user: userId
     });
 
-    // Build per-metric availability info for frontend
-    // A metric is "available" if sample_size >= 3 AND value > 0 (except cards/offsides which can be 0)
     const buildMetricInfo = (stats: any) => ({
       goals: { available: stats.sample_size >= MIN_SAMPLE_SIZE, value: stats.goals },
       corners: { available: stats.sample_size >= MIN_SAMPLE_SIZE && stats.corners > 0, value: stats.corners },
@@ -257,7 +278,6 @@ serve(async (req) => {
           away: awayInjuries
         },
         combined,
-        // Include integrity check details for debugging
         integrity: {
           home_team_status: integrityCheck.homeTeam,
           away_team_status: integrityCheck.awayTeam,
