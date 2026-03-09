@@ -7,19 +7,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.analyze-fixture]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fetch-odds]
 verify_jwt = true
 
 [functions.filterizer-query]
-verify_jwt = true
+verify_jwt = false
 
 [functions.stats-refresh]
 verify_jwt = false
 
 [functions.calculate-value]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-ticket]
 verify_jwt = true
@@ -64,7 +64,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.shuffle-ticket]
-verify_jwt = true
+verify_jwt = false
 
 [functions.verify-team-totals]
 verify_jwt = true
@@ -151,7 +151,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.btts-index]
-verify_jwt = true
+verify_jwt = false
 
 [functions.btts-refresh]
 verify_jwt = false

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,56 +37,78 @@ function poissonCDF(lambda: number, k: number): number {
   return Math.min(1, sum);
 }
 
-// Negative Binomial probability (overdispersed Poisson)
-function negBinomialPMF(mu: number, r: number, k: number): number {
-  if (mu <= 0) return k === 0 ? 1 : 0;
-  const p = r / (r + mu);
-  const coeff = Math.exp(
-    logGamma(r + k) - logGamma(k + 1) - logGamma(r)
-  );
-  return coeff * Math.pow(p, r) * Math.pow(1 - p, k);
-}
-
-function logGamma(z: number): number {
-  if (z < 1) return 0;
-  return (z - 0.5) * Math.log(z) - z + 0.5 * Math.log(2 * Math.PI);
-}
-
-function negBinomialCDF(mu: number, r: number, k: number): number {
-  let sum = 0;
-  for (let i = 0; i <= k; i++) {
-    sum += negBinomialPMF(mu, r, i);
-  }
-  return Math.min(1, sum);
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
-    // Verify authentication
+    // 1) Auth: verify JWT via getClaims
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authentication required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    if (authError || !user) {
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication token" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
+    }
+
+    const userId = claimsData.claims.sub;
+
+    // 2) Premium entitlement check (no trial credits consumed)
+    const supabaseClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: entitlement } = await supabaseClient
+      .from("user_entitlements")
+      .select("plan, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const hasPaidAccess =
+      entitlement &&
+      entitlement.plan !== "free" &&
+      entitlement.current_period_end &&
+      new Date(entitlement.current_period_end) > new Date();
+
+    let isAdmin = false;
+    if (!hasPaidAccess) {
+      const { data: wl } = await userClient.rpc("is_user_whitelisted");
+      isAdmin = wl === true;
+    }
+
+    if (!hasPaidAccess && !isAdmin) {
+      return new Response(
+        JSON.stringify({ error: "Premium subscription required", code: "PAYWALL" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 402 }
+      );
+    }
+
+    // 3) Rate limiting (10 req/min)
+    const rateLimitResult = await checkUserRateLimit({
+      supabase: supabaseClient,
+      userId,
+      feature: "calculate_value",
+      maxPerMinute: 10,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return buildRateLimitResponse("calculate_value", rateLimitResult.retryAfterSeconds || 60, corsHeaders);
     }
 
     // Validate input

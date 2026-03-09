@@ -5,7 +5,7 @@
 // Uses user_rate_limits table with (user_id, feature, window_start) as PK.
 // ============================================================================
 
-export type RateLimitFeature = "filterizer" | "ticket_creator" | "analyzer";
+export type RateLimitFeature = "filterizer" | "ticket_creator" | "analyzer" | "shuffle_ticket" | "calculate_value" | "safe_zone" | "safe_zone_chat" | "card_war" | "who_concedes" | "btts_index";
 
 export interface RateLimitResult {
   allowed: boolean;
