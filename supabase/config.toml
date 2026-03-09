@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.filterizer-query]
-verify_jwt = true
+verify_jwt = false
 
 [functions.stats-refresh]
 verify_jwt = false
