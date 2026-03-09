@@ -19,7 +19,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.calculate-value]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-ticket]
 verify_jwt = true
