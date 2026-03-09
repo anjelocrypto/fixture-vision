@@ -151,7 +151,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.btts-index]
-verify_jwt = true
+verify_jwt = false
 
 [functions.btts-refresh]
 verify_jwt = false
