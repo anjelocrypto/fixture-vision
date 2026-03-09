@@ -38,13 +38,19 @@ const HOCKEY_BASE = "https://v1.hockey.api-sports.io";
  */
 function normalizeMarket(betName: string): string | null {
   const n = betName.toLowerCase().trim();
-  if (n === "match winner" || n === "match winner (incl. ot and penalties)") return "match_winner";
-  if (n === "home/away" || n === "1x2" || n === "match result") return "reg_winner";
-  if (n === "over/under" || n === "total goals") return "total";
-  if (n.includes("first period") && (n.includes("over") || n.includes("under") || n.includes("total"))) return "p1_total";
-  if (n.includes("second period") && (n.includes("over") || n.includes("under") || n.includes("total"))) return "p2_total";
-  if (n.includes("third period") && (n.includes("over") || n.includes("under") || n.includes("total"))) return "p3_total";
-  if (n === "handicap" || n === "asian handicap" || n === "puck line") return "handicap";
+  if (n === "3way result" || n === "match result" || n === "1x2") return "reg_winner";
+  if (n === "home/away" || n === "match winner" || n === "match winner (incl. ot and penalties)") return "match_winner";
+  if (n === "over/under" || n === "total goals" || n === "total") return "total";
+  if (n === "asian handicap" || n === "handicap" || n === "puck line") return "handicap";
+  if (n.includes("1st period") || n.includes("first period")) {
+    if (n.includes("over") || n.includes("under") || n.includes("total")) return "p1_total";
+  }
+  if (n.includes("2nd period") || n.includes("second period")) {
+    if (n.includes("over") || n.includes("under") || n.includes("total")) return "p2_total";
+  }
+  if (n.includes("3rd period") || n.includes("third period")) {
+    if (n.includes("over") || n.includes("under") || n.includes("total")) return "p3_total";
+  }
   if (n.includes("home total")) return "home_total";
   if (n.includes("away total")) return "away_total";
   return null;
