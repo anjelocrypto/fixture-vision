@@ -128,13 +128,16 @@ serve(async (req) => {
       `[hockey-sync-fixtures] Window: ${windowHours}h, Leagues: ${leagueIds.join(", ")}`
     );
 
-    // Build date range (UTC)
-    const now = new Date();
-    const from = now.toISOString().split("T")[0]; // today
-    const toDate = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
-    const to   = toDate.toISOString().split("T")[0];
+    // Build list of dates to query (hockey API uses ?date=YYYY-MM-DD, no range params)
+    const now      = new Date();
+    const dayCount = Math.ceil(windowHours / 24);
+    const dates: string[] = [];
+    for (let d = 0; d < dayCount; d++) {
+      const day = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+      dates.push(day.toISOString().split("T")[0]);
+    }
 
-    console.log(`[hockey-sync-fixtures] Date range: ${from} → ${to}`);
+    console.log(`[hockey-sync-fixtures] Querying ${dates.length} dates: ${dates[0]} → ${dates[dates.length - 1]}`);
 
     // ── Counters ──────────────────────────────────────────────────────────────
     let leaguesUpserted = 0;
