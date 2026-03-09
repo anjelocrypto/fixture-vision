@@ -21,6 +21,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Demo from "./pages/Demo";
 import Basketball from "./pages/Basketball";
+import Hockey from "./pages/Hockey";
 import Markets from "./pages/Markets";
 import MarketDetail from "./pages/MarketDetail";
 import { Navigate } from "react-router-dom";
