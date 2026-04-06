@@ -642,9 +642,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       const extendedEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       let extQuery = supabase
         .from("optimized_selections")
-        .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
+        .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob, computed_at`)
         .gte("utc_kickoff", now.toISOString())
         .lt("utc_kickoff", extendedEnd.toISOString())
+        .gte("computed_at", selectionFreshnessFloor)
         .in("market", effectiveMarkets)
         .in("league_id", gbLeagueIds)
         .not("odds", "is", null)

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { AddToTicketButton } from "./AddToTicketButton";
 import { TicketLeg } from "@/stores/useTicket";
 import { useTranslation } from "react-i18next";
+import { StaleBadge } from "./shared/StaleBadge";
 
 interface Selection {
   id: string;
