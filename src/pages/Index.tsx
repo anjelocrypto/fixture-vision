@@ -48,6 +48,7 @@ const Index = () => {
     showCardWar, setShowCardWar,
     showBTTSIndex, setShowBTTSIndex,
     showSafeZone, setShowSafeZone,
+    showDailyInsights, setShowDailyInsights,
     openToolExclusive,
     filterCriteria, filteredFixtures,
     filterizerHasMore, loadingMoreFilterizer, filterizerTotalQualified,
@@ -61,7 +62,7 @@ const Index = () => {
   useRegisterOverlay("index-ticket-creator", ticketCreatorOpen, () => setTicketCreatorOpen(false));
 
   const toolStates: Record<string, boolean> = {
-    filterizer: showFilterizer, winner: showWinner, teamTotals: showTeamTotals,
+    dailyInsights: showDailyInsights, filterizer: showFilterizer, winner: showWinner, teamTotals: showTeamTotals,
     whoConcedes: showWhoConcedes, cardWar: showCardWar, bttsIndex: showBTTSIndex, safeZone: showSafeZone,
   };
 
@@ -136,6 +137,7 @@ const Index = () => {
                   showCardWar={showCardWar}
                   showBTTSIndex={showBTTSIndex}
                   showSafeZone={showSafeZone}
+                  showDailyInsights={showDailyInsights}
                   setShowFilterizer={setShowFilterizer}
                   setShowWinner={setShowWinner}
                   setShowTeamTotals={setShowTeamTotals}
@@ -143,6 +145,7 @@ const Index = () => {
                   setShowCardWar={setShowCardWar}
                   setShowBTTSIndex={setShowBTTSIndex}
                   setShowSafeZone={setShowSafeZone}
+                  setShowDailyInsights={setShowDailyInsights}
                   onApplyFilters={actions.handleApplyFilters}
                   onClearFilters={actions.handleClearFilters}
                   filterCriteria={filterCriteria}

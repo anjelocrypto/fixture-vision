@@ -58,6 +58,7 @@ export function useHomeState() {
   const [showCardWar, setShowCardWar] = useState(false);
   const [showBTTSIndex, setShowBTTSIndex] = useState(false);
   const [showSafeZone, setShowSafeZone] = useState(false);
+  const [showDailyInsights, setShowDailyInsights] = useState(false);
 
   // Overlay states
   const [leftSheetOpen, setLeftSheetOpen] = useState(false);
@@ -172,7 +173,8 @@ export function useHomeState() {
     setShowCardWar(tool === 'cardWar' ? !showCardWar : false);
     setShowBTTSIndex(tool === 'bttsIndex' ? !showBTTSIndex : false);
     setShowSafeZone(tool === 'safeZone' ? !showSafeZone : false);
-  }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone]);
+    setShowDailyInsights(tool === 'dailyInsights' ? !showDailyInsights : false);
+  }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone, showDailyInsights]);
 
   return {
     // Access
@@ -204,6 +206,7 @@ export function useHomeState() {
     showCardWar, setShowCardWar,
     showBTTSIndex, setShowBTTSIndex,
     showSafeZone, setShowSafeZone,
+    showDailyInsights, setShowDailyInsights,
     openToolExclusive,
     // Filterizer
     setFilterCriteria, setFilteredFixtures,

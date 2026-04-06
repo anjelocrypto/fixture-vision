@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Sparkles, Filter, Trophy, Target, ShieldAlert, Swords, Users, ShieldCheck } from "lucide-react";
+import { Sparkles, Filter, Trophy, Target, ShieldAlert, Swords, Users, ShieldCheck, Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { RightRail } from "@/components/RightRail";
 
@@ -21,6 +21,7 @@ export function DesktopToolSidebar({
   const { t } = useTranslation(['common']);
 
   const tools = [
+    { key: 'dailyInsights', icon: Eye, label: 'Daily Insights', tutorial: 'daily-insights-btn' },
     { key: 'filterizer', icon: Filter, label: t('common:filterizer'), tutorial: 'filterizer-btn' },
     { key: 'winner', icon: Trophy, label: t('common:winner_1x2'), tutorial: 'winner-btn' },
     { key: 'teamTotals', icon: Target, label: t('common:team_totals'), tutorial: 'team-totals-btn' },
