@@ -611,15 +611,21 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
     logs.push(`[GREEN_BUCKETS] Effective markets: [${effectiveMarkets.join(',')}] | Leagues: [${gbLeagueIds.join(',')}]`);
     
     // Primary query: strict date range
+    // FRESHNESS GATE: only consume selections computed within last 6 hours
+    const SELECTION_MAX_AGE_HOURS = 6;
+    const selectionFreshnessFloor = new Date(Date.now() - SELECTION_MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
+    
     let query = supabase
       .from("optimized_selections")
-      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob`)
+      .select(`id, fixture_id, league_id, country_code, utc_kickoff, market, side, line, odds, bookmaker, is_live, combined_snapshot, sample_size, rules_version, model_prob, computed_at`)
       .gte("utc_kickoff", now.toISOString())
       .lt("utc_kickoff", endDate.toISOString())
+      .gte("computed_at", selectionFreshnessFloor)
       .in("market", effectiveMarkets)
       .in("league_id", gbLeagueIds)
       .not("odds", "is", null)
       .lte("odds", GLOBAL_ODDS_CAP);
+    logs.push(`[FRESHNESS] Only consuming selections computed after ${selectionFreshnessFloor} (${SELECTION_MAX_AGE_HOURS}h max age)`);
     
     if (!useLiveOdds) query = query.eq("is_live", false);
     if (countryCode) query = query.eq("country_code", countryCode);
