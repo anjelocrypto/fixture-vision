@@ -62,7 +62,7 @@ const Index = () => {
   useRegisterOverlay("index-ticket-creator", ticketCreatorOpen, () => setTicketCreatorOpen(false));
 
   const toolStates: Record<string, boolean> = {
-    filterizer: showFilterizer, winner: showWinner, teamTotals: showTeamTotals,
+    dailyInsights: showDailyInsights, filterizer: showFilterizer, winner: showWinner, teamTotals: showTeamTotals,
     whoConcedes: showWhoConcedes, cardWar: showCardWar, bttsIndex: showBTTSIndex, safeZone: showSafeZone,
   };
 
