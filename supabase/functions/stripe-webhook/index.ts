@@ -400,12 +400,13 @@ serve(async (req) => {
           // Period expired - now we can downgrade
           console.log(`[webhook][${event.type}] Period expired (${currentPeriodEnd}), downgrading to free`);
           
+          // Use epoch zero instead of null (current_period_end is NOT NULL)
           const { error } = await supabase
             .from("user_entitlements")
             .update({
               plan: "free",
               status: "free",
-              current_period_end: null,
+              current_period_end: new Date(0).toISOString(),
               stripe_subscription_id: null,
               cancel_at_period_end: false,
               canceled_at: null,
@@ -414,6 +415,14 @@ serve(async (req) => {
 
           if (error) {
             console.error(`[webhook][${event.type}] ❌ Error downgrading:`, error);
+          } else {
+            // Alert on webhook-driven downgrade for monitoring
+            await supabase.from("pipeline_alerts").insert({
+              alert_type: "billing_downgrade",
+              severity: "info",
+              message: `User ${userId} downgraded to free via ${event.type} (period expired)`,
+              details: { user_id: userId, event_type: event.type, event_id: event.id },
+            });
           }
         }
         break;
@@ -456,12 +465,13 @@ serve(async (req) => {
           // Period already expired - downgrade immediately
           console.log(`[webhook][subscription.deleted] Period expired, setting user ${userId} to free plan`);
 
+          // Use epoch zero instead of null (current_period_end is NOT NULL)
           const { error } = await supabase
             .from("user_entitlements")
             .update({ 
               plan: "free",
               status: "free",
-              current_period_end: null,
+              current_period_end: new Date(0).toISOString(),
               stripe_subscription_id: null,
               cancel_at_period_end: false,
             })
