@@ -58,6 +58,7 @@ export function useHomeState() {
   const [showCardWar, setShowCardWar] = useState(false);
   const [showBTTSIndex, setShowBTTSIndex] = useState(false);
   const [showSafeZone, setShowSafeZone] = useState(false);
+  const [showDailyInsights, setShowDailyInsights] = useState(false);
 
   // Overlay states
   const [leftSheetOpen, setLeftSheetOpen] = useState(false);
