@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { trackEvent } from "@/lib/analytics";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { getEmptyStateMessage } from "@/lib/holidayMessages";
