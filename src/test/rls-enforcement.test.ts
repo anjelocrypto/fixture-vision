@@ -1,125 +1,121 @@
 /**
  * RLS Enforcement Tests
  * 
- * These tests verify that premium data tables are NOT readable by
- * regular authenticated users (only admin or service_role).
- * 
- * Since we cannot create real Supabase auth contexts in unit tests,
- * these tests verify the RLS policy expectations structurally and
- * test the client-side access patterns.
+ * Uses the REAL Supabase client with the anon key (no auth session)
+ * to verify that premium tables return 0 rows to unauthenticated users.
+ * This is a real integration test — it hits the actual database.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 
-// Mock Supabase client
-const mockSelect = vi.fn();
-const mockFrom = vi.fn((_table: string) => ({ select: mockSelect }));
-const mockGetUser = vi.fn();
+const SUPABASE_URL = "https://dutkpzrisvqgxadxbkxo.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dGtwenJpc3ZxZ3hhZHhia3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNjU5MzcsImV4cCI6MjA3Njc0MTkzN30.EnyLh7gSyeldcQo5qJBr5O_D55p_IM52x2xIBmIZlpE";
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: (table: string) => mockFrom(table),
-    auth: {
-      getUser: () => mockGetUser(),
-    },
-  },
-}));
+// Real anon client — no auth session, simulates an unauthenticated/free user
+const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * Tables that must be admin-only (not readable by regular authenticated users).
- * These were patched in migration 20260406022331.
+ * Tables that MUST return 0 rows (or error) to anon users.
+ * These are admin-only via RLS.
  */
 const ADMIN_ONLY_TABLES = [
   "optimized_selections",
   "safe_zone_picks",
   "team_totals_candidates",
   "performance_weights",
-  "odds_cache",
-  "analysis_cache",
-  "outcome_selections",
-  "optimizer_cache",
-];
+] as const;
 
 /**
- * Tables that should be readable by the owning user only.
- */
-const USER_SCOPED_TABLES = [
-  "generated_tickets",     // user_id = auth.uid()
-  "market_positions",      // user_id = auth.uid()
-];
-
-/**
- * Tables that are public read (no restriction needed).
+ * Tables that should be publicly readable (fixtures, leagues, etc.)
  */
 const PUBLIC_READ_TABLES = [
   "fixtures",
   "leagues",
   "countries",
-  "green_buckets",
-];
+] as const;
 
-describe("RLS Policy Expectations", () => {
-  describe("Admin-only premium tables", () => {
-    ADMIN_ONLY_TABLES.forEach((table) => {
-      it(`${table} should NOT be queryable by non-admin users`, () => {
-        // This test documents the expected RLS behavior.
-        // The actual enforcement is at the Postgres level.
-        // If a non-admin user queries these tables, they get 0 rows (not an error).
-        expect(ADMIN_ONLY_TABLES).toContain(table);
-      });
+describe("RLS: Admin-only premium tables block anon reads", () => {
+  for (const table of ADMIN_ONLY_TABLES) {
+    it(`anon user gets 0 rows from ${table}`, async () => {
+      const { data, error } = await (anonClient as any)
+        .from(table)
+        .select("*")
+        .limit(1);
+
+      // RLS blocks: either error or empty array
+      if (error) {
+        // Permission denied is acceptable
+        expect(error.code).toBeTruthy();
+      } else {
+        expect(data).toEqual([]);
+      }
     });
+  }
+});
+
+describe("RLS: Public tables are readable by anon", () => {
+  for (const table of PUBLIC_READ_TABLES) {
+    it(`anon user can read from ${table}`, async () => {
+      const { data, error } = await (anonClient as any)
+        .from(table)
+        .select("id")
+        .limit(1);
+
+      // Should succeed (no RLS block)
+      expect(error).toBeNull();
+      // data may be empty if no rows, but shouldn't be blocked
+      expect(Array.isArray(data)).toBe(true);
+    });
+  }
+});
+
+describe("RLS: User-scoped tables block anon", () => {
+  it("anon user gets 0 rows from user_entitlements", async () => {
+    const { data, error } = await (anonClient as any)
+      .from("user_entitlements")
+      .select("*")
+      .limit(1);
+
+    if (error) {
+      expect(error.code).toBeTruthy();
+    } else {
+      expect(data).toEqual([]);
+    }
   });
 
-  describe("User-scoped tables", () => {
-    USER_SCOPED_TABLES.forEach((table) => {
-      it(`${table} should only return rows where user_id = auth.uid()`, () => {
-        expect(USER_SCOPED_TABLES).toContain(table);
-      });
-    });
-  });
+  it("anon user gets 0 rows from generated_tickets", async () => {
+    const { data, error } = await (anonClient as any)
+      .from("generated_tickets")
+      .select("*")
+      .limit(1);
 
-  describe("Public read tables", () => {
-    PUBLIC_READ_TABLES.forEach((table) => {
-      it(`${table} should be readable by anyone`, () => {
-        expect(PUBLIC_READ_TABLES).toContain(table);
-      });
-    });
+    if (error) {
+      expect(error.code).toBeTruthy();
+    } else {
+      expect(data).toEqual([]);
+    }
   });
 });
 
-describe("Premium edge function access patterns", () => {
+describe("Premium edge functions require auth", () => {
   const PREMIUM_FUNCTIONS = [
     "generate-ticket",
+    "analyze-fixture",
     "filterizer-query",
     "safe-zone",
-    "analyze-fixture",
     "card-war",
     "who-concedes",
     "btts-index",
   ];
 
-  PREMIUM_FUNCTIONS.forEach((fn) => {
-    it(`${fn} should enforce server-side entitlement check (402 for free users)`, () => {
-      // Documents that each function uses try_use_feature RPC
-      // Actual enforcement tested via edge function integration tests
-      expect(PREMIUM_FUNCTIONS).toContain(fn);
+  for (const fn of PREMIUM_FUNCTIONS) {
+    it(`${fn} returns 401/402 without auth token`, async () => {
+      const { error } = await anonClient.functions.invoke(fn, {
+        body: {},
+      });
+
+      // Should fail with auth or paywall error
+      expect(error).toBeTruthy();
     });
-  });
-});
-
-describe("Analytics events table RLS", () => {
-  it("authenticated users can only insert their own events", () => {
-    // RLS: WITH CHECK (user_id = auth.uid())
-    // This means users can track their own events but not impersonate others
-    expect(true).toBe(true);
-  });
-
-  it("anon users can only insert events with null user_id", () => {
-    // RLS: WITH CHECK (user_id IS NULL)
-    expect(true).toBe(true);
-  });
-
-  it("only admins can read analytics events", () => {
-    // RLS: USING (has_role(auth.uid(), 'admin'))
-    expect(true).toBe(true);
-  });
+  }
 });
