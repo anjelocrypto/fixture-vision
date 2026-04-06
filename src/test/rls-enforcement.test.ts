@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // Mock Supabase client
 const mockSelect = vi.fn();
-const mockFrom = vi.fn(() => ({ select: mockSelect }));
+const mockFrom = vi.fn((_table: string) => ({ select: mockSelect }));
 const mockGetUser = vi.fn();
 
 vi.mock("@/integrations/supabase/client", () => ({
