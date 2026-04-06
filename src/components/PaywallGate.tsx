@@ -1,5 +1,6 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { useAccess } from "@/hooks/useAccess";
+import { trackEvent } from "@/lib/analytics";
 
 interface PaywallGateProps {
   children: ReactNode;
