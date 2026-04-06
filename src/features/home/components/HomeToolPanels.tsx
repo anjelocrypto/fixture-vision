@@ -5,6 +5,7 @@ import { WhoConcedesPanel } from "@/components/WhoConcedesPanel";
 import { CardWarPanel } from "@/components/CardWarPanel";
 import { BTTSIndexPanel } from "@/components/BTTSIndexPanel";
 import { SafeZonePanel } from "@/components/SafeZonePanel";
+import { DailyInsightsPanel } from "@/components/DailyInsightsPanel";
 
 interface HomeToolPanelsProps {
   showFilterizer: boolean;
@@ -14,6 +15,7 @@ interface HomeToolPanelsProps {
   showCardWar: boolean;
   showBTTSIndex: boolean;
   showSafeZone: boolean;
+  showDailyInsights: boolean;
   setShowFilterizer: (v: boolean) => void;
   setShowWinner: (v: boolean) => void;
   setShowTeamTotals: (v: boolean) => void;
@@ -21,6 +23,7 @@ interface HomeToolPanelsProps {
   setShowCardWar: (v: boolean) => void;
   setShowBTTSIndex: (v: boolean) => void;
   setShowSafeZone: (v: boolean) => void;
+  setShowDailyInsights: (v: boolean) => void;
   onApplyFilters: (filters: FilterCriteria) => void;
   onClearFilters: () => void;
   filterCriteria: FilterCriteria | null;
@@ -28,9 +31,9 @@ interface HomeToolPanelsProps {
 
 export function HomeToolPanels({
   showFilterizer, showWinner, showTeamTotals, showWhoConcedes,
-  showCardWar, showBTTSIndex, showSafeZone,
+  showCardWar, showBTTSIndex, showSafeZone, showDailyInsights,
   setShowFilterizer, setShowWinner, setShowTeamTotals, setShowWhoConcedes,
-  setShowCardWar, setShowBTTSIndex, setShowSafeZone,
+  setShowCardWar, setShowBTTSIndex, setShowSafeZone, setShowDailyInsights,
   onApplyFilters, onClearFilters, filterCriteria,
 }: HomeToolPanelsProps) {
   return (
@@ -48,6 +51,7 @@ export function HomeToolPanels({
       {showCardWar && <CardWarPanel onClose={() => setShowCardWar(false)} />}
       {showBTTSIndex && <BTTSIndexPanel onClose={() => setShowBTTSIndex(false)} />}
       {showSafeZone && <SafeZonePanel onClose={() => setShowSafeZone(false)} />}
+      {showDailyInsights && <DailyInsightsPanel onClose={() => setShowDailyInsights(false)} />}
     </>
   );
 }
