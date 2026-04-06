@@ -238,6 +238,8 @@ export function useHomeActions(state: any) {
       setTicketDrawerOpen(true);
       setTicketCreatorOpen(false);
 
+      trackEvent("ticket_generated", { legs: data.ticket.legs.length, total_odds: data.ticket.total_odds, day_range: params.dayRange });
+
       const oddsSource = data.used_live ? "Live" : "Pre-match";
       const winProbNote = data.ticket.estimated_win_prob ? ` • Win: ${data.ticket.estimated_win_prob.toFixed(1)}%` : "";
       toast({
