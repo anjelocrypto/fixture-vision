@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Users can update own trial credits" ON public.user_trial_credits;
