@@ -83,7 +83,8 @@ serve(async (req) => {
       const customerId = sub.customer as string;
       const priceId = sub.items.data[0]?.price?.id;
       const plan = getPlanFromPriceId(priceId || "");
-      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+      const endTs = sub.current_period_end;
+      const periodEnd = endTs ? new Date(endTs * 1000).toISOString() : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // Find user by stripe_customer_id
       const { data: entitlement } = await supabase

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { trackEvent } from "@/lib/analytics";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { getEmptyStateMessage } from "@/lib/holidayMessages";
@@ -92,6 +93,8 @@ export function useHomeActions(state: any) {
         injuries: analysisData.injuries || { home: [], away: [] },
         odds_available: !!oddsData,
       });
+
+      trackEvent("feature_used", { feature: "analyze_fixture", fixture_id: fixture.id });
 
       if (oddsData) {
         const { data: valueData, error: valueError } = await supabase.functions.invoke("calculate-value", {
@@ -235,6 +238,8 @@ export function useHomeActions(state: any) {
       setTicketDrawerOpen(true);
       setTicketCreatorOpen(false);
 
+      trackEvent("ticket_generated", { legs: data.ticket.legs.length, total_odds: data.ticket.total_odds, day_range: params.dayRange });
+
       const oddsSource = data.used_live ? "Live" : "Pre-match";
       const winProbNote = data.ticket.estimated_win_prob ? ` • Win: ${data.ticket.estimated_win_prob.toFixed(1)}%` : "";
       toast({
@@ -356,6 +361,7 @@ export function useHomeActions(state: any) {
       setFilteredFixtures(data.selections || []);
       setFilterizerTotalQualified(data.total_qualified || data.count);
       setFilterizerHasMore(data.pagination?.has_more || false);
+      trackEvent("feature_used", { feature: "filterizer", count: data.count });
       toast({ title: "Filters Applied", description: `Found ${data.count} selections` });
     } catch (error: any) {
       toast({ title: "Error", description: "Failed to apply filters.", variant: "destructive" });
