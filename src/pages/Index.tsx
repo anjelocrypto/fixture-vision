@@ -48,6 +48,7 @@ const Index = () => {
     showCardWar, setShowCardWar,
     showBTTSIndex, setShowBTTSIndex,
     showSafeZone, setShowSafeZone,
+    showDailyInsights, setShowDailyInsights,
     openToolExclusive,
     filterCriteria, filteredFixtures,
     filterizerHasMore, loadingMoreFilterizer, filterizerTotalQualified,
