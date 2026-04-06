@@ -158,6 +158,10 @@ const Pricing = () => {
     }
   };
 
+  useEffect(() => {
+    trackEvent("pricing_view");
+  }, []);
+
   const statusParam = searchParams.get("status") || searchParams.get("checkout");
   if (statusParam === "cancelled" || statusParam === "cancel") {
     toast({
