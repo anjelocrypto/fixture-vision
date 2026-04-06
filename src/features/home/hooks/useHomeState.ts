@@ -206,6 +206,7 @@ export function useHomeState() {
     showCardWar, setShowCardWar,
     showBTTSIndex, setShowBTTSIndex,
     showSafeZone, setShowSafeZone,
+    showDailyInsights, setShowDailyInsights,
     openToolExclusive,
     // Filterizer
     setFilterCriteria, setFilteredFixtures,
