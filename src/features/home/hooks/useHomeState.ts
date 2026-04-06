@@ -173,7 +173,8 @@ export function useHomeState() {
     setShowCardWar(tool === 'cardWar' ? !showCardWar : false);
     setShowBTTSIndex(tool === 'bttsIndex' ? !showBTTSIndex : false);
     setShowSafeZone(tool === 'safeZone' ? !showSafeZone : false);
-  }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone]);
+    setShowDailyInsights(tool === 'dailyInsights' ? !showDailyInsights : false);
+  }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone, showDailyInsights]);
 
   return {
     // Access
