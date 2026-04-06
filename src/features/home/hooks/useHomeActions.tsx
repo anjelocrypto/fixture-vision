@@ -94,6 +94,8 @@ export function useHomeActions(state: any) {
         odds_available: !!oddsData,
       });
 
+      trackEvent("feature_used", { feature: "analyze_fixture", fixture_id: fixture.id });
+
       if (oddsData) {
         const { data: valueData, error: valueError } = await supabase.functions.invoke("calculate-value", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
