@@ -185,11 +185,13 @@ serve(async (req) => {
     }
     if (staleStatsTeams.size > 0) {
       console.warn(`[optimize] STALE_STATS: ${staleStatsTeams.size} teams have stats older than ${STATS_MAX_AGE_HOURS}h`);
+    }
+
     // QA visibility: distribution of fixtures by odds presence
     console.log(`[optimize] Found ${fixtures.length} upcoming fixtures in ${window_hours}h window`);
     const fixturesWithOdds = fixtures.filter((f: any) => oddsMap.has(f.id)).length;
     const fixturesWithoutOdds = fixtures.length - fixturesWithOdds;
-    console.log(`[optimize] Fixture distribution: with_odds=${fixturesWithOdds}, without_odds=${fixturesWithoutOdds}`);
+    console.log(`[optimize] Fixture distribution: with_odds=${fixturesWithOdds}, without_odds=${fixturesWithoutOdds}, stale_odds_dropped=${staleOddsDropped}, stale_stats_teams=${staleStatsTeams.size}`);
 
     // Batch fetch leagues for country_code
     const leagueIds = [...new Set(fixtures.map((f: any) => f.league_id).filter(Boolean))];
@@ -254,6 +256,14 @@ serve(async (req) => {
       const awayTeamId = fixture.teams_away?.id;
 
       if (!homeTeamId || !awayTeamId) {
+        skipped++;
+        continue;
+      }
+
+      // FRESHNESS GATE: Skip fixture if either team has stale stats
+      if (staleStatsTeams.has(homeTeamId) || staleStatsTeams.has(awayTeamId)) {
+        staleStatsDropped++;
+        console.log(`[optimize] STALE_STATS_SKIP fixture=${fixture.id} home=${homeTeamId} away=${awayTeamId}`);
         skipped++;
         continue;
       }
