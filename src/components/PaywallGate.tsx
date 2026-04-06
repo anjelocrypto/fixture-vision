@@ -1,5 +1,6 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { useAccess } from "@/hooks/useAccess";
+import { trackEvent } from "@/lib/analytics";
 
 interface PaywallGateProps {
   children: ReactNode;
@@ -26,6 +27,13 @@ export const PaywallGate = ({
   silent = false 
 }: PaywallGateProps) => {
   const { hasAccess, loading, isWhitelisted } = useAccess();
+  const hasPaidAccess = hasAccess || isWhitelisted;
+
+  useEffect(() => {
+    if (!loading && !hasPaidAccess) {
+      trackEvent("paywall_hit", { feature });
+    }
+  }, [loading, hasPaidAccess, feature]);
 
   if (loading) {
     return (
@@ -38,10 +46,7 @@ export const PaywallGate = ({
     );
   }
 
-  const hasPaidAccess = hasAccess || isWhitelisted;
-
   if (!hasPaidAccess) {
-    // Return null - parent component should handle showing upgrade UI
     return null;
   }
 

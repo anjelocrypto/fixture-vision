@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { trackEvent } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -132,6 +133,7 @@ const Account = () => {
   const handleCancelSubscription = async () => {
     setCancelling(true);
     try {
+      trackEvent("subscription_canceled");
       const { data, error } = await supabase.functions.invoke("cancel-subscription");
       if (error) throw error;
       toast({ title: "Subscription Cancelled", description: "Your subscription has been cancelled successfully." });

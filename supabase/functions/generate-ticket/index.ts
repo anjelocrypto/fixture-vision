@@ -1957,6 +1957,10 @@ function generateOptimizedTicket(
     let beam: State[] = seedStates;
     let expansions = 0;
 
+    // === CORRELATION GUARDS CONFIG ===
+    const MAX_PER_MARKET = 2;  // Market-type diversity: max 2 legs of same market
+    const MAX_PER_LEAGUE = 2;  // Same-league soft cap: max 2 legs from same league
+    
     for (let depth = 0; depth < targetN && Date.now() - attemptStart < ATTEMPT_TIMEOUT; depth++) {
       const next: State[] = [];
 
@@ -1970,6 +1974,17 @@ function generateOptimizedTicket(
           
           // ONE LEG PER FIXTURE: Skip if this fixture is already used
           if (state.usedFixtures.has(cand.fixtureId)) continue;
+
+          // CORRELATION GUARD: Market-type diversity (max MAX_PER_MARKET legs of same market)
+          const marketCountInState = state.legs.filter(l => l.market === cand.market).length;
+          if (marketCountInState >= MAX_PER_MARKET) continue;
+
+          // CORRELATION GUARD: Same-league soft cap (max MAX_PER_LEAGUE legs from same league)
+          const candLeagueId = (cand as any)._leagueId || 0;
+          if (candLeagueId > 0) {
+            const leagueCountInState = state.legs.filter(l => (l as any)._leagueId === candLeagueId).length;
+            if (leagueCountInState >= MAX_PER_LEAGUE) continue;
+          }
 
           const newProduct = state.product * cand.odds;
           

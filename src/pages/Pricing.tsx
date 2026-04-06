@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { trackEvent } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +87,7 @@ const Pricing = () => {
     // Global lock - disable all buttons while any checkout is in progress
     if (loading) return;
     
+    trackEvent("checkout_started", { plan: planId });
     setLoading(planId);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -155,6 +157,10 @@ const Pricing = () => {
       setLoading(null);
     }
   };
+
+  useEffect(() => {
+    trackEvent("pricing_view");
+  }, []);
 
   const statusParam = searchParams.get("status") || searchParams.get("checkout");
   if (statusParam === "cancelled" || statusParam === "cancel") {
