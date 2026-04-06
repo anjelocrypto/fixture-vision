@@ -87,6 +87,7 @@ const Pricing = () => {
     // Global lock - disable all buttons while any checkout is in progress
     if (loading) return;
     
+    trackEvent("checkout_started", { plan: planId });
     setLoading(planId);
     try {
       const { data: { session } } = await supabase.auth.getSession();

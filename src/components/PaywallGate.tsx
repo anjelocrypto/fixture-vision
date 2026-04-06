@@ -41,6 +41,12 @@ export const PaywallGate = ({
 
   const hasPaidAccess = hasAccess || isWhitelisted;
 
+  useEffect(() => {
+    if (!loading && !hasPaidAccess) {
+      trackEvent("paywall_hit", { feature });
+    }
+  }, [loading, hasPaidAccess, feature]);
+
   if (!hasPaidAccess) {
     // Return null - parent component should handle showing upgrade UI
     return null;

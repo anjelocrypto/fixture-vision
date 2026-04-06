@@ -14,6 +14,8 @@ const PaymentSuccess = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    trackEvent("checkout_completed");
+
     // Ensure session is restored and refresh entitlements immediately
     const refreshAccess = async () => {
       try {

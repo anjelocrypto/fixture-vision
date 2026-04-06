@@ -100,6 +100,8 @@ export default function Auth() {
         }
       }
 
+      trackEvent("signup", { method: "email" });
+
       toast({
         title: t('common:success'),
         description: t('common:signup_success'),
