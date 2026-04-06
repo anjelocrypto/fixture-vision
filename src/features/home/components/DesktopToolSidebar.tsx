@@ -21,7 +21,7 @@ export function DesktopToolSidebar({
   const { t } = useTranslation(['common']);
 
   const tools = [
-    { key: 'dailyInsights', icon: Eye, label: 'Daily Insights', tutorial: 'daily-insights-btn' },
+    { key: 'dailyInsights', icon: Eye, label: 'Daily Signals', tutorial: 'daily-insights-btn' },
     { key: 'filterizer', icon: Filter, label: t('common:filterizer'), tutorial: 'filterizer-btn' },
     { key: 'winner', icon: Trophy, label: t('common:winner_1x2'), tutorial: 'winner-btn' },
     { key: 'teamTotals', icon: Target, label: t('common:team_totals'), tutorial: 'team-totals-btn' },

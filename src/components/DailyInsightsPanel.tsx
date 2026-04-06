@@ -7,8 +7,8 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Shield, TrendingUp, Clock, AlertTriangle, Info, X,
-  CheckCircle2, BarChart3, Loader2, Eye,
+  Shield, TrendingUp, TrendingDown, Minus, Clock, AlertTriangle, Info, X,
+  CheckCircle2, BarChart3, Loader2, Zap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ interface DailyInsightsPanelProps {
   onClose: () => void;
 }
 
-interface Insight {
+interface Signal {
   id: string;
   fixture_id: number;
   league_id: number;
@@ -53,18 +53,25 @@ const MARKET_LABELS: Record<string, string> = {
   cards: "Cards",
 };
 
+const TREND_CONFIG: Record<string, { label: string; icon: typeof TrendingUp; color: string }> = {
+  improving: { label: "Improving", icon: TrendingUp, color: "text-emerald-400" },
+  stable: { label: "Stable", icon: Minus, color: "text-blue-400" },
+  degrading: { label: "Degrading", icon: TrendingDown, color: "text-orange-400" },
+  unknown: { label: "Unknown", icon: Minus, color: "text-muted-foreground" },
+};
+
 export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
   const isMobile = useIsMobile();
-  const [insights, setInsights] = useState<Insight[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchInsights();
+    fetchSignals();
   }, []);
 
-  const fetchInsights = async () => {
+  const fetchSignals = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -79,16 +86,16 @@ export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
         .limit(2);
 
       if (dbError) throw dbError;
-      setInsights((data as any[]) || []);
+      setSignals((data as any[]) || []);
     } catch (err: any) {
-      console.error("[DailyInsights] Error:", err);
-      setError("Unable to load today's insights");
+      console.error("[DailySignals] Error:", err);
+      setError("Unable to load today's signals");
     } finally {
       setLoading(false);
     }
   };
 
-  const generatedAt = insights[0]?.computed_at;
+  const generatedAt = signals[0]?.computed_at;
 
   return (
     <div className={cn(
@@ -98,10 +105,10 @@ export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card/50">
         <div className="flex items-center gap-2">
-          <Eye className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold text-foreground">Daily Safest Insights</h3>
+          <Zap className="h-5 w-5 text-primary" />
+          <h3 className="font-semibold text-foreground">Daily 2 Strongest Signals</h3>
           <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-            {insights.length}/2
+            {signals.length}/2
           </Badge>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
@@ -116,15 +123,17 @@ export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
             <TooltipTrigger asChild>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-help">
                 <Info className="h-3.5 w-3.5" />
-                <span>How confidence is calculated</span>
+                <span>How signal strength is calculated</span>
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
               <p className="text-xs">
-                Each insight is scored using a composite formula: historical hit rate (30%), 
-                sample size (20%), league reliability (15%), market stability (10%), 
-                recent team form (10%), data freshness (10%), and ROI (5%). 
-                Penalties are applied for stale data, suspicious pricing, or low team samples.
+                Each signal is scored using a strict composite formula: historical hit rate (25%),
+                recency consistency (15%), sample size (15%), green bucket validation (10%),
+                league reliability (10%), market stability (5%), stats freshness (5%),
+                odds freshness (5%), ROI quality (5%), and team form (5%).
+                Penalties apply for degrading trends, stale data, or out-of-band pricing.
+                Only the 1.40–1.60 price band is preferred.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -142,27 +151,27 @@ export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <AlertTriangle className="h-8 w-8 mb-3 text-yellow-400" />
             <p className="text-sm">{error}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={fetchInsights}>
+            <Button variant="outline" size="sm" className="mt-3" onClick={fetchSignals}>
               Retry
             </Button>
           </div>
-        ) : insights.length === 0 ? (
+        ) : signals.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <Shield className="h-8 w-8 mb-3" />
-            <p className="text-sm font-medium">No Insights Available Today</p>
+            <p className="text-sm font-medium">No Signals Available Today</p>
             <p className="text-xs mt-1 text-center max-w-[250px]">
               No fixtures met our strict quality, freshness, and historical performance thresholds today.
             </p>
           </div>
         ) : (
           <>
-            {insights.map((insight, index) => (
-              <InsightCard
-                key={insight.id}
-                insight={insight}
+            {signals.map((signal, index) => (
+              <SignalCard
+                key={signal.id}
+                signal={signal}
                 rank={index + 1}
-                expanded={expandedId === insight.id}
-                onToggle={() => setExpandedId(expandedId === insight.id ? null : insight.id)}
+                expanded={expandedId === signal.id}
+                onToggle={() => setExpandedId(expandedId === signal.id ? null : signal.id)}
               />
             ))}
           </>
@@ -183,23 +192,29 @@ export function DailyInsightsPanel({ onClose }: DailyInsightsPanelProps) {
   );
 }
 
-// ── Individual Insight Card ─────────────────────────────────────────────────
+// ── Signal Card ─────────────────────────────────────────────────────────────
 
-function InsightCard({
-  insight,
+function SignalCard({
+  signal,
   rank,
   expanded,
   onToggle,
 }: {
-  insight: Insight;
+  signal: Signal;
   rank: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const conf = CONFIDENCE_CONFIG[insight.confidence_tier] || CONFIDENCE_CONFIG.moderate;
+  const conf = CONFIDENCE_CONFIG[signal.confidence_tier] || CONFIDENCE_CONFIG.moderate;
   const ConfIcon = conf.icon;
-  const marketLabel = MARKET_LABELS[insight.market] || insight.market;
-  const sideLabel = insight.side === "over" ? "Over" : "Under";
+  const marketLabel = MARKET_LABELS[signal.market] || signal.market;
+  const sideLabel = signal.side === "over" ? "Over" : "Under";
+
+  // Extract trend from metadata
+  const trendLabel = signal.generation_metadata?.trend_label || "unknown";
+  const trendConf = TREND_CONFIG[trendLabel] || TREND_CONFIG.unknown;
+  const TrendIcon = trendConf.icon;
+  const oddsBand = signal.generation_metadata?.odds_band || "unknown";
 
   return (
     <Card
@@ -210,7 +225,7 @@ function InsightCard({
       onClick={onToggle}
     >
       <div className="p-3 space-y-2.5">
-        {/* Top row: rank + fixture + confidence */}
+        {/* Top row */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">
@@ -218,10 +233,10 @@ function InsightCard({
             </span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
-                {insight.home_team} vs {insight.away_team}
+                {signal.home_team} vs {signal.away_team}
               </p>
               <p className="text-xs text-muted-foreground">
-                {insight.league_name} · {format(new Date(insight.kickoff_at), "HH:mm")}
+                {signal.league_name} · {format(new Date(signal.kickoff_at), "HH:mm")}
               </p>
             </div>
           </div>
@@ -231,24 +246,33 @@ function InsightCard({
           </div>
         </div>
 
-        {/* Market + Stats row */}
+        {/* Market + Badges */}
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="secondary" className="text-xs">
-            {marketLabel} {sideLabel} {insight.line}
+            {marketLabel} {sideLabel} {signal.line}
           </Badge>
-          <FreshnessBadge status={insight.freshness_status} />
-          {insight.warning_flags.length > 0 && (
+          {oddsBand !== "unknown" && (
+            <Badge variant="outline" className="text-[10px]">
+              {oddsBand}
+            </Badge>
+          )}
+          <FreshnessBadge status={signal.freshness_status} />
+          <div className={cn("flex items-center gap-0.5 text-[10px]", trendConf.color)}>
+            <TrendIcon className="h-3 w-3" />
+            <span>{trendConf.label}</span>
+          </div>
+          {signal.warning_flags.length > 0 && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
                     <AlertTriangle className="h-3 w-3 mr-1" />
-                    {insight.warning_flags.length}
+                    {signal.warning_flags.length}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
                   <ul className="text-xs space-y-0.5">
-                    {insight.warning_flags.map((w, i) => (
+                    {signal.warning_flags.map((w, i) => (
                       <li key={i}>• {w.replace(/_/g, " ")}</li>
                     ))}
                   </ul>
@@ -258,34 +282,41 @@ function InsightCard({
           )}
         </div>
 
-        {/* Key metrics */}
+        {/* Metrics */}
         <div className="grid grid-cols-3 gap-2">
           <MetricPill
             icon={TrendingUp}
             label="Hit Rate"
-            value={`${(insight.historical_hit_rate * 100).toFixed(1)}%`}
+            value={`${(signal.historical_hit_rate * 100).toFixed(1)}%`}
           />
           <MetricPill
             icon={BarChart3}
             label="Sample"
-            value={String(insight.sample_size)}
+            value={String(signal.sample_size)}
           />
           <MetricPill
-            icon={Shield}
+            icon={Zap}
             label="Score"
-            value={insight.daily_safety_score.toFixed(2)}
+            value={signal.daily_safety_score.toFixed(2)}
           />
         </div>
 
-        {/* Expanded: supporting reason */}
+        {/* Expanded details */}
         {expanded && (
           <div className="pt-2 border-t border-border/40 space-y-2 animate-in fade-in-50 duration-200">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              {insight.supporting_reason}
+              {signal.supporting_reason}
             </p>
-            {insight.odds && (
+            {signal.odds && (
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="font-medium">Market price:</span> {insight.odds.toFixed(2)}
+                <span className="font-medium">Market price:</span> {signal.odds.toFixed(2)}
+              </div>
+            )}
+            {signal.generation_metadata?.pw_hit_rate && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="font-medium">Recent weighted rate:</span>{" "}
+                {(signal.generation_metadata.pw_hit_rate * 100).toFixed(1)}%
+                ({signal.generation_metadata.pw_sample} samples)
               </div>
             )}
           </div>
