@@ -136,6 +136,7 @@ const Index = () => {
                   showCardWar={showCardWar}
                   showBTTSIndex={showBTTSIndex}
                   showSafeZone={showSafeZone}
+                  showDailyInsights={showDailyInsights}
                   setShowFilterizer={setShowFilterizer}
                   setShowWinner={setShowWinner}
                   setShowTeamTotals={setShowTeamTotals}
@@ -143,6 +144,7 @@ const Index = () => {
                   setShowCardWar={setShowCardWar}
                   setShowBTTSIndex={setShowBTTSIndex}
                   setShowSafeZone={setShowSafeZone}
+                  setShowDailyInsights={setShowDailyInsights}
                   onApplyFilters={actions.handleApplyFilters}
                   onClearFilters={actions.handleClearFilters}
                   filterCriteria={filterCriteria}
