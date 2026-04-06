@@ -122,6 +122,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                   <Badge variant="outline">
                     {selection.side} {selection.line}
                   </Badge>
+                  <StaleBadge capturedAt={selection.computed_at} maxAgeHours={6} label="Odds" />
                   {isModelOnly && (
                     <Badge variant="secondary" className="bg-muted text-muted-foreground">
                       MODEL ONLY
