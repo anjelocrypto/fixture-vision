@@ -465,12 +465,13 @@ serve(async (req) => {
           // Period already expired - downgrade immediately
           console.log(`[webhook][subscription.deleted] Period expired, setting user ${userId} to free plan`);
 
+          // Use epoch zero instead of null (current_period_end is NOT NULL)
           const { error } = await supabase
             .from("user_entitlements")
             .update({ 
               plan: "free",
               status: "free",
-              current_period_end: null,
+              current_period_end: new Date(0).toISOString(),
               stripe_subscription_id: null,
               cancel_at_period_end: false,
             })
