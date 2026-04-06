@@ -38,6 +38,7 @@ interface Selection {
   away_team?: string;
   home_team_logo?: string;
   away_team_logo?: string;
+  computed_at?: string;
 }
 
 interface SelectionsDisplayProps {
