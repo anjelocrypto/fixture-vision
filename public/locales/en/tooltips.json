@@ -5,31 +5,31 @@
     "bullet1": "Select a market (Goals, Corners, Cards)",
     "bullet2": "Choose your line threshold (e.g. Over 2.5)",
     "bullet3": "Set minimum odds to match your strategy",
-    "bullet4": "View all qualifying picks instantly"
+    "bullet4": "Score = historical hit rate for this league/market/line combo"
   },
   "team_totals": {
     "label": "Team Totals",
     "description": "Find teams likely to score 2+ goals based on scoring and conceding patterns.",
     "bullet1": "Choose home or away team context",
     "bullet2": "We analyze season scoring rates and opponent weakness",
-    "bullet3": "Review picks with supporting stats",
-    "bullet4": "Add promising selections to your ticket"
+    "bullet3": "Score = team's goals-per-game average vs opponent concede rate",
+    "bullet4": "This is a statistical average, not a probability or prediction"
   },
   "winner": {
     "label": "Winner (1X2)",
     "description": "Find best value home and away win picks based on our models.",
     "bullet1": "Select home or away win outcome",
-    "bullet2": "Filter by minimum odds and probability",
-    "bullet3": "Sort by edge, odds, or probability",
-    "bullet4": "Add strong value picks to your ticket"
+    "bullet2": "Edge % = model probability minus bookmaker implied probability",
+    "bullet3": "Higher edge means more potential value vs the market price",
+    "bullet4": "Model probability is derived from historical performance data"
   },
   "ticket_creator": {
     "label": "Ticket Creator",
-    "description": "Build complete betting tickets (parlays) to hit your target odds range.",
-    "bullet1": "Set your target odds range (e.g. 18-20x)",
-    "bullet2": "Choose which markets to include",
-    "bullet3": "We build optimized multi-leg tickets",
-    "bullet4": "Review and place your ticket"
+    "description": "Build complete betting tickets (parlays) using Green Bucket verified selections.",
+    "bullet1": "Only uses historically verified market/league combos (65%+ hit rate)",
+    "bullet2": "Model probability = stats-derived chance of selection winning",
+    "bullet3": "Edge = model prob minus implied prob from odds (vig not removed)",
+    "bullet4": "Ticket probability = product of individual leg model probabilities"
   },
   "ai_analysis": {
     "label": "AI Analysis",
@@ -38,5 +38,29 @@
     "bullet2": "See match-by-match recommendations",
     "bullet3": "Check confidence levels for each bet",
     "bullet4": "Make informed decisions with AI assistance"
+  },
+  "ai_ticket": {
+    "label": "AI Ticket (Safe Mode)",
+    "description": "Generates tickets restricted to Green Bucket verified selections only.",
+    "bullet1": "Green Bucket = league/market combos with 65%+ historical hit rate",
+    "bullet2": "Model probability per leg from combined stats (not from odds)",
+    "bullet3": "Edge = model probability minus implied odds probability",
+    "bullet4": "Vig is NOT removed from implied probability (intentional simplification)"
+  },
+  "safe_zone": {
+    "label": "Safe Zone",
+    "description": "Pre-computed highest-confidence picks from the optimizer pipeline.",
+    "bullet1": "Confidence = combined stat average vs historical line performance",
+    "bullet2": "Higher rank means stronger statistical backing for this pick",
+    "bullet3": "Based on team averages, head-to-head, and league context",
+    "bullet4": "Different from Ticket Creator edge — this is a ranking, not a probability"
+  },
+  "btts_index": {
+    "label": "BTTS Index",
+    "description": "Ranks teams by Both Teams To Score rate over recent matches.",
+    "bullet1": "BTTS Rate = % of recent matches where both teams scored",
+    "bullet2": "Window = last 5, 10, or 15 matches (you choose)",
+    "bullet3": "This is a descriptive stat, not a predictive model",
+    "bullet4": "Compare with odds to find potential value manually"
   }
 }
