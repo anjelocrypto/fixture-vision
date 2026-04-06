@@ -361,6 +361,7 @@ export function useHomeActions(state: any) {
       setFilteredFixtures(data.selections || []);
       setFilterizerTotalQualified(data.total_qualified || data.count);
       setFilterizerHasMore(data.pagination?.has_more || false);
+      trackEvent("feature_used", { feature: "filterizer", count: data.count });
       toast({ title: "Filters Applied", description: `Found ${data.count} selections` });
     } catch (error: any) {
       toast({ title: "Error", description: "Failed to apply filters.", variant: "destructive" });
