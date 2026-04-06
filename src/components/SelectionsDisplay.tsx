@@ -9,6 +9,7 @@ import { useState } from "react";
 import { AddToTicketButton } from "./AddToTicketButton";
 import { TicketLeg } from "@/stores/useTicket";
 import { useTranslation } from "react-i18next";
+import { StaleBadge } from "./shared/StaleBadge";
 
 interface Selection {
   id: string;
@@ -37,6 +38,7 @@ interface Selection {
   away_team?: string;
   home_team_logo?: string;
   away_team_logo?: string;
+  computed_at?: string;
 }
 
 interface SelectionsDisplayProps {
@@ -120,6 +122,7 @@ export function SelectionsDisplay({ selections, onSelectionClick }: SelectionsDi
                   <Badge variant="outline">
                     {selection.side} {selection.line}
                   </Badge>
+                  <StaleBadge capturedAt={selection.computed_at} maxAgeHours={6} label="Odds" />
                   {isModelOnly && (
                     <Badge variant="secondary" className="bg-muted text-muted-foreground">
                       MODEL ONLY
