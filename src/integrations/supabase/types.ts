@@ -450,6 +450,75 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_safest_insights: {
+        Row: {
+          away_team: string
+          computed_at: string
+          confidence_tier: string
+          daily_safety_score: number
+          fixture_id: number
+          freshness_status: string
+          generation_metadata: Json
+          historical_hit_rate: number
+          home_team: string
+          id: string
+          kickoff_at: string
+          league_id: number
+          league_name: string
+          line: number
+          market: string
+          odds: number | null
+          sample_size: number
+          side: string
+          supporting_reason: string
+          warning_flags: string[]
+        }
+        Insert: {
+          away_team: string
+          computed_at?: string
+          confidence_tier?: string
+          daily_safety_score?: number
+          fixture_id: number
+          freshness_status?: string
+          generation_metadata?: Json
+          historical_hit_rate?: number
+          home_team: string
+          id?: string
+          kickoff_at: string
+          league_id: number
+          league_name: string
+          line: number
+          market: string
+          odds?: number | null
+          sample_size?: number
+          side: string
+          supporting_reason?: string
+          warning_flags?: string[]
+        }
+        Update: {
+          away_team?: string
+          computed_at?: string
+          confidence_tier?: string
+          daily_safety_score?: number
+          fixture_id?: number
+          freshness_status?: string
+          generation_metadata?: Json
+          historical_hit_rate?: number
+          home_team?: string
+          id?: string
+          kickoff_at?: string
+          league_id?: number
+          league_name?: string
+          line?: number
+          market?: string
+          odds?: number | null
+          sample_size?: number
+          side?: string
+          supporting_reason?: string
+          warning_flags?: string[]
+        }
+        Relationships: []
+      }
       fixture_results: {
         Row: {
           cards_away: number | null
