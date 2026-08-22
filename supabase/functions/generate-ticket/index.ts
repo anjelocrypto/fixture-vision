@@ -1409,7 +1409,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         min_target: minOdds,
         max_target: maxOdds,
         used_live: usedLive && !fallbackToPrematch,
-        legs: ticket.legs,
+        legs: ticketLegsWithIdentity,
         ticket_mode: ticketMode,
         ticket_model_prob: ticketModelProb,
       },
