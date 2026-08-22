@@ -2411,6 +2411,45 @@ export type Database = {
         }
         Relationships: []
       }
+      team_stats_refresh_queue: {
+        Row: {
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          last_error: string | null
+          priority: number
+          status: string
+          team_id: number
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          priority?: number
+          status?: string
+          team_id: number
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          priority?: number
+          status?: string
+          team_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       team_totals_candidates: {
         Row: {
           computed_at: string
@@ -3141,10 +3180,22 @@ export type Database = {
         }
         Returns: string
       }
+      claim_team_stats_refresh: {
+        Args: { p_batch_limit?: number }
+        Returns: {
+          attempts: number
+          claim_token: string
+          team_id: number
+        }[]
+      }
       close_expired_markets: { Args: never; Returns: Json }
       complete_stripe_webhook_event: {
         Args: { p_event_id: string }
         Returns: undefined
+      }
+      complete_team_stats_refresh: {
+        Args: { p_claim_token: string; p_team_id: number }
+        Returns: boolean
       }
       consume_rate_limit: {
         Args: { p_feature: string; p_max_per_minute: number; p_user_id: string }
@@ -3158,11 +3209,19 @@ export type Database = {
         Args: { p_username: string }
         Returns: Json
       }
+      enqueue_team_stats_refresh: {
+        Args: { p_candidates: Json }
+        Returns: number
+      }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
       fail_stripe_webhook_event: {
         Args: { p_error: string; p_event_id: string }
         Returns: undefined
+      }
+      fail_team_stats_refresh: {
+        Args: { p_claim_token: string; p_error: string; p_team_id: number }
+        Returns: boolean
       }
       finalize_feature_use: {
         Args: { p_reservation_id: string }
@@ -3292,6 +3351,10 @@ export type Database = {
       release_feature_use: {
         Args: { p_reservation_id: string }
         Returns: boolean
+      }
+      release_team_stats_refresh_claims: {
+        Args: { p_claim_token: string }
+        Returns: number
       }
       release_ticket_leg_score_claim: {
         Args: { p_claim_token: string; p_leg_id: string }
