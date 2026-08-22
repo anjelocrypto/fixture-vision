@@ -30,6 +30,8 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   useRegisterOverlay("my-ticket-drawer", open, () => onOpenChange(false));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"slip" | "history">("slip");
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
