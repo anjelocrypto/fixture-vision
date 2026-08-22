@@ -144,8 +144,9 @@ describe("ticket history panel", () => {
     expect(screen.getByText("Fixture #999")).toBeInTheDocument();
     expect(screen.getByText("WIN")).toBeInTheDocument();
     expect(
-      screen.getByText("settlement.hold.title · settlement.hold.reason.scheduleChanged")
+      screen.getByText("Settlement under review · Fixture schedule changed")
     ).toBeInTheDocument();
+
     // no internal detail leaks
     expect(screen.queryByText(/5439600/)).toBeNull();
     expect(screen.queryByText(/alert|provider|api-football/i)).toBeNull();
