@@ -1,455 +1,334 @@
 /**
- * AUTO-BACKFILL-RESULTS: Self-healing cron job to automatically backfill missing fixture results
- * 
- * RUNS: Every 5 minutes via cron (drain mode) / every 30 minutes (steady state)
- * PURPOSE: Find fixtures that kicked off >3h ago but are missing from fixture_results, and fetch their results
- * CHAINS: Automatically triggers score-ticket-legs after inserting results
- * 
- * This function uses the new get_fixtures_missing_results RPC to find gaps and fills them automatically.
- * Zero manual intervention required.
+ * AUTO-BACKFILL-RESULTS (Gate D remediation — hardened)
+ *
+ * Modes:
+ *  - targeted : exactly one explicit fixture_id. Goals-only = max 1 provider call,
+ *               with statistics = max 2. Mutates only that fixture's fixture_results
+ *               row, its fixtures.status (when the provider justifies it) and this
+ *               function's own audit logs.
+ *  - bulk     : legacy queue drain, now bounded by an explicit ProviderCallBudget.
+ *
+ * Invariants:
+ *  - Every provider request requires confirm_provider_calls=true.
+ *  - maxRetries = 0. Immediate stop on 429 / 5xx / timeout / network / budget exhaustion.
+ *  - No score-ticket-legs chaining (scoring is separately authorized).
+ *  - No secrets or secret prefixes are ever logged.
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
+import { handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { API_BASE, apiHeaders } from "../_shared/api.ts";
+import { ProviderCallBudget } from "../_shared/provider_budget.ts";
+import {
+  authorizeIngestionRequest,
+  buildTargetedBudget,
+  ProviderSession,
+  ProviderStopError,
+  requireConfirmation,
+  runTargetedFixtureIngestion,
+  validateBoundedInt,
+  validateFixtureId,
+  ValidationError,
+  buildFixtureResultRow,
+  isTerminalStatus,
+  type FixtureResultRow,
+} from "../_shared/result_ingestion.ts";
 
 const SUPPORTED_LEAGUES = [39, 40, 78, 140, 135, 61, 2, 3, 848, 45, 48, 66, 81, 137, 143];
-const DEFAULT_BATCH_SIZE = 50; // Process 50 fixtures per run (drain mode)
+const DEFAULT_BATCH_SIZE = 25;
+const MAX_BATCH_SIZE = 50;
+const DEFAULT_LOOKBACK_DAYS = 30;
+const MAX_LOOKBACK_DAYS = 365;
+const MAX_BULK_PROVIDER_CALLS = 100;
 const WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD = 3;
-const DEFAULT_LOOKBACK_DAYS = 30; // Look back 30 days (matches get_pending_ticket_fixture_ids)
 
-interface FixtureResultRow {
-  fixture_id: number;
-  league_id: number;
-  kickoff_at: string;
-  finished_at: string;
-  goals_home: number;
-  goals_away: number;
-  corners_home?: number;
-  corners_away?: number;
-  cards_home?: number;
-  cards_away?: number;
-  fouls_home?: number;
-  fouls_away?: number;
-  offsides_home?: number;
-  offsides_away?: number;
-  status: string;
-  source: string;
-  fetched_at: string;
-}
-
-// Fetch fixture by ID
-async function fetchFixtureById(fixtureId: number): Promise<any | null> {
-  const result = await fetchAPIFootball(`/fixtures?id=${fixtureId}`, { logPrefix: "[auto-backfill]" });
-  return result.ok && result.data?.length ? result.data[0] : null;
-}
-
-// Fetch detailed statistics for a fixture
-async function fetchFixtureStatistics(fixtureId: number): Promise<any> {
-  const stats = await fetchStats(fixtureId);
-  return stats.length > 0 ? stats : null;
+async function finalizePipelineLog(
+  supabase: any,
+  id: number | null,
+  success: boolean,
+  processed: number,
+  failed: number,
+  leagues: number[],
+  details: any,
+  errorMessage?: string,
+): Promise<void> {
+  if (!id) return;
+  try {
+    await supabase.from("pipeline_run_logs").update({
+      run_finished: new Date().toISOString(),
+      success,
+      processed,
+      failed,
+      leagues_covered: leagues,
+      details,
+      error_message: errorMessage || null,
+    }).eq("id", id);
+  } catch (e) {
+    console.error("[auto-backfill] Failed to update pipeline log:", e);
+  }
 }
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
-  
-  if (req.method === "OPTIONS") {
-    return handlePreflight(origin, req);
-  }
+  if (req.method === "OPTIONS") return handlePreflight(origin, req);
 
   const startTime = Date.now();
   console.log("[auto-backfill] ===== FUNCTION START =====");
 
-  // Parse request body for optional overrides
-  let requestBody: { batch_size?: number; lookback_days?: number } = {};
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
+    return errorResponse("Missing configuration", origin, 500, req);
+  }
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  // ---- Authorization: default deny, never log key material -----------------
+  const auth = await authorizeIngestionRequest({
+    serviceRoleKey,
+    cronKeyHeader: req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY"),
+    authHeader: req.headers.get("authorization") ?? req.headers.get("Authorization"),
+    lookupCronKey: async () => {
+      const { data } = await supabase.rpc("get_cron_internal_key");
+      return typeof data === "string" ? data : null;
+    },
+    verifyAdmin: async (authHeader: string) => {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+      if (!anonKey) return false;
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data } = await userClient.rpc("is_user_whitelisted");
+      return data === true;
+    },
+  });
+
+  if (!auth.authorized) {
+    console.error("[auto-backfill] Authorization failed");
+    return errorResponse("Unauthorized", origin, 401, req);
+  }
+  console.log(`[auto-backfill] Authorized via ${auth.method}`);
+
+  let body: Record<string, unknown> = {};
   try {
-    if (req.body) {
-      requestBody = await req.json();
-    }
+    if (req.method === "POST") body = (await req.json()) ?? {};
   } catch {
-    // No body or invalid JSON - use defaults
+    body = {};
   }
 
-  // Use request params or defaults
-  const BATCH_SIZE = requestBody.batch_size ?? DEFAULT_BATCH_SIZE;
-  const LOOKBACK_DAYS = requestBody.lookback_days ?? DEFAULT_LOOKBACK_DAYS;
-
-  console.log(`[auto-backfill] Using batch_size=${BATCH_SIZE}, lookback_days=${LOOKBACK_DAYS}`);
-
-  // Track for logging
-  let pipelineLogId: number | null = null;
-  let processed = 0;
-  let inserted = 0;
-  let failed = 0;
-  const leaguesCovered: number[] = [];
-
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error("[auto-backfill] Missing environment variables");
-      return errorResponse("Missing configuration", origin, 500, req);
-    }
+    // Every mode of this function touches the provider — fail closed first.
+    requireConfirmation(body);
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // Auth check - normalize header names (case-insensitive)
-    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
-    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
-    let isAuthorized = false;
-
-    // Method 1: Direct service role key in Authorization header
-    if (authHeader === `Bearer ${serviceRoleKey}`) {
-      isAuthorized = true;
-      console.log("[auto-backfill] Authorized via service role bearer");
-    }
-
-    // Method 2: X-CRON-KEY header matching app_settings value
-    if (!isAuthorized && cronKeyHeader) {
-      // Don't use .single() on scalar RPC - just await the response directly
-      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
-      
-      if (keyError) {
-        console.error("[auto-backfill] get_cron_internal_key error:", keyError);
-        // Don't fail auth entirely, just log and continue to other methods
-      } else {
-        // Ensure both are strings and trimmed for safe comparison
-        const expectedKey = String(dbKey || "").trim();
-        const providedKey = String(cronKeyHeader || "").trim();
-        
-        console.log("[auto-backfill] providedKey:", providedKey ? providedKey.slice(0, 8) + "..." : "null");
-        console.log("[auto-backfill] expectedKey:", expectedKey ? expectedKey.slice(0, 8) + "..." : "null");
-        
-        if (providedKey && expectedKey && providedKey === expectedKey) {
-          isAuthorized = true;
-          console.log("[auto-backfill] Authorized via X-CRON-KEY");
-        }
+    // ======================= TARGETED MODE =================================
+    if (body.mode === "targeted" || body.fixture_id !== undefined) {
+      if (body.mode !== undefined && body.mode !== "targeted") {
+        throw new ValidationError("invalid_parameter", "mode must be 'targeted' when fixture_id is provided");
       }
-    }
+      const fixtureId = validateFixtureId(body.fixture_id);
+      const includeStatistics = body.include_statistics === true;
+      const budget = buildTargetedBudget(includeStatistics, body.max_provider_calls);
 
-    // Method 3: Admin user via JWT
-    if (!isAuthorized && authHeader) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-      if (anonKey) {
-        const userClient = createClient(supabaseUrl, anonKey, {
-          global: { headers: { Authorization: authHeader } }
-        });
-        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted");
-        if (isWhitelisted) {
-          isAuthorized = true;
-          console.log("[auto-backfill] Authorized via user whitelist");
-        }
-      }
-    }
+      const { data: localFixture } = await supabase
+        .from("fixtures").select("id, status").eq("id", fixtureId).maybeSingle();
 
-    if (!isAuthorized) {
-      console.error("[auto-backfill] Authorization failed - no valid auth method matched");
-      return errorResponse("Unauthorized", origin, 401, req);
-    }
+      const session = new ProviderSession({
+        budget,
+        fetchImpl: (url, init) => fetch(url, init as RequestInit),
+        headers: apiHeaders(),
+      });
 
-    // Insert initial pipeline log entry
-    const { data: logData } = await supabase
-      .from("pipeline_run_logs")
-      .insert({
+      const outcome = await runTargetedFixtureIngestion({
+        fixtureId,
+        apiBase: API_BASE,
+        session,
+        includeStatistics,
+        localStatus: localFixture?.status ?? null,
+        writer: {
+          upsertFixtureResult: async (row) => {
+            const { error } = await supabase.from("fixture_results")
+              .upsert([row], { onConflict: "fixture_id" });
+            if (error) throw new Error(`upsert_failed: ${error.message}`);
+          },
+          updateFixtureStatus: async (id, status) => {
+            await supabase.from("fixtures").update({ status }).eq("id", id);
+          },
+        },
+      });
+
+      await supabase.from("pipeline_run_logs").insert({
         job_name: "auto-backfill-results",
-        run_started: new Date().toISOString(),
-        success: false,
-        mode: "auto",
-        processed: 0,
-        failed: 0,
+        run_started: new Date(startTime).toISOString(),
+        run_finished: new Date().toISOString(),
+        success: outcome.stop_reason === null,
+        mode: "targeted",
+        processed: 1,
+        failed: outcome.result_written ? 0 : 1,
         leagues_covered: [],
-        details: { status: "started" },
-      })
-      .select("id")
-      .single();
-    
-    pipelineLogId = logData?.id || null;
+        details: { ...outcome, ...session.snapshot(), include_statistics: includeStatistics },
+        error_message: outcome.stop_reason ?? null,
+      });
 
-    // PASS 1: Standard RPC - find missing fixtures from SUPPORTED_LEAGUES
-    console.log(`[auto-backfill] PASS 1: Calling get_fixtures_missing_results(lookback_days=${LOOKBACK_DAYS}, batch_limit=${BATCH_SIZE})`);
-    
-    const { data: missingFixtures, error: rpcError } = await supabase.rpc("get_fixtures_missing_results", {
-      lookback_days: LOOKBACK_DAYS,
-      supported_leagues: SUPPORTED_LEAGUES,
-      batch_limit: BATCH_SIZE,
+      return jsonResponse({
+        success: outcome.stop_reason === null,
+        mode: "targeted",
+        scorer_chained: false,
+        duration_ms: Date.now() - startTime,
+        ...outcome,
+        provider: session.snapshot(),
+      }, origin, outcome.stop_reason ? 502 : 200, req);
+    }
+
+    // ========================= BULK MODE ===================================
+    const batchSize = validateBoundedInt(body.batch_size, {
+      name: "batch_size", min: 1, max: MAX_BATCH_SIZE, fallback: DEFAULT_BATCH_SIZE,
+    });
+    const lookbackDays = validateBoundedInt(body.lookback_days, {
+      name: "lookback_days", min: 1, max: MAX_LOOKBACK_DAYS, fallback: DEFAULT_LOOKBACK_DAYS,
+    });
+    const includeStatistics = body.include_statistics !== false;
+    const hardBulkLimit = Math.min(MAX_BULK_PROVIDER_CALLS, batchSize * (includeStatistics ? 2 : 1));
+    const providerCallLimit = validateBoundedInt(body.max_provider_calls, {
+      name: "max_provider_calls", min: 1, max: hardBulkLimit, fallback: hardBulkLimit,
     });
 
+    const session = new ProviderSession({
+      budget: new ProviderCallBudget(providerCallLimit),
+      fetchImpl: (url, init) => fetch(url, init as RequestInit),
+      headers: apiHeaders(),
+    });
+
+    const { data: logData } = await supabase.from("pipeline_run_logs").insert({
+      job_name: "auto-backfill-results",
+      run_started: new Date().toISOString(),
+      success: false,
+      mode: "bulk",
+      processed: 0,
+      failed: 0,
+      leagues_covered: [],
+      details: { status: "started", batch_size: batchSize, lookback_days: lookbackDays },
+    }).select("id").single();
+    const pipelineLogId: number | null = logData?.id ?? null;
+
+    const { data: missingFixtures, error: rpcError } = await supabase.rpc("get_fixtures_missing_results", {
+      lookback_days: lookbackDays,
+      supported_leagues: SUPPORTED_LEAGUES,
+      batch_limit: batchSize,
+    });
     if (rpcError) {
-      console.error("[auto-backfill] RPC error:", rpcError);
       await finalizePipelineLog(supabase, pipelineLogId, false, 0, 0, [], { error: rpcError.message }, rpcError.message);
       return errorResponse(`RPC error: ${rpcError.message}`, origin, 500, req);
     }
 
-    // PASS 2: Targeted backfill - find fixtures referenced by PENDING ticket legs
-    // that are missing from fixture_results (regardless of league)
-    const remainingSlots = Math.max(0, BATCH_SIZE - (missingFixtures?.length || 0));
+    const remainingSlots = Math.max(0, batchSize - (missingFixtures?.length || 0));
     let ticketMissingFixtures: Array<{ fixture_id: number; kickoff_at: string; league_id: number }> = [];
-    
     if (remainingSlots > 0) {
-      console.log(`[auto-backfill] PASS 2: Calling get_pending_ticket_fixture_ids(${remainingSlots})`);
       const { data: ticketFixtures, error: ticketRpcError } = await supabase.rpc("get_pending_ticket_fixture_ids", {
         batch_limit: remainingSlots,
       });
-      
       if (ticketRpcError) {
-        console.warn("[auto-backfill] get_pending_ticket_fixture_ids error (non-fatal):", ticketRpcError.message);
-      } else if (ticketFixtures && ticketFixtures.length > 0) {
-        // Deduplicate against pass 1 results
+        console.warn("[auto-backfill] get_pending_ticket_fixture_ids error (non-fatal)");
+      } else if (ticketFixtures?.length) {
         const pass1Ids = new Set((missingFixtures || []).map((f: any) => f.fixture_id));
         ticketMissingFixtures = ticketFixtures.filter((f: any) => !pass1Ids.has(f.fixture_id));
-        console.log(`[auto-backfill] PASS 2: Found ${ticketFixtures.length} ticket-referenced missing fixtures, ${ticketMissingFixtures.length} new after dedup`);
       }
     }
 
-    // Merge both passes into a unified list
     const allMissing = [
       ...(missingFixtures || []).map((f: any) => ({
         fixture_id: f.fixture_id,
         fixture_league_id: f.fixture_league_id,
-        fixture_timestamp: f.fixture_timestamp,
-        fixture_status: f.fixture_status,
-        source: "pass1_supported_leagues" as const,
+        fixture_status: f.fixture_status as string | null,
+        source: "pass1_supported_leagues",
       })),
       ...ticketMissingFixtures.map((f: any) => ({
         fixture_id: f.fixture_id,
         fixture_league_id: f.league_id,
-        fixture_timestamp: f.kickoff_at ? Math.floor(new Date(f.kickoff_at).getTime() / 1000) : null,
         fixture_status: null as string | null,
-        source: "pass2_ticket_legs" as const,
+        source: "pass2_ticket_legs",
       })),
     ];
 
-    if (allMissing.length === 0) {
-      console.log("[auto-backfill] No missing fixtures found - all results up to date!");
-      await finalizePipelineLog(supabase, pipelineLogId, true, 0, 0, [], { message: "No missing fixtures" });
-      return jsonResponse({ 
-        success: true, 
-        missing_count: 0, 
-        processed: 0, 
-        inserted: 0, 
-        message: "All results up to date",
-        pass1_count: missingFixtures?.length || 0,
-        pass2_count: ticketMissingFixtures.length,
-      }, origin, 200, req);
-    }
-
-    console.log(`[auto-backfill] Total missing: ${allMissing.length} (pass1=${missingFixtures?.length || 0}, pass2=${ticketMissingFixtures.length})`);
-
-    // Track leagues
-    const leagueSet = new Set<number>();
-    for (const f of allMissing) {
-      if (f.fixture_league_id) leagueSet.add(f.fixture_league_id);
-    }
-    leaguesCovered.push(...leagueSet);
-    console.log(`[auto-backfill] Leagues affected: ${leaguesCovered.join(", ")}`);
-
-    // Process each fixture
+    let processed = 0;
+    let failed = 0;
+    let stopReason: string | null = null;
     const results: FixtureResultRow[] = [];
-    const errors: { fixture_id: number; error: string }[] = [];
     const statusUpdates: { id: number; status: string }[] = [];
+    const errors: { fixture_id: number; error: string }[] = [];
+    const leagueSet = new Set<number>();
 
     for (const fixture of allMissing) {
+      if (session.stopped || session.budget.remaining < (includeStatistics ? 2 : 1)) {
+        stopReason = session.stopped ?? "provider_call_budget_exhausted";
+        break;
+      }
       processed++;
-      console.log(`[auto-backfill] Processing ${processed}/${allMissing.length}: fixture ${fixture.fixture_id} (league ${fixture.fixture_league_id}, source=${fixture.source})`);
-
+      if (fixture.fixture_league_id) leagueSet.add(fixture.fixture_league_id);
       try {
-        const apiFixture = await fetchFixtureById(fixture.fixture_id);
-        
-        if (!apiFixture || !apiFixture.teams) {
-          errors.push({ fixture_id: fixture.fixture_id, error: "No data from API" });
+        const data = await session.get(`${API_BASE}/fixtures?id=${fixture.fixture_id}`);
+        const apiFixture = Array.isArray(data) && data.length ? data[0] : null;
+        if (!apiFixture?.fixture) {
+          errors.push({ fixture_id: fixture.fixture_id, error: "no_provider_data" });
           failed++;
           continue;
         }
-
-        const apiStatus = apiFixture.fixture?.status?.short || "NS";
-        const isFinished = ["FT", "AET", "PEN", "AWD", "WO"].includes(apiStatus);
-        
-        // Skip postponed, cancelled, or abandoned matches - these are expected, not failures
-        const isSkippable = ["PST", "CANC", "ABD", "TBD", "SUSP", "INT"].includes(apiStatus);
-        
-        // Update fixture status if different (important for PST matches so DB reflects reality)
+        const apiStatus: string = apiFixture.fixture?.status?.short ?? "NS";
         if (fixture.fixture_status !== apiStatus) {
           statusUpdates.push({ id: fixture.fixture_id, status: apiStatus });
         }
-
-        if (isSkippable) {
-          // Log as info, not error - these are expected scenarios
-          console.log(`[auto-backfill] Fixture ${fixture.fixture_id}: Skipping (${apiStatus}) - ${apiStatus === 'PST' ? 'Postponed' : apiStatus === 'CANC' ? 'Cancelled' : 'Not playable'}`);
-          continue; // Don't count as failure, just skip
-        }
-
-        if (!isFinished) {
-          errors.push({ fixture_id: fixture.fixture_id, error: `Status ${apiStatus} not finished` });
-          failed++;
+        if (!isTerminalStatus(apiStatus)) {
+          errors.push({ fixture_id: fixture.fixture_id, error: `non_terminal_${apiStatus}` });
           continue;
         }
-
-        const goalsHome = apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0;
-        const goalsAway = apiFixture.goals?.away ?? apiFixture.score?.fulltime?.away ?? 0;
-
-        // Fetch statistics
-        let cornersHome: number | null = null, cornersAway: number | null = null;
-        let cardsHome: number | null = null, cardsAway: number | null = null;
-        let foulsHome: number | null = null, foulsAway: number | null = null;
-        let offsidesHome: number | null = null, offsidesAway: number | null = null;
-
-        const statsData = await fetchFixtureStatistics(fixture.fixture_id);
-        
-        if (statsData && Array.isArray(statsData) && statsData.length === 2) {
-          const homeStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.home?.id);
-          const awayStats = statsData.find((s: any) => s.team?.id === apiFixture.teams?.away?.id);
-          
-          if (homeStats?.statistics) {
-            cornersHome = homeStats.statistics.find((st: any) => st.type === "Corner Kicks" || st.type === "Corners")?.value ?? null;
-            const yellowCards = homeStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
-            const redCards = homeStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
-            cardsHome = (yellowCards || 0) + (redCards || 0);
-            foulsHome = homeStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
-            offsidesHome = homeStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
-          }
-          
-          if (awayStats?.statistics) {
-            cornersAway = awayStats.statistics.find((st: any) => st.type === "Corner Kicks" || st.type === "Corners")?.value ?? null;
-            const yellowCards = awayStats.statistics.find((st: any) => st.type === "Yellow Cards")?.value ?? 0;
-            const redCards = awayStats.statistics.find((st: any) => st.type === "Red Cards")?.value ?? 0;
-            cardsAway = (yellowCards || 0) + (redCards || 0);
-            foulsAway = awayStats.statistics.find((st: any) => st.type === "Fouls")?.value ?? null;
-            offsidesAway = awayStats.statistics.find((st: any) => st.type === "Offsides")?.value ?? null;
-          }
+        let statsData: any = null;
+        if (includeStatistics) {
+          statsData = await session.get(`${API_BASE}/fixtures/statistics?fixture=${fixture.fixture_id}`);
         }
-
-        results.push({
-          fixture_id: fixture.fixture_id,
-          league_id: fixture.fixture_league_id,
-          kickoff_at: new Date(fixture.fixture_timestamp * 1000).toISOString(),
-          finished_at: new Date().toISOString(),
-          goals_home: goalsHome,
-          goals_away: goalsAway,
-          corners_home: cornersHome ?? undefined,
-          corners_away: cornersAway ?? undefined,
-          cards_home: cardsHome ?? undefined,
-          cards_away: cardsAway ?? undefined,
-          fouls_home: foulsHome ?? undefined,
-          fouls_away: foulsAway ?? undefined,
-          offsides_home: offsidesHome ?? undefined,
-          offsides_away: offsidesAway ?? undefined,
-          status: apiStatus,
-          source: "api-football",
-          fetched_at: new Date().toISOString(),
-        });
-
-        console.log(`[auto-backfill] Fixture ${fixture.fixture_id}: ${goalsHome}-${goalsAway} ✓`);
+        results.push(buildFixtureResultRow(apiFixture, statsData));
       } catch (err) {
+        if (err instanceof ProviderStopError) {
+          stopReason = err.kind;
+          console.warn(`[auto-backfill] Provider circuit breaker: ${err.kind}`);
+          break;
+        }
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[auto-backfill] Fixture ${fixture.fixture_id}: ${errMsg}`);
         errors.push({ fixture_id: fixture.fixture_id, error: errMsg });
         failed++;
       }
-
-      // Small delay
-      await new Promise(r => setTimeout(r, 50));
     }
 
-    // Deduplicate results by fixture_id (keep last occurrence)
-    const deduped = new Map<number, FixtureResultRow>();
-    for (const r of results) {
-      deduped.set(r.fixture_id, r);
-    }
-    const uniqueResults = Array.from(deduped.values());
-
-    // Batch upsert results
-    if (uniqueResults.length > 0) {
-      console.log(`[auto-backfill] Upserting ${uniqueResults.length} results (${results.length - uniqueResults.length} duplicates removed)`);
-      const { error: upsertError } = await supabase
-        .from("fixture_results")
-        .upsert(uniqueResults, { onConflict: "fixture_id" });
-
+    let inserted = 0;
+    if (results.length > 0) {
+      const deduped = Array.from(new Map(results.map((r) => [r.fixture_id, r])).values());
+      const { error: upsertError } = await supabase.from("fixture_results")
+        .upsert(deduped, { onConflict: "fixture_id" });
       if (upsertError) {
-        console.error("[auto-backfill] Upsert error:", upsertError);
-        await finalizePipelineLog(supabase, pipelineLogId, false, processed, failed, leaguesCovered, { upsert_error: upsertError.message }, upsertError.message);
+        await finalizePipelineLog(supabase, pipelineLogId, false, processed, failed, [...leagueSet], { upsert_error: upsertError.message }, upsertError.message);
         return errorResponse(`Upsert failed: ${upsertError.message}`, origin, 500, req);
       }
-
-      inserted = uniqueResults.length;
-      console.log(`[auto-backfill] Successfully upserted ${inserted} results`);
+      inserted = deduped.length;
     }
 
-    // Update fixture statuses
     let statusUpdateCount = 0;
-    if (statusUpdates.length > 0) {
-      console.log(`[auto-backfill] Updating ${statusUpdates.length} fixture statuses`);
-      for (const update of statusUpdates) {
-        const { error } = await supabase
-          .from("fixtures")
-          .update({ status: update.status })
-          .eq("id", update.id);
-        if (!error) statusUpdateCount++;
-      }
+    for (const update of statusUpdates) {
+      const { error } = await supabase.from("fixtures").update({ status: update.status }).eq("id", update.id);
+      if (!error) statusUpdateCount++;
     }
 
-    const duration = Date.now() - startTime;
-    console.log(`[auto-backfill] COMPLETE: ${inserted} inserted, ${failed} failed, ${statusUpdateCount} status updates, ${duration}ms`);
-
-    // ===== CHAIN: Trigger scorer BEFORE finalizing log so we capture results =====
-    let scorerResult: any = null;
-    if (inserted > 0) {
-      console.log(`[auto-backfill] Chaining score-ticket-legs after ${inserted} inserts...`);
-      try {
-        const scoreUrl = `${supabaseUrl}/functions/v1/score-ticket-legs`;
-        const scoreResp = await fetch(scoreUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({ batch_size: 500 }),
-        });
-        scorerResult = await scoreResp.json();
-        console.log(`[auto-backfill] Scorer result: scored=${scorerResult?.scored_legs ?? 0}, tickets=${scorerResult?.updated_tickets ?? 0}`);
-      } catch (scoreErr) {
-        console.error("[auto-backfill] Scorer chain error:", scoreErr);
-        scorerResult = { error: String(scoreErr) };
-      }
-    }
-
-    // Finalize pipeline log WITH scorer results included
     const finalDuration = Date.now() - startTime;
-    await finalizePipelineLog(supabase, pipelineLogId, true, processed, failed, leaguesCovered, {
+    await finalizePipelineLog(supabase, pipelineLogId, stopReason === null, processed, failed, [...leagueSet], {
       missing_found: allMissing.length,
-      pass1_count: missingFixtures?.length || 0,
-      pass2_count: ticketMissingFixtures.length,
       inserted,
       status_updates: statusUpdateCount,
       duration_ms: finalDuration,
       errors: errors.slice(0, 10),
-      scorer: scorerResult ? {
-        scored_legs: scorerResult.scored_legs ?? 0,
-        updated_tickets: scorerResult.updated_tickets ?? 0,
-        error: scorerResult.error ?? null,
-      } : null,
-    });
+      provider: session.snapshot(),
+      stop_reason: stopReason,
+      scorer_chained: false,
+    }, stopReason ?? undefined);
 
-    // Also log to optimizer_run_logs for consistency
-    await supabase.from("optimizer_run_logs").insert({
-      run_type: "auto-backfill-results",
-      window_start: new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString(),
-      window_end: new Date().toISOString(),
-      scope: { leagues: SUPPORTED_LEAGUES, lookback_days: LOOKBACK_DAYS },
-      scanned: allMissing.length,
-      upserted: inserted,
-      skipped: 0,
-      failed,
-      started_at: new Date(startTime).toISOString(),
-      finished_at: new Date().toISOString(),
-      duration_ms: finalDuration,
-      notes: errors.length > 0 ? `Errors: ${JSON.stringify(errors.slice(0, 5))}` : "Clean run",
-    });
-
-    // ===== WATCHDOG: Detect consecutive zero-insert runs =====
-    let backfillStalled = false;
+    // Watchdog (unchanged semantics, no scorer chaining)
     const backfillAlertFingerprint = "pipeline:auto-backfill-results:stalled";
+    let backfillStalled = false;
     if (inserted === 0 && allMissing.length > 0) {
-      // Check last N runs for consecutive zeros
       const { data: recentRuns } = await supabase
         .from("pipeline_run_logs")
         .select("id, details")
@@ -457,15 +336,11 @@ Deno.serve(async (req: Request) => {
         .eq("success", true)
         .order("run_started", { ascending: false })
         .limit(WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD);
-      
       const consecutiveZeros = (recentRuns || []).filter(
-        (r: any) => r.details && (r.details.inserted === 0 || r.details.inserted === null)
+        (r: any) => r.details && (r.details.inserted === 0 || r.details.inserted === null),
       ).length;
-
       if (consecutiveZeros >= WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD - 1) {
         backfillStalled = true;
-        // This run is also zero, so total = threshold
-        console.warn(`[auto-backfill] WATCHDOG: ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive zero-insert runs with ${allMissing.length} missing fixtures!`);
         await supabase.rpc("record_pipeline_alert", {
           p_fingerprint: backfillAlertFingerprint,
           p_alert_type: "backfill_stalled",
@@ -484,71 +359,26 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("[auto-backfill] ===== FUNCTION END =====");
-
     return jsonResponse({
-      success: true,
+      success: stopReason === null,
+      mode: "bulk",
       missing_found: allMissing.length,
-      pass1_count: missingFixtures?.length || 0,
-      pass2_count: ticketMissingFixtures.length,
       processed,
       inserted,
       failed,
       status_updates: statusUpdateCount,
-      leagues_covered: leaguesCovered,
+      leagues_covered: [...leagueSet],
+      stop_reason: stopReason,
+      scorer_chained: false,
+      provider: session.snapshot(),
       duration_ms: finalDuration,
-      rate_limiter: getRateLimiterStats(),
-      scorer: scorerResult ? {
-        scored_legs: scorerResult.scored_legs ?? 0,
-        updated_tickets: scorerResult.updated_tickets ?? 0,
-      } : null,
-    }, origin, 200, req);
-
+    }, origin, stopReason ? 502 : 200, req);
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return jsonResponse({ success: false, code: error.code, error: error.message }, origin, 400, req);
+    }
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("[auto-backfill] Handler error:", errMsg);
-    
-    // Attempt to finalize log even on error
-    if (pipelineLogId) {
-      try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(supabaseUrl, serviceRoleKey);
-        await finalizePipelineLog(supabase, pipelineLogId, false, processed, failed, leaguesCovered, {}, errMsg);
-      } catch (e) {
-        console.error("[auto-backfill] Failed to finalize log on error:", e);
-      }
-    }
-    
     return errorResponse("Internal server error", origin, 500, req);
   }
 });
-
-// Helper to finalize pipeline log
-async function finalizePipelineLog(
-  supabase: any,
-  id: number | null,
-  success: boolean,
-  processed: number,
-  failed: number,
-  leagues: number[],
-  details: any,
-  errorMessage?: string
-): Promise<void> {
-  if (!id) return;
-  try {
-    await supabase
-      .from("pipeline_run_logs")
-      .update({
-        run_finished: new Date().toISOString(),
-        success,
-        processed,
-        failed,
-        leagues_covered: leagues,
-        details,
-        error_message: errorMessage || null,
-      })
-      .eq("id", id);
-  } catch (e) {
-    console.error("[auto-backfill] Failed to update pipeline log:", e);
-  }
-}

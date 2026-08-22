@@ -4,11 +4,22 @@
 // HARDENED: Logs all runs to pipeline_run_logs for observability
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
+import { API_BASE, apiHeaders } from "../_shared/api.ts";
+import { ProviderCallBudget } from "../_shared/provider_budget.ts";
+import {
+  authorizeIngestionRequest,
+  ProviderSession,
+  requireConfirmation,
+  validateBoundedInt,
+  ValidationError,
+} from "../_shared/result_ingestion.ts";
 import {
   getFootballSeasonStartForLeagueUtc,
   getFootballSeasonStartUtc,
 } from "../_shared/season.ts";
+
+const MAX_PROVIDER_CALLS_PER_RUN = 120;
+
 
 interface RequestBody {
   window_hours?: number;
@@ -23,7 +34,13 @@ interface RequestBody {
   // Pagination for large backfills
   offset?: number;
   limit?: number;
+  // Gate D remediation controls
+  mode?: string;
+  confirm_provider_calls?: boolean;
+  confirm_cleanup?: boolean;
+  max_provider_calls?: number;
 }
+
 
 interface FixtureResultRow {
   fixture_id: number;
@@ -142,17 +159,34 @@ async function updatePipelineLog(
   }
 }
 
-// Fetch fixture by ID using centralized client
-async function fetchFixtureById(fixtureId: number): Promise<any | null> {
-  const result = await fetchAPIFootball(`/fixtures?id=${fixtureId}`, { logPrefix: "[results-refresh]" });
-  return result.ok && result.data?.length ? result.data[0] : null;
+// Provider session: created per request AFTER confirmation + budget validation.
+// Every provider request is a single attempt (maxRetries = 0) and the session
+// trips a circuit breaker on 429 / 5xx / timeout / network / budget exhaustion.
+let providerSession: ProviderSession | null = null;
+
+function requireSession(): ProviderSession {
+  if (!providerSession) {
+    throw new ValidationError("confirmation_required", "provider session not initialised");
+  }
+  return providerSession;
 }
 
-// Fetch detailed statistics for a fixture
-async function fetchFixtureStatistics(fixtureId: number): Promise<any> {
-  const stats = await fetchStats(fixtureId);
-  return stats.length > 0 ? stats : null;
+function getRateLimiterStats(): Record<string, unknown> {
+  return providerSession ? providerSession.snapshot() : { provider_calls: 0 };
 }
+
+// Fetch fixture by ID (single attempt, budgeted)
+async function fetchFixtureById(fixtureId: number): Promise<any | null> {
+  const data = await requireSession().get(`${API_BASE}/fixtures?id=${fixtureId}`);
+  return Array.isArray(data) && data.length ? data[0] : null;
+}
+
+// Fetch detailed statistics for a fixture (single attempt, budgeted)
+async function fetchFixtureStatistics(fixtureId: number): Promise<any> {
+  const stats = await requireSession().get(`${API_BASE}/fixtures/statistics?fixture=${fixtureId}`);
+  return Array.isArray(stats) && stats.length > 0 ? stats : null;
+}
+
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -174,106 +208,101 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Auth check using shared helper (NO .single() on scalar RPCs!)
-    const cronKeyHeader = req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY");
-    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
-    let isAuthorized = false;
-
-    // Check service role key first (highest priority)
-    if (authHeader === `Bearer ${serviceRoleKey}`) {
-      isAuthorized = true;
-      console.log("[results-refresh] Authorized via service role bearer");
-    }
-
-    // Check cron key - NO .single() on scalar RPC!
-    if (!isAuthorized && cronKeyHeader) {
-      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
-      if (keyError) {
-        console.error("[results-refresh] get_cron_internal_key error:", keyError);
-      } else {
-        const expectedKey = String(dbKey || "").trim();
-        const providedKey = String(cronKeyHeader || "").trim();
-        if (providedKey && expectedKey && providedKey === expectedKey) {
-          isAuthorized = true;
-          console.log("[results-refresh] Authorized via X-CRON-KEY");
-        }
-      }
-    }
-
-    // Check user whitelist - NO .single() on scalar RPC!
-    if (!isAuthorized && authHeader) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-      if (anonKey) {
+    // Auth check — default deny, never logs secrets or secret prefixes
+    const auth = await authorizeIngestionRequest({
+      serviceRoleKey,
+      cronKeyHeader: req.headers.get("x-cron-key") ?? req.headers.get("X-CRON-KEY"),
+      authHeader: req.headers.get("authorization") ?? req.headers.get("Authorization"),
+      lookupCronKey: async () => {
+        const { data } = await supabase.rpc("get_cron_internal_key");
+        return typeof data === "string" ? data : null;
+      },
+      verifyAdmin: async (authHeader: string) => {
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+        if (!anonKey) return false;
         const userClient = createClient(supabaseUrl, anonKey, {
-          global: { headers: { Authorization: authHeader } }
+          global: { headers: { Authorization: authHeader } },
         });
-        
-        const { data: isWhitelisted, error: wlError } = await userClient.rpc("is_user_whitelisted");
-        if (wlError) {
-          console.error("[results-refresh] is_user_whitelisted error:", wlError);
-        } else if (isWhitelisted === true) {
-          isAuthorized = true;
-          console.log("[results-refresh] Authorized via user whitelist");
-        }
-      }
-    }
+        const { data } = await userClient.rpc("is_user_whitelisted");
+        return data === true;
+      },
+    });
 
-    if (!isAuthorized) {
+    if (!auth.authorized) {
       console.error("[results-refresh] Authorization failed - no valid credentials");
       return errorResponse("Unauthorized", origin, 401, req);
     }
+    console.log(`[results-refresh] Authorized via ${auth.method}`);
+
 
     // Parse request body
-    const body: RequestBody = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    const windowHours = body.window_hours ?? 6;
-    const retentionMonths = body.retention_months;
-    const isCleanup = req.headers.get("x-cleanup") === "1";
+    const body: RequestBody & Record<string, unknown> =
+      req.method === "POST" ? ((await req.json().catch(() => ({}))) ?? {}) : {};
+    const windowHours = validateBoundedInt(body.window_hours, {
+      name: "window_hours", min: 1, max: 24 * 30, fallback: 6,
+    });
+    const isCleanup = req.headers.get("x-cleanup") === "1" || body.mode === "cleanup";
     const isEplBackfill = body.epl_backfill === true;
     const isMultiLeagueBackfill = Array.isArray(body.backfill_league_ids) && body.backfill_league_ids.length > 0;
     const targetLeagueId = body.league_id;
-    const batchLimit = body.limit || 15;
-    const batchOffset = body.offset || 0;
+    const batchLimit = validateBoundedInt(body.limit, { name: "limit", min: 1, max: 50, fallback: 15 });
+    const batchOffset = validateBoundedInt(body.offset, { name: "offset", min: 0, max: 100_000, fallback: 0 });
     const backfillSince = body.backfill_since || getFootballSeasonStartUtc().slice(0, 10);
 
     // Determine run mode for logging
-    const runMode = isMultiLeagueBackfill ? 'multi_league_backfill' : 
-                    isEplBackfill ? 'epl_backfill' : 
-                    isCleanup ? 'cleanup' : 
+    const runMode = isCleanup ? 'cleanup' :
+                    isMultiLeagueBackfill ? 'multi_league_backfill' :
+                    isEplBackfill ? 'epl_backfill' :
                     body.backfill_mode ? 'backfill' : 'cron';
 
     console.log(`[results-refresh] Mode: ${runMode.toUpperCase()}`);
-    console.log(`[results-refresh] Parameters: window_hours=${windowHours}, batch_size=${body.batch_size}, league_id=${targetLeagueId || 'all'}, limit=${batchLimit}, offset=${batchOffset}`);
-    if (isMultiLeagueBackfill) {
-      console.log(`[results-refresh] Multi-league backfill leagues: ${body.backfill_league_ids!.join(", ")}, since: ${backfillSince}`);
+
+    // ---- CLEANUP MODE: explicit, no provider calls, validated retention ----
+    if (isCleanup) {
+      if (body.confirm_cleanup !== true) {
+        return jsonResponse({
+          success: false, code: "confirmation_required",
+          error: "confirm_cleanup=true is required for cleanup mode",
+        }, origin, 400, req);
+      }
+      const retentionMonths = validateBoundedInt(body.retention_months, {
+        name: "retention_months", min: 1, max: 60,
+      });
+      const cleanupLogId = await insertPipelineLog(supabase, runMode, []);
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
+      await supabase.from("fixture_results").delete().lt("finished_at", cutoffDate.toISOString());
+      await updatePipelineLog(supabase, cleanupLogId, true, 0, 0, [], { retention_months: retentionMonths });
+      return jsonResponse({
+        success: true, mode: "cleanup", retention_months: retentionMonths, provider_calls: 0,
+      }, origin, 200, req);
     }
+
+    // ---- Every remaining mode touches the provider: fail closed first -----
+    requireConfirmation(body);
+    const batchSizeInput = validateBoundedInt(body.batch_size, {
+      name: "batch_size", min: 1, max: 400, fallback: body.backfill_mode ? 100 : 400,
+    });
+    body.batch_size = batchSizeInput;
+    const hardProviderLimit = Math.min(MAX_PROVIDER_CALLS_PER_RUN, batchSizeInput * 2);
+    const providerCallLimit = validateBoundedInt(body.max_provider_calls, {
+      name: "max_provider_calls", min: 1, max: hardProviderLimit, fallback: hardProviderLimit,
+    });
+    providerSession = new ProviderSession({
+      budget: new ProviderCallBudget(providerCallLimit),
+      fetchImpl: (url, init) => fetch(url, init as RequestInit),
+      headers: apiHeaders(),
+    });
+
+    console.log(`[results-refresh] Parameters: window_hours=${windowHours}, batch_size=${batchSizeInput}, league_id=${targetLeagueId || 'all'}, limit=${batchLimit}, offset=${batchOffset}, provider_call_limit=${providerCallLimit}`);
 
     // Insert initial pipeline log entry
     const pipelineLogId = await insertPipelineLog(supabase, runMode, []);
 
-    // Handle cleanup mode
-    if (isCleanup && retentionMonths) {
-      console.log(`[results-refresh] Running cleanup: retention_months=${retentionMonths}`);
-      const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
-      
-      await supabase.from("fixture_results").delete().lt("finished_at", cutoffDate.toISOString());
-      await updatePipelineLog(supabase, pipelineLogId, true, 0, 0, [], { retention_months: retentionMonths });
-      return jsonResponse({ success: true, mode: "cleanup", retention_months: retentionMonths }, origin, 200, req);
-    }
+    // NOTE: retention deletion of optimized_selections / outcome_selections was
+    // removed from refresh/backfill execution (Gate D remediation). Selection
+    // retention is owned by the dedicated optimizer pipeline.
 
-    // Auto-cleanup past selections
-    console.log("[results-refresh] Auto-cleanup: removing past/finished selections");
-    const { data: pastFixtures } = await supabase
-      .from("fixtures")
-      .select("id")
-      .or(`timestamp.lt.${Math.floor(Date.now() / 1000)},status.not.in.(NS,TBD)`);
-    
-    if (pastFixtures && pastFixtures.length > 0) {
-      const pastFixtureIds = pastFixtures.map((f: any) => f.id);
-      await supabase.from("optimized_selections").delete().in("fixture_id", pastFixtureIds);
-      await supabase.from("outcome_selections").delete().in("fixture_id", pastFixtureIds);
-      console.log(`[results-refresh] Cleaned up selections for ${pastFixtureIds.length} past fixtures`);
-    }
 
     // ======= MULTI-LEAGUE BACKFILL MODE =======
     if (isMultiLeagueBackfill) {
@@ -1015,8 +1044,13 @@ Deno.serve(async (req: Request) => {
     }, origin, 200, req);
 
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return jsonResponse({ success: false, code: error.code, error: error.message }, origin, 400, req);
+    }
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("[results-refresh] Handler error:", errMsg);
     return errorResponse("Internal server error", origin, 500, req);
+  } finally {
+    providerSession = null;
   }
 });
