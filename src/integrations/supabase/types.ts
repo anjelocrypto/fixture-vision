@@ -1854,8 +1854,11 @@ export type Database = {
           alert_type: string
           created_at: string
           details: Json | null
+          fingerprint: string | null
           id: number
+          last_seen_at: string
           message: string
+          occurrence_count: number
           resolved_at: string | null
           resolved_by: string | null
           severity: string
@@ -1864,8 +1867,11 @@ export type Database = {
           alert_type: string
           created_at?: string
           details?: Json | null
+          fingerprint?: string | null
           id?: number
+          last_seen_at?: string
           message: string
+          occurrence_count?: number
           resolved_at?: string | null
           resolved_by?: string | null
           severity: string
@@ -1874,8 +1880,11 @@ export type Database = {
           alert_type?: string
           created_at?: string
           details?: Json | null
+          fingerprint?: string | null
           id?: number
+          last_seen_at?: string
           message?: string
+          occurrence_count?: number
           resolved_at?: string | null
           resolved_by?: string | null
           severity?: string
@@ -3214,6 +3223,20 @@ export type Database = {
         Returns: Json
       }
       prune_operational_logs: { Args: never; Returns: Json }
+      prune_resolved_pipeline_alerts: {
+        Args: { p_batch_limit?: number; p_retention_days?: number }
+        Returns: number
+      }
+      record_pipeline_alert: {
+        Args: {
+          p_alert_type: string
+          p_details?: Json
+          p_fingerprint: string
+          p_message: string
+          p_severity: string
+        }
+        Returns: number
+      }
       refresh_ticket_outcome: { Args: { p_ticket_id: string }; Returns: string }
       release_cron_lease: {
         Args: { p_job_name: string; p_lock_token: string }
@@ -3254,6 +3277,10 @@ export type Database = {
           _winning_outcome: string
         }
         Returns: Json
+      }
+      resolve_pipeline_alert: {
+        Args: { p_fingerprint: string }
+        Returns: number
       }
       try_use_feature: {
         Args: { feature_key: string }
