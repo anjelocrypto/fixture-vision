@@ -432,18 +432,21 @@ export type Database = {
       cron_job_locks: {
         Row: {
           job_name: string
+          lock_token: string | null
           locked_at: string | null
           locked_by: string | null
           locked_until: string
         }
         Insert: {
           job_name: string
+          lock_token?: string | null
           locked_at?: string | null
           locked_by?: string | null
           locked_until: string
         }
         Update: {
           job_name?: string
+          lock_token?: string | null
           locked_at?: string | null
           locked_by?: string | null
           locked_until?: string
@@ -516,6 +519,39 @@ export type Database = {
           side?: string
           supporting_reason?: string
           warning_flags?: string[]
+        }
+        Relationships: []
+      }
+      feature_usage_reservations: {
+        Row: {
+          created_at: string
+          expires_at: string
+          feature_key: string
+          finalized_at: string | null
+          id: string
+          reserved_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          feature_key: string
+          finalized_at?: string | null
+          id?: string
+          reserved_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          feature_key?: string
+          finalized_at?: string | null
+          id?: string
+          reserved_at?: string
+          status?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -638,6 +674,51 @@ export type Database = {
           },
         ]
       }
+      football_league_teams: {
+        Row: {
+          active: boolean
+          first_seen_at: string
+          last_seen_at: string
+          league_id: number
+          provider: string
+          season: number
+          team_code: string | null
+          team_country: string | null
+          team_id: number
+          team_logo: string | null
+          team_name: string
+          venue: Json
+        }
+        Insert: {
+          active?: boolean
+          first_seen_at?: string
+          last_seen_at?: string
+          league_id: number
+          provider?: string
+          season: number
+          team_code?: string | null
+          team_country?: string | null
+          team_id: number
+          team_logo?: string | null
+          team_name: string
+          venue?: Json
+        }
+        Update: {
+          active?: boolean
+          first_seen_at?: string
+          last_seen_at?: string
+          league_id?: number
+          provider?: string
+          season?: number
+          team_code?: string | null
+          team_country?: string | null
+          team_id?: number
+          team_logo?: string | null
+          team_name?: string
+          venue?: Json
+        }
+        Relationships: []
+      }
       generated_tickets: {
         Row: {
           created_at: string | null
@@ -674,6 +755,101 @@ export type Database = {
           total_odds?: number
           used_live?: boolean
           user_id?: string
+        }
+        Relationships: []
+      }
+      green_bucket_policy_entries: {
+        Row: {
+          hit_rate_pct: number
+          league_id: number
+          line_norm: number
+          losses: number
+          market: string
+          odds_band: string
+          policy_version_id: string
+          roi_pct: number
+          sample_size: number
+          side: string
+          wins: number
+        }
+        Insert: {
+          hit_rate_pct: number
+          league_id: number
+          line_norm: number
+          losses: number
+          market: string
+          odds_band: string
+          policy_version_id: string
+          roi_pct: number
+          sample_size: number
+          side: string
+          wins: number
+        }
+        Update: {
+          hit_rate_pct?: number
+          league_id?: number
+          line_norm?: number
+          losses?: number
+          market?: string
+          odds_band?: string
+          policy_version_id?: string
+          roi_pct?: number
+          sample_size?: number
+          side?: string
+          wins?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "green_bucket_policy_entries_policy_version_id_fkey"
+            columns: ["policy_version_id"]
+            isOneToOne: false
+            referencedRelation: "green_bucket_policy_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      green_bucket_policy_versions: {
+        Row: {
+          activated_at: string | null
+          bucket_count: number
+          created_at: string
+          diagnostics: Json
+          id: string
+          policy_mode: string
+          retired_at: string | null
+          source_leg_count: number
+          status: string
+          thresholds: Json
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          activated_at?: string | null
+          bucket_count?: number
+          created_at?: string
+          diagnostics?: Json
+          id?: string
+          policy_mode?: string
+          retired_at?: string | null
+          source_leg_count?: number
+          status?: string
+          thresholds?: Json
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          activated_at?: string | null
+          bucket_count?: number
+          created_at?: string
+          diagnostics?: Json
+          id?: string
+          policy_mode?: string
+          retired_at?: string | null
+          source_leg_count?: number
+          status?: string
+          thresholds?: Json
+          window_end?: string | null
+          window_start?: string | null
         }
         Relationships: []
       }
@@ -1723,8 +1899,11 @@ export type Database = {
           alert_type: string
           created_at: string
           details: Json | null
+          fingerprint: string | null
           id: number
+          last_seen_at: string
           message: string
+          occurrence_count: number
           resolved_at: string | null
           resolved_by: string | null
           severity: string
@@ -1733,8 +1912,11 @@ export type Database = {
           alert_type: string
           created_at?: string
           details?: Json | null
+          fingerprint?: string | null
           id?: number
+          last_seen_at?: string
           message: string
+          occurrence_count?: number
           resolved_at?: string | null
           resolved_by?: string | null
           severity: string
@@ -1743,8 +1925,11 @@ export type Database = {
           alert_type?: string
           created_at?: string
           details?: Json | null
+          fingerprint?: string | null
           id?: number
+          last_seen_at?: string
           message?: string
+          occurrence_count?: number
           resolved_at?: string | null
           resolved_by?: string | null
           severity?: string
@@ -1885,7 +2070,7 @@ export type Database = {
           category: string
           closes_at: string
           created_at: string
-          created_by: string
+          created_by: string | null
           description: string | null
           fixture_id: number | null
           id: string
@@ -1905,7 +2090,7 @@ export type Database = {
           category?: string
           closes_at: string
           created_at?: string
-          created_by: string
+          created_by?: string | null
           description?: string | null
           fixture_id?: number | null
           id?: string
@@ -1925,7 +2110,7 @@ export type Database = {
           category?: string
           closes_at?: string
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           description?: string | null
           fixture_id?: number | null
           id?: string
@@ -1988,6 +2173,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      privacy_requests: {
+        Row: {
+          completed_at: string | null
+          details: Json
+          handled_by: string | null
+          id: string
+          request_type: string
+          requested_at: string
+          resolution_notes: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          details?: Json
+          handled_by?: string | null
+          id?: string
+          request_type: string
+          requested_at?: string
+          resolution_notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          details?: Json
+          handled_by?: string | null
+          id?: string
+          request_type?: string
+          requested_at?: string
+          resolution_notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -2226,6 +2447,45 @@ export type Database = {
         }
         Relationships: []
       }
+      team_stats_refresh_queue: {
+        Row: {
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          last_error: string | null
+          priority: number
+          status: string
+          team_id: number
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          priority?: number
+          status?: string
+          team_id: number
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          priority?: number
+          status?: string
+          team_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       team_totals_candidates: {
         Row: {
           computed_at: string
@@ -2292,6 +2552,9 @@ export type Database = {
           odds: number
           picked_at: string
           result_status: string
+          score_attempts: number
+          score_claim_token: string | null
+          score_claimed_at: string | null
           scored_version: string | null
           selection: string
           selection_key: string
@@ -2315,6 +2578,9 @@ export type Database = {
           odds: number
           picked_at?: string
           result_status?: string
+          score_attempts?: number
+          score_claim_token?: string | null
+          score_claimed_at?: string | null
           scored_version?: string | null
           selection: string
           selection_key: string
@@ -2338,6 +2604,9 @@ export type Database = {
           odds?: number
           picked_at?: string
           result_status?: string
+          score_attempts?: number
+          score_claim_token?: string | null
+          score_claimed_at?: string | null
           scored_version?: string | null
           selection?: string
           selection_key?: string
@@ -2425,6 +2694,8 @@ export type Database = {
           source: string
           status: string
           stripe_customer_id: string | null
+          stripe_event_created_at: string | null
+          stripe_event_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
           user_id: string
@@ -2437,6 +2708,8 @@ export type Database = {
           source?: string
           status: string
           stripe_customer_id?: string | null
+          stripe_event_created_at?: string | null
+          stripe_event_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id: string
@@ -2449,6 +2722,8 @@ export type Database = {
           source?: string
           status?: string
           stripe_customer_id?: string | null
+          stripe_event_created_at?: string | null
+          stripe_event_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
@@ -2535,16 +2810,40 @@ export type Database = {
       }
       webhook_events: {
         Row: {
+          attempts: number
           created_at: string
+          event_created_at: string | null
           event_id: string
+          event_type: string | null
+          last_error: string | null
+          lease_expires_at: string | null
+          processed_at: string | null
+          status: string
+          updated_at: string
         }
         Insert: {
+          attempts?: number
           created_at?: string
+          event_created_at?: string | null
           event_id: string
+          event_type?: string | null
+          last_error?: string | null
+          lease_expires_at?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
         }
         Update: {
+          attempts?: number
           created_at?: string
+          event_created_at?: string | null
           event_id?: string
+          event_type?: string | null
+          last_error?: string | null
+          lease_expires_at?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2827,9 +3126,24 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_cron_lease: {
+        Args: { p_duration_minutes?: number; p_job_name: string }
+        Returns: string
+      }
       acquire_cron_lock: {
         Args: { p_duration_minutes?: number; p_job_name: string }
         Returns: boolean
+      }
+      activate_green_bucket_policy: {
+        Args: {
+          p_diagnostics?: Json
+          p_rows: Json
+          p_source_leg_count: number
+          p_thresholds: Json
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: string
       }
       admin_create_market_for_fixture: {
         Args: {
@@ -2839,6 +3153,16 @@ export type Database = {
           _odds_yes?: number
           _resolution_rule: string
           _title_override?: string
+        }
+        Returns: Json
+      }
+      apply_stripe_entitlement_event: {
+        Args: {
+          p_event_created_at: string
+          p_event_id: string
+          p_expected_subscription_id?: string
+          p_patch: Json
+          p_user_id: string
         }
         Returns: Json
       }
@@ -2860,17 +3184,102 @@ export type Database = {
           skipped: number
         }[]
       }
+      canonical_cron_job_name: { Args: { p_job_name: string }; Returns: string }
       check_username_available: {
         Args: { p_username: string }
         Returns: boolean
       }
+      claim_scorable_ticket_legs: {
+        Args: { batch_limit?: number }
+        Returns: {
+          cards_away: number
+          cards_home: number
+          claim_token: string
+          corners_away: number
+          corners_home: number
+          fixture_id: number
+          goals_away: number
+          goals_home: number
+          leg_id: string
+          line: number
+          market: string
+          side: string
+          ticket_id: string
+          user_id: string
+        }[]
+      }
+      claim_stripe_webhook_event: {
+        Args: {
+          p_event_created_at: string
+          p_event_id: string
+          p_event_type: string
+        }
+        Returns: string
+      }
+      claim_team_stats_refresh: {
+        Args: { p_batch_limit?: number }
+        Returns: {
+          attempts: number
+          claim_token: string
+          team_id: number
+        }[]
+      }
       close_expired_markets: { Args: never; Returns: Json }
+      complete_account_deletion_request: {
+        Args: { p_request_id: string; p_resolution_notes?: string }
+        Returns: boolean
+      }
+      complete_stripe_webhook_event: {
+        Args: { p_event_id: string }
+        Returns: undefined
+      }
+      complete_team_stats_refresh: {
+        Args: { p_claim_token: string; p_team_id: number }
+        Returns: boolean
+      }
+      consume_rate_limit: {
+        Args: { p_feature: string; p_max_per_minute: number; p_user_id: string }
+        Returns: {
+          allowed: boolean
+          current_count: number
+          retry_after_seconds: number
+        }[]
+      }
       create_profile_with_username: {
         Args: { p_username: string }
         Returns: Json
       }
+      enqueue_team_stats_refresh: {
+        Args: { p_candidates: Json }
+        Returns: number
+      }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
+      fail_stripe_webhook_event: {
+        Args: { p_error: string; p_event_id: string }
+        Returns: undefined
+      }
+      fail_team_stats_refresh: {
+        Args: { p_claim_token: string; p_error: string; p_team_id: number }
+        Returns: boolean
+      }
+      finalize_feature_use: {
+        Args: { p_reservation_id: string }
+        Returns: {
+          consumed: boolean
+          remaining_uses: number
+        }[]
+      }
+      finalize_scored_ticket_leg: {
+        Args: {
+          p_actual_value: number
+          p_claim_token: string
+          p_leg_id: string
+          p_result_status: string
+          p_scored_version: string
+        }
+        Returns: boolean
+      }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
         Args: {
@@ -2944,12 +3353,83 @@ export type Database = {
       }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      persist_generated_ticket: {
+        Args: {
+          p_leg_outcomes: Json
+          p_optimizer_cache_rows: Json
+          p_ticket: Json
+          p_ticket_outcome: Json
+          p_user_id: string
+        }
+        Returns: string
+      }
       place_market_bet: {
         Args: { _market_id: string; _outcome: string; _stake: number }
         Returns: Json
       }
       prune_operational_logs: { Args: never; Returns: Json }
+      prune_resolved_pipeline_alerts: {
+        Args: { p_batch_limit?: number; p_retention_days?: number }
+        Returns: number
+      }
+      purge_user_application_data_for_deletion: {
+        Args: { p_confirmation: string; p_user_id: string }
+        Returns: Json
+      }
+      record_pipeline_alert: {
+        Args: {
+          p_alert_type: string
+          p_details?: Json
+          p_fingerprint: string
+          p_message: string
+          p_severity: string
+        }
+        Returns: number
+      }
+      refresh_ticket_outcome: { Args: { p_ticket_id: string }; Returns: string }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_lock_token: string }
+        Returns: boolean
+      }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
+      release_feature_use: {
+        Args: { p_reservation_id: string }
+        Returns: boolean
+      }
+      release_team_stats_refresh_claims: {
+        Args: { p_claim_token: string }
+        Returns: number
+      }
+      release_ticket_leg_score_claim: {
+        Args: { p_claim_token: string; p_leg_id: string }
+        Returns: boolean
+      }
+      replace_football_league_roster: {
+        Args: { p_league_id: number; p_season: number; p_teams: Json }
+        Returns: number
+      }
+      replace_optimized_selections: {
+        Args: {
+          p_fixture_ids: number[]
+          p_selections: Json
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: number
+      }
+      request_account_deletion: {
+        Args: { p_confirmation: string }
+        Returns: string
+      }
+      reserve_feature_use: {
+        Args: { p_feature_key: string }
+        Returns: {
+          allowed: boolean
+          reason: string
+          remaining_uses: number
+          reservation_id: string
+        }[]
+      }
       resolve_market: {
         Args: {
           _admin_user_id?: string
@@ -2958,6 +3438,10 @@ export type Database = {
           _winning_outcome: string
         }
         Returns: Json
+      }
+      resolve_pipeline_alert: {
+        Args: { p_fingerprint: string }
+        Returns: number
       }
       try_use_feature: {
         Args: { feature_key: string }
