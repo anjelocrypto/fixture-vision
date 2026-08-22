@@ -432,18 +432,21 @@ export type Database = {
       cron_job_locks: {
         Row: {
           job_name: string
+          lock_token: string | null
           locked_at: string | null
           locked_by: string | null
           locked_until: string
         }
         Insert: {
           job_name: string
+          lock_token?: string | null
           locked_at?: string | null
           locked_by?: string | null
           locked_until: string
         }
         Update: {
           job_name?: string
+          lock_token?: string | null
           locked_at?: string | null
           locked_by?: string | null
           locked_until?: string
@@ -2420,6 +2423,9 @@ export type Database = {
           odds: number
           picked_at: string
           result_status: string
+          score_attempts: number
+          score_claim_token: string | null
+          score_claimed_at: string | null
           scored_version: string | null
           selection: string
           selection_key: string
@@ -2443,6 +2449,9 @@ export type Database = {
           odds: number
           picked_at?: string
           result_status?: string
+          score_attempts?: number
+          score_claim_token?: string | null
+          score_claimed_at?: string | null
           scored_version?: string | null
           selection: string
           selection_key: string
@@ -2466,6 +2475,9 @@ export type Database = {
           odds?: number
           picked_at?: string
           result_status?: string
+          score_attempts?: number
+          score_claim_token?: string | null
+          score_claimed_at?: string | null
           scored_version?: string | null
           selection?: string
           selection_key?: string
@@ -2985,6 +2997,10 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_cron_lease: {
+        Args: { p_duration_minutes?: number; p_job_name: string }
+        Returns: string
+      }
       acquire_cron_lock: {
         Args: { p_duration_minutes?: number; p_job_name: string }
         Returns: boolean
@@ -3043,6 +3059,25 @@ export type Database = {
         Args: { p_username: string }
         Returns: boolean
       }
+      claim_scorable_ticket_legs: {
+        Args: { batch_limit?: number }
+        Returns: {
+          cards_away: number
+          cards_home: number
+          claim_token: string
+          corners_away: number
+          corners_home: number
+          fixture_id: number
+          goals_away: number
+          goals_home: number
+          leg_id: string
+          line: number
+          market: string
+          side: string
+          ticket_id: string
+          user_id: string
+        }[]
+      }
       claim_stripe_webhook_event: {
         Args: {
           p_event_created_at: string
@@ -3080,6 +3115,16 @@ export type Database = {
           consumed: boolean
           remaining_uses: number
         }[]
+      }
+      finalize_scored_ticket_leg: {
+        Args: {
+          p_actual_value: number
+          p_claim_token: string
+          p_leg_id: string
+          p_result_status: string
+          p_scored_version: string
+        }
+        Returns: boolean
       }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
@@ -3169,9 +3214,18 @@ export type Database = {
         Returns: Json
       }
       prune_operational_logs: { Args: never; Returns: Json }
+      refresh_ticket_outcome: { Args: { p_ticket_id: string }; Returns: string }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_lock_token: string }
+        Returns: boolean
+      }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
       release_feature_use: {
         Args: { p_reservation_id: string }
+        Returns: boolean
+      }
+      release_ticket_leg_score_claim: {
+        Args: { p_claim_token: string; p_leg_id: string }
         Returns: boolean
       }
       replace_optimized_selections: {
