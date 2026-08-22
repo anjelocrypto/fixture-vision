@@ -32,7 +32,7 @@ export function LeaderboardPanel({ entries }: LeaderboardPanelProps) {
         const rank = getRankDisplay(entry.rank);
         return (
           <div
-            key={entry.user_id}
+            key={`${entry.rank}-${entry.display_name}`}
             className={cn(
               "rounded-xl border p-3 transition-all duration-200",
               rank.bg
