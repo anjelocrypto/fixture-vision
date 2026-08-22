@@ -210,8 +210,23 @@ RESET ROLE;
 
 SELECT public.set_ctx('anon', NULL);
 SET ROLE anon;
-SELECT public.assert((SELECT count(*) FROM public.generated_tickets) = 0, 'anon reads no ticket history');
-SELECT public.assert((SELECT count(*) FROM public.ticket_leg_outcomes) = 0, 'anon reads no leg history');
+DO $$
+DECLARE n integer;
+BEGIN
+  SELECT count(*) INTO n FROM public.generated_tickets;
+  PERFORM public.assert(n = 0, 'anon reads no ticket history');
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'ok  - anon reads no ticket history (no grant)';
+END $$;
+DO $$
+DECLARE n integer;
+BEGIN
+  SELECT count(*) INTO n FROM public.ticket_leg_outcomes;
+  PERFORM public.assert(n = 0, 'anon reads no leg history');
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'ok  - anon reads no leg history (no grant)';
+END $$;
+
 DO $$ BEGIN
   PERFORM * FROM public.hold_unsafe_pending_legs_v2(2001, 2, true, NULL);
   RAISE EXCEPTION 'FAIL: anon executed the classifier';
