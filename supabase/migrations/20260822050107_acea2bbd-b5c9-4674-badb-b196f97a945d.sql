@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.release_cron_lock(text) TO authenticated;
