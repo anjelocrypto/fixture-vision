@@ -3,9 +3,10 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Trash2, RefreshCw, Copy, Ticket, X, ChevronRight, Zap, Clock } from "lucide-react";
+import { Trash2, RefreshCw, Copy, Ticket, X, ChevronRight, Zap, Clock, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,11 +15,13 @@ import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 import { formatDateWithLocale } from "@/lib/i18nFormatters";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { TicketHistoryPanel } from "@/components/tickets/TicketHistoryPanel";
 
 interface MyTicketDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
 
 export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const { legs, stake, setStake, removeLeg, clear, refreshOdds } = useTicket();
