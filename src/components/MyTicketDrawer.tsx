@@ -293,7 +293,10 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
             </p>
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
+
   );
 }
