@@ -3426,6 +3426,19 @@ export type Database = {
         }[]
       }
       get_market_aggregates: { Args: { _market_id: string }; Returns: Json }
+      get_market_leaderboard: {
+        Args: { p_limit?: number }
+        Returns: {
+          balance: number
+          display_name: string
+          losses_count: number
+          positions_count: number
+          rank: number
+          roi: number
+          win_rate: number
+          wins_count: number
+        }[]
+      }
       get_market_template_odds: {
         Args: { _fixture_id: number; _resolution_rule: string }
         Returns: Json
