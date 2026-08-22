@@ -125,3 +125,69 @@ describeIntegration("Premium edge functions require auth", () => {
     });
   }
 });
+
+/**
+ * GATE D SECURITY WARNINGS RC — anon exposure of leaderboard snapshots and
+ * SECURITY DEFINER routines. Anon must be denied at the GRANT layer (42501),
+ * never merely filtered by RLS.
+ */
+describeIntegration("Anon cannot reach leaderboard snapshots or privileged RPCs", () => {
+  it("anon cannot select market_leaderboard_snapshots", async () => {
+    const { data, error } = await (anonClient as any)
+      .from("market_leaderboard_snapshots")
+      .select("user_id")
+      .limit(1);
+
+    expect(error).toBeTruthy();
+    expect(error?.code).toBe("42501");
+    expect(data).toBeNull();
+  });
+
+  it("anon cannot count market_leaderboard_snapshots rows", async () => {
+    const { count, error } = await (anonClient as any)
+      .from("market_leaderboard_snapshots")
+      .select("*", { count: "exact", head: true });
+
+    expect(error).toBeTruthy();
+    expect(count).toBeNull();
+  });
+
+  it("anon cannot execute get_market_leaderboard", async () => {
+    const { error } = await (anonClient as any).rpc("get_market_leaderboard", { p_limit: 5 });
+    expect(error?.code).toBe("42501");
+  });
+
+  it("anon cannot execute is_user_subscriber with an arbitrary user id", async () => {
+    const { error } = await (anonClient as any).rpc("is_user_subscriber", {
+      check_user_id: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(error?.code).toBe("42501");
+  });
+
+  it("anon cannot execute try_use_feature", async () => {
+    const { error } = await (anonClient as any).rpc("try_use_feature", {
+      feature_key: "bet_optimizer",
+    });
+    expect(error?.code).toBe("42501");
+  });
+
+  it("get_market_aggregates is the only anon-callable definer routine and leaks no user ids", async () => {
+    const { data, error } = await (anonClient as any).rpc("get_market_aggregates", {
+      _market_id: "00000000-0000-0000-0000-000000000000",
+    });
+
+    expect(error).toBeNull();
+    const payload = JSON.stringify(data ?? {});
+    expect(payload).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(Object.keys(data ?? {}).sort()).toEqual([
+      "no_positions",
+      "no_stake",
+      "total_pool",
+      "total_positions",
+      "unique_traders",
+      "yes_positions",
+      "yes_stake",
+    ]);
+  });
+});
+
