@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveStripeCustomerId } from "../_shared/stripe_customer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,17 +39,20 @@ serve(async (req) => {
     
     const user = userData.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    logStep("User authenticated", { userId: user.id });
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Find the user's Stripe customer
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    if (customers.data.length === 0) {
+    const customerId = await resolveStripeCustomerId({
+      stripe,
+      supabase: supabaseClient,
+      user,
+      allowLegacyEmailRecovery: true,
+    });
+    if (!customerId) {
       throw new Error("No Stripe customer found for this user");
     }
-    const customerId = customers.data[0].id;
-    logStep("Found Stripe customer", { customerId });
+    logStep("Found Stripe customer mapping");
 
     // Find active or past_due subscriptions
     const subscriptions = await stripe.subscriptions.list({
@@ -57,7 +61,10 @@ serve(async (req) => {
     });
 
     const activeOrPastDue = subscriptions.data.filter(
-      (sub: { status: string }) => sub.status === "active" || sub.status === "past_due"
+      (sub: { status: string }) =>
+        sub.status === "active" ||
+        sub.status === "trialing" ||
+        sub.status === "past_due"
     );
 
     if (activeOrPastDue.length === 0) {
@@ -105,34 +112,6 @@ serve(async (req) => {
       }
     }
 
-    // Void any open invoices to stop payment collection attempts
-    let voidedInvoices = 0;
-    try {
-      const openInvoices = await stripe.invoices.list({
-        customer: customerId,
-        status: "open",
-        limit: 10,
-      });
-
-      for (const invoice of openInvoices.data) {
-        try {
-          await stripe.invoices.voidInvoice(invoice.id);
-          voidedInvoices++;
-          logStep("Voided open invoice", { invoiceId: invoice.id, amount: invoice.amount_due });
-        } catch (voidError) {
-          logStep("Failed to void invoice", { 
-            invoiceId: invoice.id, 
-            error: voidError instanceof Error ? voidError.message : String(voidError) 
-          });
-        }
-      }
-      logStep("Invoice voiding complete", { voidedCount: voidedInvoices, totalOpen: openInvoices.data.length });
-    } catch (invoiceError) {
-      logStep("Warning: Failed to fetch/void invoices", { 
-        error: invoiceError instanceof Error ? invoiceError.message : String(invoiceError) 
-      });
-    }
-
     // DB update already done in the loop above with correct Stripe values
     logStep("All entitlements synced during subscription updates");
 
@@ -141,7 +120,6 @@ serve(async (req) => {
         success: true, 
         message: "Subscription will be cancelled at the end of your billing period. You'll keep access until then.",
         cancelledCount: activeOrPastDue.length,
-        voidedInvoices,
         accessUntil: canceledSubs[0]?.currentPeriodEnd || null
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

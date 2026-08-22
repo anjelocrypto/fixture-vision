@@ -27,6 +27,7 @@ const corsHeaders = {
 };
 
 interface ScorableLeg {
+  claim_token: string;
   leg_id: string;
   ticket_id: string;
   user_id: string;
@@ -74,9 +75,9 @@ serve(async (req) => {
 
     logs.push(`[score] Starting with batch_size=${batchSize}`);
 
-    // Step 1: Get SCORABLE pending legs via RPC (INNER JOINs fixture_results FT, uses FOR UPDATE SKIP LOCKED)
+    // Step 1: atomically claim scorable legs with a durable lease token.
     const { data: scorableLegs, error: legsError } = await supabase
-      .rpc("get_scorable_pending_legs", { batch_limit: batchSize });
+      .rpc("claim_scorable_ticket_legs", { batch_limit: batchSize });
 
     if (legsError) {
       logs.push(`[score] RPC error: ${legsError.message}`);
@@ -123,12 +124,20 @@ serve(async (req) => {
       } else if (market === "team_goals" || market === "team_total") {
         // For team-specific markets, we'd need side info like "home" or "away"
         // For now, skip these as they need more context
+        await supabase.rpc("release_ticket_leg_score_claim", {
+          p_leg_id: leg.leg_id,
+          p_claim_token: leg.claim_token,
+        });
         skippedLegs++;
         continue;
       }
 
       if (actualValue === null) {
         // Can't score without actual value (e.g., corners/cards not available)
+        await supabase.rpc("release_ticket_leg_score_claim", {
+          p_leg_id: leg.leg_id,
+          p_claim_token: leg.claim_token,
+        });
         skippedLegs++;
         continue;
       }
@@ -156,23 +165,27 @@ serve(async (req) => {
       } else {
         // Unknown side, skip
         logs.push(`[score] Unknown side "${leg.side}" for leg ${leg.leg_id}`);
+        await supabase.rpc("release_ticket_leg_score_claim", {
+          p_leg_id: leg.leg_id,
+          p_claim_token: leg.claim_token,
+        });
         skippedLegs++;
         continue;
       }
 
-      // Update the leg
-      const { error: updateError } = await supabase
-        .from("ticket_leg_outcomes")
-        .update({
-          result_status: resultStatus,
-          actual_value: actualValue,
-          settled_at: new Date().toISOString(),
-          scored_version: "v1.1-rpc",
-        })
-        .eq("id", leg.leg_id);
+      const { data: finalized, error: updateError } = await supabase.rpc(
+        "finalize_scored_ticket_leg",
+        {
+          p_leg_id: leg.leg_id,
+          p_claim_token: leg.claim_token,
+          p_result_status: resultStatus,
+          p_actual_value: actualValue,
+          p_scored_version: "v1.3-durable-claim",
+        },
+      );
 
-      if (updateError) {
-        logs.push(`[score] Error updating leg ${leg.leg_id}: ${updateError.message}`);
+      if (updateError || finalized !== true) {
+        logs.push(`[score] Error updating leg ${leg.leg_id}: ${updateError?.message ?? "claim no longer owned"}`);
         continue;
       }
 
@@ -186,64 +199,10 @@ serve(async (req) => {
     let updatedTickets = 0;
 
     for (const ticketId of ticketsToUpdate) {
-      // Get all legs for this ticket
-      const { data: ticketLegs, error: ticketLegsError } = await supabase
-        .from("ticket_leg_outcomes")
-        .select("result_status")
-        .eq("ticket_id", ticketId);
-
-      if (ticketLegsError || !ticketLegs) {
-        logs.push(`[score] Error fetching legs for ticket ${ticketId}`);
-        continue;
-      }
-
-      // Count by status
-      let legsWon = 0;
-      let legsLost = 0;
-      let legsPushed = 0;
-      let legsVoid = 0;
-      let legsPending = 0;
-
-      for (const tl of ticketLegs) {
-        switch (tl.result_status) {
-          case "WIN": legsWon++; break;
-          case "LOSS": legsLost++; break;
-          case "PUSH": legsPushed++; break;
-          case "VOID": legsVoid++; break;
-          default: legsPending++; break;
-        }
-      }
-
-      const legsTotal = ticketLegs.length;
-      const legsSettled = legsWon + legsLost + legsPushed + legsVoid;
-
-      // Determine ticket status
-      let ticketStatus: string;
-      if (legsLost > 0) {
-        ticketStatus = "LOST";
-      } else if (legsSettled === legsTotal && legsVoid === legsTotal) {
-        ticketStatus = "VOID";
-      } else if (legsSettled === legsTotal && legsLost === 0) {
-        ticketStatus = "WON";
-      } else if (legsSettled > 0 && legsSettled < legsTotal) {
-        ticketStatus = "PARTIAL";
-      } else {
-        ticketStatus = "PENDING";
-      }
-
-      // Update ticket_outcomes
-      const { error: ticketUpdateError } = await supabase
-        .from("ticket_outcomes")
-        .update({
-          legs_settled: legsSettled,
-          legs_won: legsWon,
-          legs_lost: legsLost,
-          legs_pushed: legsPushed,
-          legs_void: legsVoid,
-          ticket_status: ticketStatus,
-          settled_at: legsSettled === legsTotal ? new Date().toISOString() : null,
-        })
-        .eq("ticket_id", ticketId);
+      const { error: ticketUpdateError } = await supabase.rpc(
+        "refresh_ticket_outcome",
+        { p_ticket_id: ticketId },
+      );
 
       if (ticketUpdateError) {
         logs.push(`[score] Error updating ticket ${ticketId}: ${ticketUpdateError.message}`);

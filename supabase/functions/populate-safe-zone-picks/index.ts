@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     const { data: weights, error: wErr } = await supabase
       .from("performance_weights")
       .select("league_id, league_key, market, side, line, wins, losses, sample_size, bayes_win_rate, roi_pct")
-      .in("market", allowedMarkets)
+      .in("market", effectiveMarkets)
       .eq("side", "over")
       .gte("sample_size", MIN_SAMPLE_SIZE);
 

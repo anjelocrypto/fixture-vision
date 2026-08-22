@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { STRIPE_PLANS, getPlanConfig } from "../_shared/stripe_plans.ts";
+import { getPlanConfig } from "../_shared/stripe_plans.ts";
+import { resolveStripeCustomerId } from "../_shared/stripe_customer.ts";
+import { readJsonWithLimit, RequestBodyTooLargeError } from "../_shared/request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,29 +18,6 @@ serve(async (req) => {
   try {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     const appUrl = Deno.env.get("APP_URL");
-
-    // Debug logging (enable with ?debug=1 or body.debug=true)
-    let debugMode = false;
-    try {
-      const url = new URL(req.url);
-      debugMode = url.searchParams.get('debug') === '1';
-      if (!debugMode && req.headers.get('content-type')?.includes('application/json')) {
-        const bodyClone = await req.clone().json();
-        debugMode = bodyClone?.debug === true;
-      }
-    } catch (_) {
-      // ignore parse errors
-    }
-
-    if (debugMode) {
-      console.log('[checkout-debug] Environment check:', {
-        APP_URL: Deno.env.get('APP_URL'),
-        SUPABASE_URL: Deno.env.get('SUPABASE_URL'),
-        STRIPE_MODE: stripeKey?.startsWith('sk_live_') ? 'live' : 'test',
-        success_url_template: `${appUrl}/account?checkout=success`,
-        cancel_url_template: `${appUrl}/pricing?checkout=cancel`,
-      });
-    }
 
     if (!stripeKey) {
       console.error("[checkout] Missing STRIPE_SECRET_KEY");
@@ -80,11 +59,12 @@ serve(async (req) => {
 
     let body: any = {};
     try {
-      body = await req.json();
-    } catch (_) {
+      body = await readJsonWithLimit(req, 8 * 1024);
+    } catch (error) {
+      const tooLarge = error instanceof RequestBodyTooLargeError;
       return new Response(
-        JSON.stringify({ error: "bad_request", detail: "Invalid JSON body" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        JSON.stringify({ error: tooLarge ? "request_too_large" : "bad_request" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: tooLarge ? 413 : 400 }
       );
     }
 
@@ -102,10 +82,20 @@ serve(async (req) => {
     console.log(`[checkout] Creating session for ${planConfig.name}, user ${user.id}`);
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } },
+    );
 
-    // Check for existing Stripe customer
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    let customerId = customers.data[0]?.id;
+    // Prefer the durable Supabase mapping. Email-only lookup is limited to a
+    // single unclaimed legacy customer so one user can never claim another's.
+    let customerId = await resolveStripeCustomerId({
+      stripe,
+      supabase: supabaseAdmin,
+      user,
+      allowLegacyEmailRecovery: true,
+    });
 
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -134,8 +124,7 @@ serve(async (req) => {
       );
 
       if (activeRecurringSubs.length > 0) {
-        console.log(`[checkout] BLOCKED: User ${user.id} already has ${activeRecurringSubs.length} active subscription(s)`);
-        console.log(`[checkout] Existing subs: ${activeRecurringSubs.map((s: Stripe.Subscription) => s.id).join(', ')}`);
+        console.log(`[checkout] Existing recurring subscription blocked a duplicate checkout for user ${user.id}`);
         
         return new Response(
           JSON.stringify({ 
@@ -148,13 +137,31 @@ serve(async (req) => {
       }
     }
 
-    // Generate idempotency key to prevent duplicate sessions from double-clicks/retries
-    // Format: userId:priceId:YYYY-MM-DD (allows one session per user per plan per day)
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const idempotencyKey = `checkout_${user.id}:${planConfig.priceId}:${today}`;
+    // Reuse an unfinished session for this exact plan. If the latest matching
+    // session is expired/complete, its ID becomes the deterministic seed for
+    // the next attempt. Concurrent requests therefore converge on one Stripe
+    // idempotency key without trapping a user on an expired daily session.
+    const recentSessions = await stripe.checkout.sessions.list({
+      customer: customerId,
+      limit: 25,
+    });
+    const matchingSessions = recentSessions.data.filter((checkoutSession: Stripe.Checkout.Session) =>
+      checkoutSession.metadata?.user_id === user.id
+      && checkoutSession.metadata?.plan === plan
+      && checkoutSession.mode === mode
+    );
+    const reusableSession = matchingSessions.find((checkoutSession: Stripe.Checkout.Session) =>
+      checkoutSession.status === "open" && typeof checkoutSession.url === "string"
+    );
+    if (reusableSession?.url) {
+      return new Response(
+        JSON.stringify({ url: reusableSession.url, reused: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
+    }
 
-    console.log(`[checkout] Success URL will be: ${appUrl}/payment-success`);
-    console.log(`[checkout] Using idempotency key: ${idempotencyKey}`);
+    const priorAttempt = matchingSessions[0]?.id ?? "initial";
+    const idempotencyKey = `checkout_${user.id}:${planConfig.priceId}:after_${priorAttempt}`;
 
     // Create checkout session with idempotency key
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
@@ -164,7 +171,7 @@ serve(async (req) => {
       line_items: [{ price: planConfig.priceId, quantity: 1 }],
       mode,
       payment_method_types: ["card"],
-      success_url: `${appUrl}/payment-success`,
+      success_url: `${appUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/pricing?checkout=cancel`,
       metadata: { user_id: user.id, plan },
     };
@@ -189,24 +196,23 @@ serve(async (req) => {
         );
       }
       
-      console.error("[checkout] Stripe create session failed:", err?.message || err);
+      console.error("[checkout] Stripe create session failed", err);
       return new Response(
-        JSON.stringify({ error: "stripe_session_create_failed", detail: err?.message || "Unknown Stripe error" }),
+        JSON.stringify({ error: "stripe_session_create_failed" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
 
-    console.log(`[checkout] Session created: ${session.id} for ${planConfig.name}`);
+    console.log(`[checkout] Session created for ${planConfig.name}`);
 
     return new Response(
       JSON.stringify({ url: session.url }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[checkout] Error:", message);
+    console.error("[checkout] Error", error);
     return new Response(
-      JSON.stringify({ error: "internal_error", detail: message }),
+      JSON.stringify({ error: "internal_error" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }

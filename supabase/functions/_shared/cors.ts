@@ -24,7 +24,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 /**
  * Check if an origin is allowed
  */
-function isOriginAllowed(origin: string | null): boolean {
+export function isOriginAllowed(origin: string | null): boolean {
   if (!origin) return false;
   
   // Check exact matches
@@ -39,25 +39,38 @@ function isOriginAllowed(origin: string | null): boolean {
 /**
  * Get CORS headers for the given request origin.
  * - Echoes known allowed origins (ticketai.bet, preview envs)
- * - Falls back to "*" for non-browser/internal calls
+ * - Allows "*" only when there is no browser Origin header
+ * - Omits Access-Control-Allow-Origin for disallowed browser origins
  */
-export function getCorsHeaders(origin: string | null, _request?: Request): HeadersInit {
-  const allowedOrigin = origin && isOriginAllowed(origin) ? origin : "*";
-
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
+export function getCorsHeaders(origin: string | null, _request?: Request): Record<string, string> {
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-cron-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
     "Access-Control-Max-Age": "86400", // 24 hours
     Vary: "Origin",
   };
+
+  if (!origin) {
+    headers["Access-Control-Allow-Origin"] = "*";
+  } else if (isOriginAllowed(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
 }
 
 /**
  * Handle preflight OPTIONS request
  */
 export function handlePreflight(origin: string | null, request?: Request): Response {
+  if (origin && !isOriginAllowed(origin)) {
+    return new Response(null, {
+      status: 403,
+      headers: { Vary: "Origin" },
+    });
+  }
+
   return new Response(null, {
     status: 204,
     headers: getCorsHeaders(origin, request),

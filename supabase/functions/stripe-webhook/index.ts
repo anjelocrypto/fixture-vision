@@ -5,10 +5,8 @@ import { STRIPE_PLANS } from "../_shared/stripe_plans.ts";
 import { 
   STRIPE_PRICE_DAY_PASS,
   STRIPE_PRICE_TEST_PASS,
-  STRIPE_PRICE_MONTHLY,
-  STRIPE_PRICE_THREE_MONTH,
-  STRIPE_PRICE_YEARLY 
 } from "../_shared/stripePrices.ts";
+import { readTextWithLimit, RequestBodyTooLargeError } from "../_shared/request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,12 +21,14 @@ const mapSubscriptionStatus = (stripeStatus: string): string => {
       return "active";
     case "past_due":
     case "unpaid":
+    case "incomplete":
+    case "paused":
       return "past_due";
     case "canceled":
     case "incomplete_expired":
       return "canceled";
     default:
-      return "expired";
+      throw new Error(`Unsupported Stripe subscription status: ${stripeStatus}`);
   }
 };
 
@@ -40,6 +40,54 @@ const getPlanFromPriceId = (priceId: string): string => {
     }
   }
   return "unknown";
+};
+
+const getRequiredSubscriptionPlan = (priceId?: string): string => {
+  const plan = getPlanFromPriceId(priceId ?? "");
+  if (!["monthly", "three_month", "annual"].includes(plan)) {
+    throw new Error(`Unsupported recurring Stripe price: ${priceId ?? "missing"}`);
+  }
+  return plan;
+};
+
+const getRequiredPeriodEnd = (subscription: Stripe.Subscription): string => {
+  if (!subscription.current_period_end) {
+    throw new Error(`Subscription ${subscription.id} is missing current_period_end`);
+  }
+
+  return new Date(subscription.current_period_end * 1000).toISOString();
+};
+
+const applyEntitlementEvent = async (
+  supabase: any,
+  event: Stripe.Event,
+  userId: string,
+  patch: Record<string, unknown>,
+  expectedSubscriptionId: string | null = null,
+): Promise<boolean> => {
+  const { data, error } = await supabase.rpc("apply_stripe_entitlement_event", {
+    p_user_id: userId,
+    p_event_id: event.id,
+    p_event_created_at: new Date(event.created * 1000).toISOString(),
+    p_patch: patch,
+    p_expected_subscription_id: expectedSubscriptionId,
+  });
+
+  if (error) {
+    throw new Error(`Failed to apply entitlement event: ${error.message}`);
+  }
+
+  if (data?.applied !== true) {
+    console.warn("[webhook] Entitlement event was not applied", {
+      eventId: event.id,
+      eventType: event.type,
+      userId,
+      reason: data?.reason,
+    });
+    return false;
+  }
+
+  return true;
 };
 
 // Helper to resolve userId from various sources
@@ -110,37 +158,18 @@ const resolveUserId = async (
 // Helper to upsert entitlement for subscription
 const upsertSubscriptionEntitlement = async (
   supabase: any,
+  event: Stripe.Event,
   userId: string,
   subscription: Stripe.Subscription,
   customerId: string
 ) => {
   const priceId = subscription.items.data[0]?.price?.id;
   
-  // Map price to plan
-  let plan = "monthly";
-  if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
-  else if (priceId === STRIPE_PRICE_YEARLY) plan = "annual";
-  else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
+  const plan = getRequiredSubscriptionPlan(priceId);
   
   const status = mapSubscriptionStatus(subscription.status);
 
-  const endTimestamp = subscription.current_period_end; // seconds since epoch or null
-
-  const fallbackEndSeconds =
-    Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60; // +30 days from now
-
-  if (!endTimestamp) {
-    console.warn("[webhook] Subscription missing current_period_end, using fallback", {
-      subscriptionId: subscription.id,
-      status: subscription.status,
-      priceId,
-      plan,
-    });
-  }
-
-  const currentPeriodEnd = new Date(
-    (endTimestamp ?? fallbackEndSeconds) * 1000
-  ).toISOString();
+  const currentPeriodEnd = getRequiredPeriodEnd(subscription);
 
   console.log(`[webhook][subscription] Upserting entitlement:`, {
     userId,
@@ -152,28 +181,26 @@ const upsertSubscriptionEntitlement = async (
     currentPeriodEnd,
   });
 
-  const { error } = await supabase
-    .from("user_entitlements")
-    .upsert({
-      user_id: userId,
-      plan,
-      status,
-      current_period_end: currentPeriodEnd,
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscription.id,
-      source: "stripe",
-    });
-
-  if (error) {
-    console.error("[webhook][subscription] ❌ Error upserting entitlement:", error);
-    throw error;
-  } else {
-    console.log(`[webhook][subscription] ✅ Entitlement upserted successfully`);
-  }
+  await applyEntitlementEvent(supabase, event, userId, {
+    plan,
+    status,
+    current_period_end: currentPeriodEnd,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscription.id,
+    source: "stripe",
+    cancel_at_period_end: subscription.cancel_at_period_end || false,
+    canceled_at: subscription.canceled_at
+      ? new Date(subscription.canceled_at * 1000).toISOString()
+      : null,
+  });
+  console.log(`[webhook][subscription] ✅ Entitlement upserted successfully`);
 };
 
 // Webhook handler for Stripe events
 serve(async (req) => {
+  let claimedEventId: string | null = null;
+  let claimedSupabase: any = null;
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -188,7 +215,7 @@ serve(async (req) => {
     const signature = req.headers.get("stripe-signature");
     if (!signature) throw new Error("Missing stripe-signature header");
 
-    const body = await req.text();
+    const body = await readTextWithLimit(req, 1024 * 1024);
     const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
 
     console.log(`[webhook] Received event: ${event.type}, ID: ${event.id}`);
@@ -199,21 +226,28 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );
+    const { data: claimStatus, error: claimError } = await supabase.rpc(
+      "claim_stripe_webhook_event",
+      {
+        p_event_id: event.id,
+        p_event_type: event.type,
+        p_event_created_at: new Date(event.created * 1000).toISOString(),
+      },
+    );
 
-    // Idempotency check
-    const { data: existing } = await supabase
-      .from("webhook_events")
-      .select("event_id")
-      .eq("event_id", event.id)
-      .single();
+    if (claimError) {
+      throw new Error(`Failed to claim webhook event: ${claimError.message}`);
+    }
 
-    if (existing) {
-      console.log(`[webhook] Event ${event.id} already processed, skipping`);
+    if (claimStatus !== "claimed") {
+      console.log(`[webhook] Event ${event.id} skipped (${claimStatus})`);
       return new Response(JSON.stringify({ received: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
+    claimedEventId = event.id;
+    claimedSupabase = supabase;
 
     // Process event
     switch (event.type) {
@@ -230,10 +264,7 @@ serve(async (req) => {
             mode: session.mode,
             metadata: session.metadata
           });
-          return new Response(
-            JSON.stringify({ error: "Missing userId" }), 
-            { headers: corsHeaders, status: 400 }
-          );
+          throw new Error("Missing userId for checkout session");
         }
         
         console.log(`[webhook][checkout.session.completed]`, {
@@ -263,12 +294,11 @@ serve(async (req) => {
           }
 
           if (!planName) {
-            console.error("[webhook] ❌ Payment session missing valid plan; skipping entitlement", {
-              sessionId: session.id,
-              metadataPlan: metaPlan,
-            });
+            throw new Error(
+              `Payment session ${session.id} is missing a supported one-time plan`,
+            );
           } else {
-            const currentPeriodEnd = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const currentPeriodEnd = new Date((event.created + 24 * 60 * 60) * 1000).toISOString();
             console.log(`[webhook] 🎟️ Creating ${planName} entitlement for user ${userId}`, {
               userId,
               plan: planName,
@@ -277,30 +307,23 @@ serve(async (req) => {
               stripe_customer_id: customerId,
             });
             
-            const { error } = await supabase
-              .from("user_entitlements")
-              .upsert({
-                user_id: userId,
-                plan: planName,
-                status: "active",
-                current_period_end: currentPeriodEnd,
-                stripe_customer_id: customerId,
-                stripe_subscription_id: null,
-                source: "stripe",
-              });
-
-            if (error) {
-              console.error(`[webhook] ❌ Error upserting ${planName}:`, error);
-            } else {
-              console.log(`[webhook] ✅ ${planName} activated for user ${userId}, expires at ${currentPeriodEnd}`);
-            }
+            await applyEntitlementEvent(supabase, event, userId, {
+              plan: planName,
+              status: "active",
+              current_period_end: currentPeriodEnd,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: null,
+              source: "stripe_one_time",
+              cancel_at_period_end: false,
+              canceled_at: null,
+            });
+            console.log(`[webhook] ✅ ${planName} activated for user ${userId}, expires at ${currentPeriodEnd}`);
           }
         } else if (session.mode === "subscription") {
           // Fetch subscription details
           const subscriptionId = session.subscription as string;
           if (!subscriptionId) {
-            console.error("[webhook] ❌ No subscription ID in checkout session");
-            break;
+            throw new Error("No subscription ID in checkout session");
           }
           
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -313,7 +336,7 @@ serve(async (req) => {
             customerId,
           });
           
-          await upsertSubscriptionEntitlement(supabase, userId, subscription, customerId);
+          await upsertSubscriptionEntitlement(supabase, event, userId, subscription, customerId);
         }
         break;
       }
@@ -345,32 +368,22 @@ serve(async (req) => {
             subscriptionId: subscription.id,
             priceId,
           });
-          return new Response(
-            JSON.stringify({ error: "Missing userId" }), 
-            { headers: corsHeaders, status: 400 }
-          );
+          throw new Error(`Missing userId for ${event.type}`);
         }
 
-        // Map price to plan
-        let plan = "monthly";
-        if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
-        else if (priceId === STRIPE_PRICE_YEARLY) plan = "annual";
-        else if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
+        const plan = getRequiredSubscriptionPlan(priceId);
 
         // Get period end from Stripe
-        const endTimestamp = subscription.current_period_end;
-        const fallbackEndSeconds = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-        const currentPeriodEnd = new Date((endTimestamp ?? fallbackEndSeconds) * 1000).toISOString();
+        const currentPeriodEnd = getRequiredPeriodEnd(subscription);
         const now = new Date();
-        const periodEndDate = new Date((endTimestamp ?? fallbackEndSeconds) * 1000);
+        const periodEndDate = new Date(currentPeriodEnd);
 
         // CRITICAL: Never downgrade to free if user still has paid time
         if (periodEndDate > now) {
           // User still has time - always keep access
           const status = mapSubscriptionStatus(subscription.status);
           
-          const updateData: Record<string, any> = {
-            user_id: userId,
+          const updateData: Record<string, unknown> = {
             plan,
             status,
             current_period_end: currentPeriodEnd,
@@ -378,44 +391,36 @@ serve(async (req) => {
             stripe_subscription_id: subscription.id,
             source: "stripe",
             cancel_at_period_end: subscription.cancel_at_period_end || false,
+            canceled_at: subscription.canceled_at
+              ? new Date(subscription.canceled_at * 1000).toISOString()
+              : null,
           };
-
-          // If cancellation was scheduled, record when
-          if (subscription.cancel_at_period_end && subscription.canceled_at) {
-            updateData.canceled_at = new Date(subscription.canceled_at * 1000).toISOString();
-          }
 
           console.log(`[webhook][${event.type}] Upserting entitlement (user has time until ${currentPeriodEnd}):`, updateData);
 
-          const { error } = await supabase
-            .from("user_entitlements")
-            .upsert(updateData);
-
-          if (error) {
-            console.error(`[webhook][${event.type}] ❌ Error upserting:`, error);
-            throw error;
-          }
+          await applyEntitlementEvent(supabase, event, userId, updateData);
           console.log(`[webhook][${event.type}] ✅ Entitlement updated successfully`);
         } else {
           // Period expired - now we can downgrade
           console.log(`[webhook][${event.type}] Period expired (${currentPeriodEnd}), downgrading to free`);
           
-          // Use epoch zero instead of null (current_period_end is NOT NULL)
-          const { error } = await supabase
-            .from("user_entitlements")
-            .update({
+          const applied = await applyEntitlementEvent(
+            supabase,
+            event,
+            userId,
+            {
               plan: "free",
               status: "free",
               current_period_end: new Date(0).toISOString(),
               stripe_subscription_id: null,
+              source: "stripe",
               cancel_at_period_end: false,
               canceled_at: null,
-            })
-            .eq("user_id", userId);
+            },
+            subscription.id,
+          );
 
-          if (error) {
-            console.error(`[webhook][${event.type}] ❌ Error downgrading:`, error);
-          } else {
+          if (applied) {
             // Alert on webhook-driven downgrade for monitoring
             await supabase.from("pipeline_alerts").insert({
               alert_type: "billing_downgrade",
@@ -434,52 +439,60 @@ serve(async (req) => {
 
         const userId = await resolveUserId(stripe, supabase, undefined, subscription, undefined, customerId);
         if (!userId) {
-          console.error("[webhook] ❌ No user_id for subscription deletion");
-          break;
+          throw new Error("No user_id for subscription deletion");
         }
 
         // Check if user still has paid time remaining
-        const periodEnd = subscription.current_period_end;
-        const periodEndDate = new Date(periodEnd * 1000);
+        const periodEndDate = new Date(getRequiredPeriodEnd(subscription));
         const now = new Date();
 
         if (periodEndDate > now) {
           // User still has paid time - keep access until period ends!
           console.log(`[webhook][subscription.deleted] User ${userId} has access until ${periodEndDate.toISOString()}`);
 
-          const { error } = await supabase
-            .from("user_entitlements")
-            .update({ 
+          const applied = await applyEntitlementEvent(
+            supabase,
+            event,
+            userId,
+            {
               status: "active", // Keep active - they paid for this time!
               cancel_at_period_end: true,
-              canceled_at: new Date().toISOString(),
+              canceled_at: subscription.canceled_at
+                ? new Date(subscription.canceled_at * 1000).toISOString()
+                : new Date(event.created * 1000).toISOString(),
               current_period_end: periodEndDate.toISOString(),
-              // Keep plan unchanged - cron will downgrade after period ends
-            })
-            .eq("user_id", userId)
-            .eq("stripe_subscription_id", subscription.id);
+            },
+            subscription.id,
+          );
 
-          if (error) console.error("[webhook] Error updating subscription:", error);
-          else console.log(`[webhook] ✅ Subscription ${subscription.id} marked for expiration, user ${userId} keeps access until ${periodEndDate.toISOString()}`);
+          if (applied) {
+            console.log(`[webhook] ✅ Subscription ${subscription.id} marked for expiration, user ${userId} keeps access until ${periodEndDate.toISOString()}`);
+          }
         } else {
           // Period already expired - downgrade immediately
           console.log(`[webhook][subscription.deleted] Period expired, setting user ${userId} to free plan`);
 
-          // Use epoch zero instead of null (current_period_end is NOT NULL)
-          const { error } = await supabase
-            .from("user_entitlements")
-            .update({ 
+          const applied = await applyEntitlementEvent(
+            supabase,
+            event,
+            userId,
+            {
               plan: "free",
               status: "free",
               current_period_end: new Date(0).toISOString(),
               stripe_subscription_id: null,
+              source: "stripe",
               cancel_at_period_end: false,
-            })
-            .eq("user_id", userId)
-            .eq("stripe_subscription_id", subscription.id);
+              canceled_at: subscription.canceled_at
+                ? new Date(subscription.canceled_at * 1000).toISOString()
+                : new Date(event.created * 1000).toISOString(),
+            },
+            subscription.id,
+          );
 
-          if (error) console.error("[webhook] Error canceling subscription:", error);
-          else console.log(`[webhook] ✅ Subscription ${subscription.id} canceled, user ${userId} set to free`);
+          if (applied) {
+            console.log(`[webhook] ✅ Subscription ${subscription.id} canceled, user ${userId} set to free`);
+          }
         }
         break;
       }
@@ -494,38 +507,27 @@ serve(async (req) => {
         
         const userId = await resolveUserId(stripe, supabase, undefined, subscription, invoice, customerId);
         if (!userId) {
-          console.error("[webhook] ❌ No user_id for invoice.payment_succeeded");
-          break;
+          throw new Error("No user_id for invoice.payment_succeeded");
         }
 
-        const endTimestamp = subscription.current_period_end;
-        const fallbackEndSeconds =
-          Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-
-        if (!endTimestamp) {
-          console.warn("[webhook][invoice.payment_succeeded] Missing current_period_end, using fallback", {
-            subscriptionId: subscription.id,
-            status: subscription.status,
-          });
-        }
-
-        const currentPeriodEnd = new Date(
-          (endTimestamp ?? fallbackEndSeconds) * 1000
-        ).toISOString();
+        const currentPeriodEnd = getRequiredPeriodEnd(subscription);
 
         console.log(`[webhook][invoice.payment_succeeded] Updating user ${userId} to active`);
 
-        const { error } = await supabase
-          .from("user_entitlements")
-          .update({ 
+        const applied = await applyEntitlementEvent(
+          supabase,
+          event,
+          userId,
+          {
             status: "active",
             current_period_end: currentPeriodEnd,
-          })
-          .eq("user_id", userId)
-          .eq("stripe_subscription_id", subscriptionId);
+          },
+          subscriptionId,
+        );
 
-        if (error) console.error("[webhook] Error updating on invoice paid:", error);
-        else console.log(`[webhook] ✅ Invoice paid, updated user ${userId}`);
+        if (applied) {
+          console.log(`[webhook] ✅ Invoice paid, updated user ${userId}`);
+        }
         break;
       }
 
@@ -539,20 +541,22 @@ serve(async (req) => {
         
         const userId = await resolveUserId(stripe, supabase, undefined, subscription, invoice, customerId);
         if (!userId) {
-          console.error("[webhook] ❌ No user_id for invoice.payment_failed");
-          break;
+          throw new Error("No user_id for invoice.payment_failed");
         }
 
         console.log(`[webhook][invoice.payment_failed] Marking user ${userId} as past_due`);
 
-        const { error } = await supabase
-          .from("user_entitlements")
-          .update({ status: "past_due" })
-          .eq("user_id", userId)
-          .eq("stripe_subscription_id", subscriptionId);
+        const applied = await applyEntitlementEvent(
+          supabase,
+          event,
+          userId,
+          { status: "past_due" },
+          subscriptionId,
+        );
 
-        if (error) console.error("[webhook] Error updating on payment failed:", error);
-        else console.log(`[webhook] ✅ Payment failed for user ${userId}`);
+        if (applied) {
+          console.log(`[webhook] ✅ Payment failed for user ${userId}`);
+        }
         break;
       }
 
@@ -561,8 +565,14 @@ serve(async (req) => {
         console.log(`[webhook] Unhandled event type: ${event.type}`);
     }
 
-    // Record event as processed
-    await supabase.from("webhook_events").insert({ event_id: event.id });
+    const { error: completionError } = await supabase.rpc(
+      "complete_stripe_webhook_event",
+      { p_event_id: event.id },
+    );
+    if (completionError) {
+      throw new Error(`Failed to complete webhook event: ${completionError.message}`);
+    }
+    claimedEventId = null;
 
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -570,9 +580,27 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[webhook] Error:", error);
+    if (claimedEventId && claimedSupabase) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const { error: failureError } = await claimedSupabase.rpc(
+        "fail_stripe_webhook_event",
+        {
+          p_event_id: claimedEventId,
+          p_error: message,
+        },
+      );
+      if (failureError) {
+        console.error("[webhook] Failed to mark webhook event as failed:", failureError);
+      }
+    }
+
+    const tooLarge = error instanceof RequestBodyTooLargeError;
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      JSON.stringify({ error: tooLarge ? "payload_too_large" : "webhook_rejected" }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: tooLarge ? 413 : claimedEventId ? 500 : 400,
+      }
     );
   }
 });

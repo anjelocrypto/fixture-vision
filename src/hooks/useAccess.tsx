@@ -59,15 +59,11 @@ export const useAccess = () => {
       }
 
       if (data) {
-        // FAILSAFE: User has paid access if current_period_end is in the future
-        // This protects against any status bugs - if they paid, they get access
-        const periodEnd = data.current_period_end ? new Date(data.current_period_end) : null;
-        const hasPaidTime = periodEnd && periodEnd > new Date() && data.plan !== "free";
-        
-        // Access is granted if:
-        // 1. They have paid time remaining (regardless of status), OR
-        // 2. They're whitelisted
-        setHasAccess(hasPaidTime || whitelisted);
+        const { data: canonicalAccess, error: accessError } = await supabase.rpc("user_has_access");
+        if (accessError) {
+          console.error("[useAccess] Canonical entitlement check failed:", accessError);
+        }
+        setHasAccess(canonicalAccess === true || whitelisted);
         setEntitlement(data);
       } else {
         setHasAccess(whitelisted);

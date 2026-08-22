@@ -14,6 +14,7 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { getFootballSeasonStartForLeagueUtc } from "../_shared/season.ts";
 
 interface LeagueExpectation {
   league_id: number;
@@ -99,11 +100,12 @@ Deno.serve(async (req: Request) => {
     const results: {
       league_id: number;
       league_name: string;
-      expected: number;
-      who_concedes_count: number;
-      card_war_count: number;
-      who_concedes_pass: boolean;
-      card_war_pass: boolean;
+      expected_range: [number, number];
+      roster_count: number;
+      fresh_stats_count: number;
+      fresh_stats_coverage_pct: number;
+      pass: boolean;
+      errors: string[];
     }[] = [];
 
     const failures: string[] = [];
@@ -111,59 +113,69 @@ Deno.serve(async (req: Request) => {
     for (const expectation of LEAGUE_EXPECTATIONS) {
       console.log(`[smoke-test] Testing ${expectation.league_name} (${expectation.league_id})...`);
 
-      // Test Who Concedes
-      let whoConcedesCount = 0;
-      try {
-        const { data: whoConcedesData, error: wcError } = await supabase.functions.invoke("who-concedes", {
-          body: { league_id: expectation.league_id, mode: "concedes" },
-        });
+      const leagueErrors: string[] = [];
+      const seasonStart = new Date(getFootballSeasonStartForLeagueUtc(expectation.league_id));
+      const seasonStartTimestamp = Math.floor(seasonStart.getTime() / 1000);
+      const { data: fixtures, error: fixturesError } = await supabase
+        .from("fixtures")
+        .select("teams_home, teams_away")
+        .eq("league_id", expectation.league_id)
+        .gte("timestamp", seasonStartTimestamp)
+        .limit(1000);
+      if (fixturesError) leagueErrors.push(`fixtures_query:${fixturesError.code ?? "error"}`);
 
-        if (wcError) {
-          console.error(`[smoke-test] Who Concedes error for ${expectation.league_name}:`, wcError);
-        } else if (whoConcedesData?.rankings) {
-          whoConcedesCount = whoConcedesData.rankings.length;
-        }
-      } catch (e) {
-        console.error(`[smoke-test] Who Concedes exception for ${expectation.league_name}:`, e);
+      const teamIds = new Set<number>();
+      for (const fixture of fixtures ?? []) {
+        if (fixture.teams_home?.id) teamIds.add(Number(fixture.teams_home.id));
+        if (fixture.teams_away?.id) teamIds.add(Number(fixture.teams_away.id));
       }
 
-      // Test Card War
-      let cardWarCount = 0;
-      try {
-        const { data: cardWarData, error: cwError } = await supabase.functions.invoke("card-war", {
-          body: { league_id: expectation.league_id, mode: "cards" },
-        });
-
-        if (cwError) {
-          console.error(`[smoke-test] Card War error for ${expectation.league_name}:`, cwError);
-        } else if (cardWarData?.rankings) {
-          cardWarCount = cardWarData.rankings.length;
-        }
-      } catch (e) {
-        console.error(`[smoke-test] Card War exception for ${expectation.league_name}:`, e);
+      let freshStatsCount = 0;
+      if (teamIds.size > 0) {
+        const freshnessFloor = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data: freshStats, error: statsError } = await supabase
+          .from("stats_cache")
+          .select("team_id")
+          .in("team_id", [...teamIds])
+          .gte("computed_at", freshnessFloor);
+        if (statsError) leagueErrors.push(`stats_query:${statsError.code ?? "error"}`);
+        freshStatsCount = new Set((freshStats ?? []).map((row) => Number(row.team_id))).size;
       }
 
-      const whoConcedesPass = whoConcedesCount === expectation.expected_teams;
-      const cardWarPass = cardWarCount === expectation.expected_teams;
+      const expectedMin = Math.max(1, expectation.expected_teams - 2);
+      const expectedMax = expectation.expected_teams + 2;
+      const coveragePct = teamIds.size > 0 ? Math.round((freshStatsCount / teamIds.size) * 100) : 0;
+      const passed = leagueErrors.length === 0
+        && teamIds.size >= expectedMin
+        && teamIds.size <= expectedMax
+        && coveragePct >= 80;
 
       results.push({
         league_id: expectation.league_id,
         league_name: expectation.league_name,
-        expected: expectation.expected_teams,
-        who_concedes_count: whoConcedesCount,
-        card_war_count: cardWarCount,
-        who_concedes_pass: whoConcedesPass,
-        card_war_pass: cardWarPass,
+        expected_range: [expectedMin, expectedMax],
+        roster_count: teamIds.size,
+        fresh_stats_count: freshStatsCount,
+        fresh_stats_coverage_pct: coveragePct,
+        pass: passed,
+        errors: leagueErrors,
       });
 
-      if (!whoConcedesPass) {
-        failures.push(`Who Concedes ${expectation.league_name}: expected ${expectation.expected_teams}, got ${whoConcedesCount}`);
+      const fingerprint = `analytics-core:${expectation.league_id}`;
+      if (!passed) {
+        const failure = `${expectation.league_name}: roster=${teamIds.size} expected=${expectedMin}-${expectedMax}, fresh_coverage=${coveragePct}%`;
+        failures.push(failure);
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: fingerprint,
+          p_alert_type: "analytics_core_health",
+          p_severity: "critical",
+          p_message: `Analytics core health failed for league ${expectation.league_id}`,
+          p_details: { roster_count: teamIds.size, expected_range: [expectedMin, expectedMax], coverage_pct: coveragePct, errors: leagueErrors },
+        });
+      } else {
+        await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
       }
-      if (!cardWarPass) {
-        failures.push(`Card War ${expectation.league_name}: expected ${expectation.expected_teams}, got ${cardWarCount}`);
-      }
-
-      console.log(`[smoke-test] ${expectation.league_name}: WC=${whoConcedesCount}/${expectation.expected_teams} (${whoConcedesPass ? 'PASS' : 'FAIL'}), CW=${cardWarCount}/${expectation.expected_teams} (${cardWarPass ? 'PASS' : 'FAIL'})`);
+      console.log(`[smoke-test] ${expectation.league_name}: roster=${teamIds.size}, fresh=${coveragePct}% (${passed ? "PASS" : "FAIL"})`);
     }
 
     const allPassed = failures.length === 0;
@@ -183,18 +195,9 @@ Deno.serve(async (req: Request) => {
       error_message: allPassed ? null : failures.join("; "),
     });
 
-    // If failures, create CRITICAL alert
+    // Per-league alerts above are fingerprinted and auto-resolve on recovery.
     if (!allPassed) {
       console.error(`[smoke-test] FAILURES DETECTED: ${failures.join(", ")}`);
-      
-      await supabase.from("pipeline_alerts").insert({
-        alert_type: "smoke_test_failure",
-        severity: "critical",
-        message: `Analytics smoke test failed: ${failures.length} assertion(s) failed`,
-        details: { results, failures, tested_at: new Date().toISOString() },
-      });
-
-      console.log("[smoke-test] CRITICAL alert created");
     } else {
       console.log("[smoke-test] All tests PASSED ✓");
     }

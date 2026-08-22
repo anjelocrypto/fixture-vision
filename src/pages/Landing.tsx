@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,13 +114,14 @@ function GradientBackground() {
 
 export default function Landing() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { t } = useTranslation(['common']);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(true);
+  const [isSignUp, setIsSignUp] = useState(searchParams.get("mode") !== "signin");
   const [showEmailVerificationDialog, setShowEmailVerificationDialog] = useState(false);
   const [user, setUser] = useState<any>(null);
   
@@ -132,6 +133,10 @@ export default function Landing() {
   const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
   const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
   const heroOpacity = useTransform(smoothProgress, [0, 0.15], [1, 0]);
+
+  useEffect(() => {
+    setIsSignUp(searchParams.get("mode") !== "signin");
+  }, [searchParams]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -433,7 +438,7 @@ export default function Landing() {
                             onChange={(e) => setPassword(e.target.value)}
                             required
                             disabled={loading}
-                            minLength={6}
+                            minLength={10}
                             className="bg-background/50 border-border/30 rounded-xl h-12 pl-11 text-sm"
                           />
                         </div>
@@ -449,7 +454,7 @@ export default function Landing() {
                             className="mt-0.5"
                           />
                           <label htmlFor="terms" className="text-xs text-muted-foreground leading-tight">
-                            I agree to the{" "}
+                            I confirm I am 18 or older and agree to the{" "}
                             <Link to="/legal/terms" className="text-primary hover:underline" target="_blank">Terms</Link>
                             {" "}and{" "}
                             <Link to="/legal/privacy" className="text-primary hover:underline" target="_blank">Privacy</Link>
@@ -537,7 +542,7 @@ export default function Landing() {
                   className="text-base sm:text-lg text-muted-foreground max-w-lg"
                 >
                   AI-powered sports analytics and prediction markets. 
-                  Real-time odds across 100+ leagues.
+                  Real-time odds and analytics across supported leagues.
                 </motion.p>
 
                 {/* CTA Buttons */}
@@ -808,7 +813,7 @@ export default function Landing() {
                   Ready to Start?
                 </h2>
                 <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                  Join thousands making smarter betting decisions with Ticket AI.
+                  Make more informed sports decisions with Ticket AI.
                 </p>
                 
                 <div className="flex flex-wrap justify-center gap-4">

@@ -21,6 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { DAILY_CALL_BUDGET, RPM_LIMIT, PREMATCH_TTL_MINUTES, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,11 +55,28 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabaseClient,
+      serviceRoleKey,
+      "[backfill-odds]",
+    );
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     console.log(`[backfill-odds] Starting batch odds backfill (batch_size=${BATCH_SIZE})`);
 
     // Parse window_hours from request body (default to UPCOMING_WINDOW_HOURS constant)
-    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
+    const { window_hours: requestedWindowHours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
+    const window_hours = Math.min(
+      Math.max(Number(requestedWindowHours) || UPCOMING_WINDOW_HOURS, 1),
+      168,
+    );
 
     const now = new Date();
     const startedAt = now;

@@ -1,7 +1,7 @@
-project_id = "dutkpzrisvqgxadxbkxo"
+project_id = "ticket-ai"
 
 [functions.fetch-leagues]
-verify_jwt = false
+verify_jwt = true
 
 [functions.fetch-fixtures]
 verify_jwt = false
@@ -73,25 +73,25 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.debug-team-stats]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-cup-coverage]
-verify_jwt = false
+verify_jwt = true
 
 [functions.debug-league-coverage]
-verify_jwt = false
+verify_jwt = true
 
 [functions.cup-coverage-report]
-verify_jwt = false
+verify_jwt = true
 
 [functions.backfill-fixture-results]
 verify_jwt = false
 
 [functions.test-h2h]
-verify_jwt = false
+verify_jwt = true
 
 [functions.test-uefa-competitions]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sync-injuries]
 verify_jwt = false
@@ -106,7 +106,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.list-leagues-grouped]
-verify_jwt = false
+verify_jwt = true
 
 [functions.get-latest-odds]
 verify_jwt = true
@@ -121,9 +121,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.admin-remediate-stats-gaps]
-verify_jwt = false
-
-[functions.admin-remediate-stats-gaps-weekly]
 verify_jwt = false
 
 [functions.stats-turbo-backfill]
@@ -166,7 +163,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.basketball-safe-zone]
-verify_jwt = false
+verify_jwt = true
 
 # Basketball pipeline - PRO PLAN (7500/day) - aggressive scheduling
 [functions.basketball-sync-fixtures]
@@ -188,7 +185,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.backfill-ticket-outcomes]
-verify_jwt = false
+verify_jwt = true
 
 [functions.score-ticket-legs]
 verify_jwt = false
@@ -244,4 +241,25 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.hockey-iceedge-compute]
+verify_jwt = false
+
+[functions.cors-selftest]
+verify_jwt = true
+
+[functions.daily-safest-insights]
+verify_jwt = true
+
+[functions.export-users]
+verify_jwt = true
+
+[functions.reconcile-entitlements]
+verify_jwt = false
+
+[functions.restore-purchase]
+verify_jwt = true
+
+[functions.verify-checkout-session]
+verify_jwt = true
+
+[functions.update-performance-weights]
 verify_jwt = false

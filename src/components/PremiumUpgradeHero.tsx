@@ -107,7 +107,7 @@ export const PremiumUpgradeHero = ({ onClose }: PremiumUpgradeHeroProps) => {
           </h1>
           
           <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            Get advanced analytics, AI-driven insights, and smart ticket creation tools trusted by thousands.
+            Get advanced analytics, AI-driven insights, and smart ticket creation tools.
           </p>
         </motion.div>
 

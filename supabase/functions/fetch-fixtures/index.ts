@@ -4,6 +4,7 @@ import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { ALLOWED_LEAGUE_IDS, LEAGUE_NAMES, getCountryIdForLeague } from "../_shared/leagues.ts";
 import { RPM_LIMIT, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 const FIXTURE_TTL_HOURS = 12;
 const REQUEST_DELAY_MS = 1300; // ~46 RPM to stay under 50 RPM limit
@@ -16,6 +17,9 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
+  const jobName = "fetch-fixtures-admin";
+  let lockToken: string | null = null;
+  let lockClient: any = null;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -79,7 +83,11 @@ serve(async (req) => {
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
-    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json();
+    const requestBody = await req.json().catch(() => ({}));
+    const window_hours = Math.min(
+      Math.max(Number(requestBody?.window_hours) || UPCOMING_WINDOW_HOURS, 1),
+      168,
+    );
     
     console.log(`[fetch-fixtures] Starting bulk fetch for ${window_hours}h window`);
     
@@ -100,8 +108,7 @@ serve(async (req) => {
     const supabaseClient = supabase;
 
     // Acquire mutex to prevent overlapping runs triggered from UI
-    const jobName = 'fetch-fixtures-admin';
-    const { data: lockAcquired, error: lockError } = await supabaseClient.rpc('acquire_cron_lock', {
+    const { data: acquiredToken, error: lockError } = await supabaseClient.rpc('acquire_cron_lease', {
       p_job_name: jobName,
       p_duration_minutes: 20,
     });
@@ -111,15 +118,14 @@ serve(async (req) => {
       return errorResponse('lock_acquire_failed', origin, 423, req);
     }
 
-    if (!lockAcquired) {
+    if (!acquiredToken) {
       console.warn('[fetch-fixtures] Another run is already in progress');
       return jsonResponse({ success: false, busy: true, message: 'Another fetch-fixtures run is in progress' }, origin, 200, req);
     }
+    lockToken = acquiredToken;
+    lockClient = supabaseClient;
 
-    // Season handling: default 2025, can override per league if needed
-    const DEFAULT_SEASON = 2025;
-    const seasonByLeague: Record<number, number> = {};
-    const getSeasonForLeague = (leagueId: number) => seasonByLeague[leagueId] ?? DEFAULT_SEASON;
+    const getSeasonForLeague = (leagueId: number) => getFootballSeasonForLeague(leagueId, now);
 
     // Comprehensive metrics tracking
     let apiCalls = 0;
@@ -132,6 +138,7 @@ serve(async (req) => {
     let fixturesFailed = 0;
     let leaguesUpserted = 0;
     let leaguesFailed = 0;
+    let dateRequestsFailed = 0;
     
     const leagueFixtureCounts: Record<number, number> = {};
     const perLeagueCounters: Record<number, { requested: number; returned: number; in_window: number; inserted: number }> = {};
@@ -139,25 +146,37 @@ serve(async (req) => {
 
     // Check which fixtures we already have (within TTL)
     const ttlCutoff = new Date(Date.now() - FIXTURE_TTL_HOURS * 60 * 60 * 1000).toISOString();
-    const { data: existingFixtures } = await supabaseClient
+    const { data: existingFixtures, error: existingFixturesError } = await supabaseClient
       .from("fixtures")
       .select("id, updated_at")
       .gte("timestamp", nowTs)
-      .lt("timestamp", endTs)
-      .gte("updated_at", ttlCutoff);
+      .lt("timestamp", endTs);
 
-    const recentFixtureIds = new Set(existingFixtures?.map(f => f.id) || []);
+    if (existingFixturesError) throw existingFixturesError;
+
+    const existingFixtureIds = new Set(existingFixtures?.map((fixture) => fixture.id) || []);
+    const recentFixtureIds = new Set(
+      existingFixtures
+        ?.filter((fixture) => fixture.updated_at && fixture.updated_at >= ttlCutoff)
+        .map((fixture) => fixture.id) || [],
+    );
     console.log(`[fetch-fixtures] ${recentFixtureIds.size} fixtures already fresh (updated within ${FIXTURE_TTL_HOURS}h)`);
 
     // Fetch fixtures per date to minimize API calls and keep runtime under gateway timeout
     const allFixtures: any[] = [];
     
     // Build the list of distinct dates within the window
-    const days = Math.max(1, Math.ceil(window_hours / 24));
     const dateSet: string[] = [];
-    for (let d = 0; d < days; d++) {
-      const date = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
-      dateSet.push(date.toISOString().split('T')[0]);
+    const dateCursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const finalIncludedInstant = new Date(Math.max(now.getTime(), windowEnd.getTime() - 1));
+    const finalDate = new Date(Date.UTC(
+      finalIncludedInstant.getUTCFullYear(),
+      finalIncludedInstant.getUTCMonth(),
+      finalIncludedInstant.getUTCDate(),
+    ));
+    while (dateCursor <= finalDate) {
+      dateSet.push(dateCursor.toISOString().slice(0, 10));
+      dateCursor.setUTCDate(dateCursor.getUTCDate() + 1);
     }
     
     for (const dateStr of dateSet) {
@@ -170,6 +189,7 @@ serve(async (req) => {
         if (!response.ok) {
           console.error(`[fetch-fixtures] API error ${response.status} for date ${dateStr}`);
           failureReasons[`api_${response.status}`] = (failureReasons[`api_${response.status}`] || 0) + 1;
+          dateRequestsFailed++;
           continue;
         }
 
@@ -220,6 +240,7 @@ serve(async (req) => {
       } catch (error) {
         console.error(`[fetch-fixtures] Error fetching date ${dateStr}:`, error);
         failureReasons.fetch_error = (failureReasons.fetch_error || 0) + 1;
+        dateRequestsFailed++;
       }
     }
 
@@ -298,7 +319,6 @@ serve(async (req) => {
           logo: item.teams.away.logo,
         },
         status: item.fixture.status.short,
-        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
@@ -332,7 +352,7 @@ serve(async (req) => {
             failureReasons.other_db_error = (failureReasons.other_db_error || 0) + 1;
           }
         } else {
-          if (recentFixtureIds.has(fixtureId)) {
+          if (existingFixtureIds.has(fixtureId)) {
             fixturesUpdated++;
           } else {
             fixturesInserted++;
@@ -403,13 +423,17 @@ serve(async (req) => {
         fixtures_failed: fixturesFailed,
         top_5_leagues: top5Leagues,
         top_3_failures: top3Failures,
-        season_used: DEFAULT_SEASON,
+        seasons_used: Object.fromEntries(
+          [...uniqueLeagues.keys()].map((leagueId) => [leagueId, getSeasonForLeague(leagueId)]),
+        ),
+        date_requests_failed: dateRequestsFailed,
       },
     });
 
     // Step 11: Return success with all metrics
+    const runSucceeded = dateRequestsFailed === 0 && fixturesFailed === 0 && leaguesFailed === 0;
     const summaryData = {
-      success: true,
+      success: runSucceeded,
       window: `${now.toISOString()} → ${windowEnd.toISOString()}`,
       scanned: fixturesScannedTotal,
       in_window: fixturesInWindowKept,
@@ -425,13 +449,26 @@ serve(async (req) => {
       top_5_leagues: top5Leagues,
       top_3_failures: top3Failures,
       duration_ms: durationMs,
-      season_used: DEFAULT_SEASON,
+      seasons_used: Object.fromEntries(
+        [...uniqueLeagues.keys()].map((leagueId) => [leagueId, getSeasonForLeague(leagueId)]),
+      ),
+      date_requests_failed: dateRequestsFailed,
     };
     
-    return jsonResponse(summaryData, origin, 200, req);
+    return jsonResponse(summaryData, origin, runSucceeded ? 200 : 502, req);
   } catch (error) {
     console.error("[fetch-fixtures] Fatal error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(errorMessage, origin, 500, req);
+  } finally {
+    if (lockToken && lockClient) {
+      const { data: released, error: releaseError } = await lockClient.rpc("release_cron_lease", {
+        p_job_name: jobName,
+        p_lock_token: lockToken,
+      });
+      if (releaseError || released !== true) {
+        console.error("[fetch-fixtures] Failed to release owned lease", releaseError);
+      }
+    }
   }
 });
