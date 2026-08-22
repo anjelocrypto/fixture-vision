@@ -217,5 +217,27 @@
   "safe_zone_bot_chip_48h": "48h",
   "safe_zone_bot_corners": "Corners",
   "safe_zone_bot_goals": "Goals",
-  "safe_zone_bot_over": "Over"
+  "safe_zone_bot_over": "Over",
+  "tab_current_slip": "Current Slip",
+  "tab_ticket_history": "Ticket History",
+  "history_fixture": "Fixture",
+  "history_actual": "Actual",
+  "history_legs_settled": "Legs",
+  "history_no_legs": "No leg details available",
+  "history_error_title": "Couldn't load ticket history",
+  "history_error_body": "Please check your connection and try again.",
+  "history_retry": "Retry",
+  "history_empty_title": "No saved tickets yet",
+  "history_empty_body": "Generated tickets and their results will appear here.",
+  "history_load_more": "Load more",
+  "settlement": {
+    "hold": {
+      "title": "Settlement under review",
+      "reason": {
+        "scheduleChanged": "Fixture schedule changed",
+        "fixtureDetailsChanged": "Fixture details changed",
+        "generic": "Fixture schedule changed"
+      }
+    }
+  }
 }
