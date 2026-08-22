@@ -21,7 +21,9 @@ VALUES
   (1003, 17, extract(epoch FROM timestamptz '2026-03-02 18:15+00')::bigint, 'NS',
    '{"id":33,"name":"Al-Ahli Jeddah"}', '{"id":44,"name":"Al-Duhail SC"}'),
   (1004, 51, extract(epoch FROM timestamptz '2026-02-10 19:45+00')::bigint, 'NS',
-   '{"id":55,"name":"Slough Town"}', '{"id":66,"name":"Weston-super-Mare"}');
+   '{"id":55,"name":"Slough Town"}', '{"id":66,"name":"Weston-super-Mare"}'),
+  (1005, 17, extract(epoch FROM timestamptz '2026-03-02 18:15+00')::bigint, 'NS',
+   '{"id":77,"name":"Team Alpha"}', '{"id":88,"name":"Team Beta"}');
 
 -- T1: identical upsert creates no history row
 UPDATE public.fixtures SET league_id = 51,
@@ -62,11 +64,11 @@ SELECT public.assert((SELECT count(*) FROM public.fixture_schedule_changes WHERE
 
 -- T2c: home/away swap is recorded and flagged
 UPDATE public.fixtures
-SET teams_home = '{"id":44,"name":"Al-Duhail SC"}',
-    teams_away = '{"id":33,"name":"Al-Ahli Jeddah"}'
-WHERE id = 1003;
+SET teams_home = '{"id":88,"name":"Team Beta"}',
+    teams_away = '{"id":77,"name":"Team Alpha"}'
+WHERE id = 1005;
 SELECT public.assert((SELECT count(*) = 1 AND bool_and(direction_swapped)
-                      FROM public.fixture_schedule_changes WHERE fixture_id = 1003),
+                      FROM public.fixture_schedule_changes WHERE fixture_id = 1005),
   'T2c home/away swap creates one history row flagged as swapped');
 
 -- ------------------------------------------------------------------- legs ---
