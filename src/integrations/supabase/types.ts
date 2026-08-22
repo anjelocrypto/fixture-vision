@@ -710,6 +710,101 @@ export type Database = {
         }
         Relationships: []
       }
+      green_bucket_policy_entries: {
+        Row: {
+          hit_rate_pct: number
+          league_id: number
+          line_norm: number
+          losses: number
+          market: string
+          odds_band: string
+          policy_version_id: string
+          roi_pct: number
+          sample_size: number
+          side: string
+          wins: number
+        }
+        Insert: {
+          hit_rate_pct: number
+          league_id: number
+          line_norm: number
+          losses: number
+          market: string
+          odds_band: string
+          policy_version_id: string
+          roi_pct: number
+          sample_size: number
+          side: string
+          wins: number
+        }
+        Update: {
+          hit_rate_pct?: number
+          league_id?: number
+          line_norm?: number
+          losses?: number
+          market?: string
+          odds_band?: string
+          policy_version_id?: string
+          roi_pct?: number
+          sample_size?: number
+          side?: string
+          wins?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "green_bucket_policy_entries_policy_version_id_fkey"
+            columns: ["policy_version_id"]
+            isOneToOne: false
+            referencedRelation: "green_bucket_policy_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      green_bucket_policy_versions: {
+        Row: {
+          activated_at: string | null
+          bucket_count: number
+          created_at: string
+          diagnostics: Json
+          id: string
+          policy_mode: string
+          retired_at: string | null
+          source_leg_count: number
+          status: string
+          thresholds: Json
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          activated_at?: string | null
+          bucket_count?: number
+          created_at?: string
+          diagnostics?: Json
+          id?: string
+          policy_mode?: string
+          retired_at?: string | null
+          source_leg_count?: number
+          status?: string
+          thresholds?: Json
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          activated_at?: string | null
+          bucket_count?: number
+          created_at?: string
+          diagnostics?: Json
+          id?: string
+          policy_mode?: string
+          retired_at?: string | null
+          source_leg_count?: number
+          status?: string
+          thresholds?: Json
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       green_buckets: {
         Row: {
           hit_rate_pct: number
@@ -2893,6 +2988,17 @@ export type Database = {
       acquire_cron_lock: {
         Args: { p_duration_minutes?: number; p_job_name: string }
         Returns: boolean
+      }
+      activate_green_bucket_policy: {
+        Args: {
+          p_diagnostics?: Json
+          p_rows: Json
+          p_source_leg_count: number
+          p_thresholds: Json
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: string
       }
       admin_create_market_for_fixture: {
         Args: {
