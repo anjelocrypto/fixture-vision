@@ -1365,8 +1365,29 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       kickoff_at: fixtureInfo.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null),
       derived_from_selection: derivedFromSelection,
       model_prob: leg.modelProb ?? null,
+      // Directional identity snapshot: provider team IDs are the primary
+      // identity check at settlement time. Names remain in ticket JSON for
+      // display only.
+      home_team_id_snapshot: fixtureInfo.home_team_id,
+      away_team_id_snapshot: fixtureInfo.away_team_id,
+      settlement_policy_version: SETTLEMENT_POLICY_VERSION,
     };
   });
+
+  // Enrich the human-readable ticket JSON with provider identity as well,
+  // without removing the display names.
+  const ticketLegsWithIdentity = (ticket.legs as TicketLeg[]).map((leg) => {
+    const fixtureInfo = fixtureMap.get(leg.fixtureId);
+    return {
+      ...leg,
+      homeTeamId: fixtureInfo?.home_team_id ?? null,
+      awayTeamId: fixtureInfo?.away_team_id ?? null,
+      leagueId: fixtureInfo?.league_id ?? null,
+      pickKickoffUtc: fixtureInfo?.kickoff_at ?? null,
+      settlementPolicyVersion: SETTLEMENT_POLICY_VERSION,
+    };
+  });
+
 
   const optimizerCacheRows = (ticket.legs as TicketLeg[]).map((leg) => ({
     fixture_id: leg.fixtureId,
