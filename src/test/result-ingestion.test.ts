@@ -242,7 +242,8 @@ describe("targeted ingestion", () => {
 describe("source-level guarantees of the deployed functions", () => {
   const read = async (p: string) => {
     const fs = await import("node:fs/promises");
-    return fs.readFile(new URL(`../../${p}`, import.meta.url), "utf8");
+    const path = await import("node:path");
+    return fs.readFile(path.resolve(process.cwd(), p), "utf8");
   };
 
   it("auto-backfill-results does not chain the scorer", async () => {
