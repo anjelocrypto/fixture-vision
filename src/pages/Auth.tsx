@@ -249,7 +249,7 @@ export default function Auth() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={loading}
-                        minLength={6}
+                        minLength={10}
                       />
                     </div>
                     <Button type="submit" className="w-full" disabled={loading}>
@@ -316,7 +316,7 @@ export default function Auth() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={loading}
-                        minLength={6}
+                        minLength={10}
                       />
                       <p className="text-xs text-muted-foreground">
                         {t('common:password_min_length')}
@@ -333,7 +333,7 @@ export default function Auth() {
                         htmlFor="terms"
                         className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                       >
-                        {t('common:i_agree_to')}{" "}
+                        I confirm I am 18 or older and agree to the{" "}
                         <Link to="/legal/terms" className="text-primary hover:underline" target="_blank">
                           {t('common:terms_of_service')}
                         </Link>

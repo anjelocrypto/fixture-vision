@@ -5,6 +5,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { fetchAPIFootball, fetchFixtureStatistics as fetchStats, getRateLimiterStats } from "../_shared/api_football.ts";
+import {
+  getFootballSeasonStartForLeagueUtc,
+  getFootballSeasonStartUtc,
+} from "../_shared/season.ts";
 
 interface RequestBody {
   window_hours?: number;
@@ -229,7 +233,7 @@ Deno.serve(async (req: Request) => {
     const targetLeagueId = body.league_id;
     const batchLimit = body.limit || 15;
     const batchOffset = body.offset || 0;
-    const backfillSince = body.backfill_since || "2025-08-01";
+    const backfillSince = body.backfill_since || getFootballSeasonStartUtc().slice(0, 10);
 
     // Determine run mode for logging
     const runMode = isMultiLeagueBackfill ? 'multi_league_backfill' : 
@@ -503,7 +507,7 @@ Deno.serve(async (req: Request) => {
     // ======= TARGETED EPL BACKFILL MODE =======
     if (isEplBackfill) {
       const leagueId = targetLeagueId || 39; // Default to EPL
-      const seasonStart = "2025-08-01";
+      const seasonStart = getFootballSeasonStartForLeagueUtc(leagueId).slice(0, 10);
       
       console.log(`[results-refresh] EPL BACKFILL MODE: Finding missing results for league ${leagueId} since ${seasonStart}`);
 

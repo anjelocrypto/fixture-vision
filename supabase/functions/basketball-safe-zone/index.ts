@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { authenticateEntitledUser } from "../_shared/user_auth.ts";
 
 /**
  * Basketball Safe Zone Edge Function v2.0
@@ -64,6 +65,15 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    const auth = await authenticateEntitledUser(req, "[basketball-safe-zone]");
+    if (!auth.authorized) {
+      const status = auth.error === "premium_access_required" ? 403 : 401;
+      return new Response(JSON.stringify({ error: auth.error ?? "Unauthorized" }), {
+        status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body: BasketballSafeZoneRequest = await req.json();
     const { league_key, days_ahead = 3, limit = 20 } = body;
 

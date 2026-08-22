@@ -227,7 +227,7 @@ export function DemoWhoScoresPanel({ onClose, onSignUpClick }: DemoWhoScoresPane
         {/* CTA */}
         <Card className="p-3 border-dashed border-primary/40 bg-primary/5 text-center">
           <p className="text-sm text-muted-foreground mb-2">
-            Want live cards/fouls data for all 100+ leagues?
+            Want live cards/fouls data for available leagues?
           </p>
           <button onClick={onSignUpClick} className="text-primary font-medium hover:underline">
             Create account for live data →

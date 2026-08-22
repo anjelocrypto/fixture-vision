@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,30 +19,16 @@ serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify admin access
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabaseAdmin,
+      serviceRoleKey,
+      "[export-users]",
+    );
+    if (!auth.authorized || auth.method === "cron_key") {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Check if user is admin
-    const { data: isAdmin } = await supabaseAdmin.rpc("is_user_whitelisted", { uid: user.id });
-    if (!isAdmin) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -83,7 +70,47 @@ serve(async (req) => {
 
     console.log(`Total users fetched: ${allUsers.length}`);
 
-    // Generate CSV content
+    const format = new URL(req.url).searchParams.get("format")?.toLowerCase();
+    const exportDate = new Date().toISOString().split("T")[0];
+
+    if (format === "jsonl") {
+      const jsonLines = allUsers.map((user) =>
+        JSON.stringify({
+          id: user.id,
+          email: user.email ?? null,
+          phone: user.phone ?? null,
+          created_at: user.created_at ?? null,
+          updated_at: user.updated_at ?? null,
+          confirmed_at: user.confirmed_at ?? null,
+          email_confirmed_at: user.email_confirmed_at ?? null,
+          phone_confirmed_at: user.phone_confirmed_at ?? null,
+          last_sign_in_at: user.last_sign_in_at ?? null,
+          role: user.role ?? null,
+          aud: user.aud ?? null,
+          app_metadata: user.app_metadata ?? {},
+          user_metadata: user.user_metadata ?? {},
+          identities: (user.identities ?? []).map((identity: any) => ({
+            id: identity.id,
+            identity_id: identity.identity_id,
+            provider: identity.provider,
+            created_at: identity.created_at,
+            updated_at: identity.updated_at,
+            last_sign_in_at: identity.last_sign_in_at,
+          })),
+        })
+      ).join("\n");
+
+      return new Response(`${jsonLines}\n`, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/x-ndjson",
+          "Content-Disposition": `attachment; filename="registered_users_${exportDate}.jsonl"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    // CSV is for human review. JSONL is the preferred migration artifact.
     const csvRows = ["User ID,Email,Registration Date,Email Confirmed"];
     
     for (const user of allUsers) {
@@ -92,8 +119,7 @@ serve(async (req) => {
       const createdAt = user.created_at ? new Date(user.created_at).toISOString().replace("T", " ").split(".")[0] : "";
       const confirmed = user.email_confirmed_at ? "Yes" : "No";
       
-      // Escape email if it contains commas
-      const escapedEmail = email.includes(",") ? `"${email}"` : email;
+      const escapedEmail = escapeCsvCell(email);
       
       csvRows.push(`${id},${escapedEmail},${createdAt},${confirmed}`);
     }
@@ -104,7 +130,8 @@ serve(async (req) => {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="registered_users_${new Date().toISOString().split("T")[0]}.csv"`,
+        "Content-Disposition": `attachment; filename="registered_users_${exportDate}.csv"`,
+        "Cache-Control": "no-store",
       },
     });
 
@@ -117,3 +144,12 @@ serve(async (req) => {
     });
   }
 });
+
+function escapeCsvCell(value: string): string {
+  const formulaSafeValue = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  if (!/[",\r\n]/.test(formulaSafeValue)) {
+    return formulaSafeValue;
+  }
+
+  return `"${formulaSafeValue.replaceAll('"', '""')}"`;
+}

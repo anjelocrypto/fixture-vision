@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { userHasProductAccess } from "../_shared/entitlement.ts";
 
 /**
  * BTTS Index Edge Function
@@ -83,25 +84,7 @@ serve(async (req) => {
     // 2) Premium entitlement check (no trial credits consumed)
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: entitlement } = await supabase
-      .from("user_entitlements")
-      .select("plan, current_period_end")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const hasPaidAccess =
-      entitlement &&
-      entitlement.plan !== "free" &&
-      entitlement.current_period_end &&
-      new Date(entitlement.current_period_end) > new Date();
-
-    let isAdmin = false;
-    if (!hasPaidAccess) {
-      const { data: wl } = await userClient.rpc("is_user_whitelisted");
-      isAdmin = wl === true;
-    }
-
-    if (!hasPaidAccess && !isAdmin) {
+    if (!(await userHasProductAccess(userClient))) {
       return jsonResponse({ error: "Premium subscription required", code: "PAYWALL" }, origin, 402);
     }
 

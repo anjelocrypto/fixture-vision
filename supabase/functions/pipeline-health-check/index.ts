@@ -3,6 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { getFootballSeasonStartForLeagueUtc } from "../_shared/season.ts";
 
 // Key leagues to monitor
 const MONITORED_LEAGUES = [
@@ -31,8 +32,8 @@ interface LeagueHealth {
   league_name: string;
   country: string;
   max_fixture_date: string | null;
-  ft_fixtures_2025_26: number;
-  results_2025_26: number;
+  ft_fixtures_current_season: number;
+  results_current_season: number;
   missing_results: number;
   status: "OK" | "WARNING" | "CRITICAL";
 }
@@ -102,7 +103,6 @@ Deno.serve(async (req: Request) => {
 
     const issues: string[] = [];
     const now = new Date();
-    const seasonStart = "2025-08-01";
 
     // ===========================================
     // 1. OPTIMIZED SELECTIONS COVERAGE (new!)
@@ -143,26 +143,7 @@ Deno.serve(async (req: Request) => {
       selectionsStatus = "CRITICAL";
       issues.push(`optimized_selections next 48h with odds: ${sel48hWithOddsCount} (threshold: ${MIN_SELECTIONS_48H_WITH_ODDS})`);
       
-      // Auto-trigger optimizer
-      console.log(`[pipeline-health-check] ⚡ Auto-triggering optimizer: only ${sel48hWithOddsCount} selections with odds in 48h`);
-      try {
-        const optimizeUrl = `${supabaseUrl}/functions/v1/optimize-selections-refresh`;
-        fetch(optimizeUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({ window_hours: 120 }),
-        }).then(async (res) => {
-          console.log(`[pipeline-health-check] Auto-trigger optimizer -> ${res.status}`);
-        }).catch((e) => {
-          console.error("[pipeline-health-check] Auto-trigger optimizer failed:", e?.message);
-        });
-        autoTriggered = true;
-      } catch (triggerErr: any) {
-        console.error("[pipeline-health-check] Failed to auto-trigger optimizer:", triggerErr.message);
-      }
+      console.warn(`[pipeline-health-check] Optimizer recovery required: only ${sel48hWithOddsCount} selections with odds in 48h`);
     } else if (sel48hWithOddsCount < MIN_SELECTIONS_48H_WITH_ODDS * 2) {
       selectionsStatus = "WARNING";
     }
@@ -233,6 +214,7 @@ Deno.serve(async (req: Request) => {
     const leagueHealthResults: LeagueHealth[] = [];
     
     for (const league of MONITORED_LEAGUES) {
+      const seasonStart = getFootballSeasonStartForLeagueUtc(league.id, now);
       const { data: maxFixture } = await supabase
         .from("fixtures")
         .select("date")
@@ -269,8 +251,8 @@ Deno.serve(async (req: Request) => {
         league_name: league.name,
         country: league.country,
         max_fixture_date: maxFixture?.date || null,
-        ft_fixtures_2025_26: ftCount || 0,
-        results_2025_26: resultsCount || 0,
+        ft_fixtures_current_season: ftCount || 0,
+        results_current_season: resultsCount || 0,
         missing_results: Math.max(0, missingResults),
         status,
       });

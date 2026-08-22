@@ -10,6 +10,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 // Validation schema for admin request parameters
 const AdminRequestSchema = z.object({
@@ -225,7 +226,10 @@ serve(async (req) => {
       const homeTeamId = fixture.teams_home?.id;
       const awayTeamId = fixture.teams_away?.id;
       const leagueId = fixture.league_id;
-      const season = 2025; // Current season
+      const season = getFootballSeasonForLeague(
+        leagueId,
+        new Date(fixture.timestamp * 1000),
+      );
       const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
 
       if (!homeTeamId || !awayTeamId) {

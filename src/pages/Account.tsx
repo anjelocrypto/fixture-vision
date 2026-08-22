@@ -31,23 +31,23 @@ const PLANS = [
   {
     id: "day_pass", name: "Day Pass", price: "$4.99", interval: "24-hour full access",
     description: "Perfect for testing our analytics tools",
-    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Winner Predictions", "Team Totals"],
+    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Safe Zone", "Team Totals"],
   },
   {
     id: "monthly", name: "Premium Monthly", price: "$14.99", interval: "per month",
     description: "Best for regular users",
-    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Winner Predictions", "Team Totals"],
+    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Safe Zone", "Team Totals"],
     recommended: true,
   },
   {
     id: "three_month", name: "3-Month Plan", price: "$34.99", interval: "per 3 months",
     description: "Great value for committed users",
-    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Winner Predictions", "Team Totals"],
+    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Safe Zone", "Team Totals"],
   },
   {
     id: "annual", name: "Annual Plan", price: "$79.99", interval: "per year",
     description: "Best value for money",
-    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Winner Predictions", "Team Totals"],
+    features: ["Ticket Creator", "Filterizer", "AI Analysis", "Safe Zone", "Team Totals"],
   },
 ];
 
@@ -55,7 +55,7 @@ const PREMIUM_FEATURES = [
   { icon: Zap, label: "Ticket Creator" },
   { icon: Shield, label: "Filterizer" },
   { icon: Sparkles, label: "AI Analysis" },
-  { icon: Crown, label: "Winner Predictions" },
+  { icon: Crown, label: "Safe Zone" },
   { icon: Check, label: "Team Totals" },
 ];
 
@@ -136,7 +136,7 @@ const Account = () => {
       trackEvent("subscription_canceled");
       const { data, error } = await supabase.functions.invoke("cancel-subscription");
       if (error) throw error;
-      toast({ title: "Subscription Cancelled", description: "Your subscription has been cancelled successfully." });
+      toast({ title: "Cancellation scheduled", description: "Your subscription will end after the current paid period." });
       await refreshAccess();
     } catch (error: any) {
       console.error("Cancel error:", error);
@@ -430,10 +430,10 @@ const Account = () => {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This will immediately cancel your subscription. You will lose access to premium features.
+                                Your subscription will stop renewing. Premium access remains active through the current paid period.
                                 {entitlement.status === "past_due" && (
                                   <span className="block mt-2 font-medium text-destructive">
-                                    Note: Your subscription is past due. Cancelling will resolve this and stop any future charges.
+                                    Note: Your subscription is past due. Cancellation stops renewal, but any existing unpaid invoice may still require action in the billing portal.
                                   </span>
                                 )}
                               </AlertDialogDescription>
@@ -541,7 +541,7 @@ const Account = () => {
                         })}
                       </div>
                       <p className="text-center text-[10px] text-muted-foreground mt-4">
-                        All plans include full access · Cancel anytime · Payments via Stripe
+                        Plans include the listed tools · Recurring subscriptions can be canceled before renewal · Payments via Stripe
                       </p>
                     </div>
                   )}

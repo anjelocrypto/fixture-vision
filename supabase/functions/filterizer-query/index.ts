@@ -6,6 +6,7 @@ import { ODDS_MIN, ODDS_MAX, UPCOMING_WINDOW_HOURS } from "../_shared/config.ts"
 import { RULES, RULES_VERSION, pickFromCombined, type StatMarket } from "../_shared/rules.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
+import { userHasProductAccess } from "../_shared/entitlement.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,25 +68,7 @@ serve(async (req) => {
     // 2) Premium entitlement check (no trial credits consumed)
     const supabaseClient = createClient(supabaseUrl, serviceRoleKey);
 
-    const { data: entitlement } = await supabaseClient
-      .from("user_entitlements")
-      .select("plan, current_period_end")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const hasPaidAccess =
-      entitlement &&
-      entitlement.plan !== "free" &&
-      entitlement.current_period_end &&
-      new Date(entitlement.current_period_end) > new Date();
-
-    let isAdmin = false;
-    if (!hasPaidAccess) {
-      const { data: wl } = await userClient.rpc("is_user_whitelisted");
-      isAdmin = wl === true;
-    }
-
-    if (!hasPaidAccess && !isAdmin) {
+    if (!(await userHasProductAccess(userClient))) {
       return new Response(
         JSON.stringify({ error: "Premium subscription required", code: "PAYWALL" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 402 }

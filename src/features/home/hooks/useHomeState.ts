@@ -21,7 +21,10 @@ const getCountryFlag = (code: string): string => {
   return String.fromCodePoint(...codePoints);
 };
 
-const SEASON = 2025;
+const currentUtc = new Date();
+const SEASON = currentUtc.getUTCMonth() >= 6
+  ? currentUtc.getUTCFullYear()
+  : currentUtc.getUTCFullYear() - 1;
 
 export function useHomeState() {
   const { toast } = useToast();

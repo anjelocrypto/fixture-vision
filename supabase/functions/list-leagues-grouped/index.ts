@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight } from "../_shared/cors.ts";
+import { authenticateUser } from "../_shared/user_auth.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
+import { readJsonWithLimit } from "../_shared/request.ts";
 
 const INTERNATIONAL_LEAGUE_IDS = [5, 1, 4, 960, 32, 34, 33, 31, 29, 30, 9, 36, 964, 17, 2, 3, 848];
 const INTERNATIONAL_LEAGUE_NAMES: Record<number, string> = {
@@ -34,8 +37,29 @@ serve(async (req) => {
   const start = performance.now();
 
   try {
+    const auth = await authenticateUser(req, "[list-leagues-grouped]");
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" },
+      });
+    }
+
     const url = new URL(req.url);
-    const season = parseInt(url.searchParams.get("season") || "2025");
+    let requestedSeason: unknown = url.searchParams.get("season");
+    if (!requestedSeason && req.method === "POST") {
+      const body = await readJsonWithLimit(req, 4 * 1024).catch(() => ({}));
+      requestedSeason = body && typeof body === "object"
+        ? (body as Record<string, unknown>).season
+        : undefined;
+    }
+    const defaultSeason = getFootballSeasonForLeague(39);
+    const parsedSeason = Number(requestedSeason ?? defaultSeason);
+    const season = Number.isInteger(parsedSeason)
+      && parsedSeason >= 2000
+      && parsedSeason <= new Date().getUTCFullYear() + 1
+      ? parsedSeason
+      : defaultSeason;
 
     console.log(`[list-leagues-grouped] Fetching all leagues for season: ${season}`);
 

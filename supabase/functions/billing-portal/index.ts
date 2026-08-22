@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveStripeCustomerId } from "../_shared/stripe_customer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,18 +39,23 @@ serve(async (req) => {
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } },
+    );
 
-    // Find or create customer
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    let customerId = customers.data[0]?.id;
-
+    const customerId = await resolveStripeCustomerId({
+      stripe,
+      supabase: supabaseAdmin,
+      user,
+      allowLegacyEmailRecovery: true,
+    });
     if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: { user_id: user.id },
-      });
-      customerId = customer.id;
-      console.log(`[portal] Created customer for user ${user.id}`);
+      return new Response(
+        JSON.stringify({ error: "No billing account found for this user" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 },
+      );
     }
 
     // Create portal session

@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const runStarted = new Date();
     // Precise 5-month window using proper month arithmetic
     const now = new Date();
     const fiveMonthsAgo = new Date(now);
@@ -187,38 +188,74 @@ Deno.serve(async (req) => {
 
     console.log(`[rebuild-green-buckets] Buckets: total=${totalBuckets}, green=${greenBuckets}, dropped: lowSample=${droppedLowSample}, lowHitRate=${droppedLowHitRate}, lowROI=${droppedLowRoi}`);
 
-    // Atomic replace: delete all rows then insert new ones
-    // Using .neq() on UUID id to guarantee all rows are matched regardless of RLS
-    const { error: deleteError } = await supabase
-      .from("green_buckets")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-
-    if (deleteError) {
-      console.error("[rebuild-green-buckets] Delete error:", deleteError);
-      throw deleteError;
+    if (rows.length === 0) {
+      console.warn("[rebuild-green-buckets] Candidate policy is empty; preserving the current active policy");
+      await supabase.from("pipeline_run_logs").insert({
+        job_name: "rebuild-green-buckets",
+        run_started: runStarted.toISOString(),
+        run_finished: new Date().toISOString(),
+        success: false,
+        mode: "auto",
+        processed: allLegs.length,
+        failed: 1,
+        details: { reason: "empty_candidate_policy", total_buckets: totalBuckets },
+        error_message: "Candidate policy contained zero qualifying buckets; active policy preserved",
+      });
+      return new Response(
+        JSON.stringify({
+          status: "REJECTED",
+          reason: "empty_candidate_policy",
+          active_policy_preserved: true,
+          total_legs_processed: allLegs.length,
+          total_buckets: totalBuckets,
+        }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    if (rows.length > 0) {
-      // Insert in batches of 100
-      for (let i = 0; i < rows.length; i += 100) {
-        const batch = rows.slice(i, i + 100);
-        const { error: insertError } = await supabase
-          .from("green_buckets")
-          .insert(batch);
-
-        if (insertError) {
-          console.error(`[rebuild-green-buckets] Insert batch ${i} error:`, insertError);
-          throw insertError;
-        }
-      }
+    const thresholds = {
+      min_sample: MIN_SAMPLE,
+      min_hit_rate_pct: MIN_HIT_RATE,
+      min_roi_pct: MIN_ROI,
+    };
+    const diagnostics = {
+      total_buckets: totalBuckets,
+      dropped_low_sample: droppedLowSample,
+      dropped_low_hit_rate: droppedLowHitRate,
+      dropped_low_roi: droppedLowRoi,
+    };
+    const { data: policyVersionId, error: activationError } = await supabase.rpc(
+      "activate_green_bucket_policy",
+      {
+        p_rows: rows,
+        p_window_start: windowStart,
+        p_window_end: now.toISOString(),
+        p_source_leg_count: allLegs.length,
+        p_thresholds: thresholds,
+        p_diagnostics: diagnostics,
+      },
+    );
+    if (activationError || !policyVersionId) {
+      throw new Error(`Policy activation failed: ${activationError?.message ?? "missing version id"}`);
     }
 
-    console.log(`[rebuild-green-buckets] Done. Inserted ${rows.length} green buckets.`);
+    await supabase.from("pipeline_run_logs").insert({
+      job_name: "rebuild-green-buckets",
+      run_started: runStarted.toISOString(),
+      run_finished: new Date().toISOString(),
+      success: true,
+      mode: "auto",
+      processed: allLegs.length,
+      failed: 0,
+      details: { policy_version_id: policyVersionId, green_buckets: rows.length, ...diagnostics },
+    });
+
+    console.log(`[rebuild-green-buckets] Activated version ${policyVersionId} with ${rows.length} buckets.`);
 
     return new Response(
       JSON.stringify({
         status: "OK",
+        policy_version_id: policyVersionId,
         total_legs_processed: allLegs.length,
         total_buckets: totalBuckets,
         green_buckets: greenBuckets,

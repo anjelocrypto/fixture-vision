@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { getCorsHeaders, handlePreflight } from "../_shared/cors.ts";
+import { authenticateUser } from "../_shared/user_auth.ts";
 
 serve(async (req) => {
   const origin = req.headers.get("origin");
@@ -10,6 +11,14 @@ serve(async (req) => {
   }
 
   try {
+    const auth = await authenticateUser(req, "[fetch-leagues]");
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin, req), "Content-Type": "application/json" },
+      });
+    }
+
     const { country, season } = await req.json();
     
     console.log(`[fetch-leagues] Request params - country: ${country}, season: ${season}`);
@@ -274,4 +283,3 @@ function hashCode(str: string): number {
   }
   return hash;
 }
-

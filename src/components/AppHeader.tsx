@@ -214,7 +214,7 @@ export function AppHeader() {
                   <DropdownMenuItem disabled className="text-xs font-medium">
                     <Sparkles className="mr-2 h-3 w-3" />
                     {entitlement.plan === "day_pass" ? t('common:premium_badge_day_pass') : 
-                     entitlement.plan === "premium_monthly" ? t('common:premium_badge_monthly') : t('common:premium_badge_annual')}
+                     entitlement.plan === "monthly" ? t('common:premium_badge_monthly') : t('common:premium_badge_annual')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />

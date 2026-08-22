@@ -14,6 +14,7 @@ import {
   STRIPE_PRICE_THREE_MONTH,
   STRIPE_PRICE_YEARLY,
 } from "../_shared/stripePrices.ts";
+import { resolveStripeCustomerId } from "../_shared/stripe_customer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,40 +57,56 @@ serve(async (req) => {
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2025-08-27.basil",
     });
+    const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Find customer by email
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    if (customers.data.length === 0) {
+    const customerId = await resolveStripeCustomerId({
+      stripe,
+      supabase,
+      user,
+      allowLegacyEmailRecovery: true,
+    });
+    if (!customerId) {
       return new Response(JSON.stringify({ restored: false, reason: "no_stripe_customer" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const customerId = customers.data[0].id;
-
-    // Check for active subscriptions
+    // Check all potentially entitled subscriptions and select the newest paid
+    // period. Do not silently map unknown Stripe prices to a monthly plan.
     const subs = await stripe.subscriptions.list({
       customer: customerId,
-      status: "active",
-      limit: 1,
+      status: "all",
+      limit: 10,
     });
 
-    if (subs.data.length === 0) {
+    const sub = subs.data
+      .filter((candidate: Stripe.Subscription) =>
+        ["active", "trialing", "past_due"].includes(candidate.status) &&
+        candidate.current_period_end * 1000 > Date.now()
+      )
+      .sort(
+        (a: Stripe.Subscription, b: Stripe.Subscription) =>
+          b.current_period_end - a.current_period_end,
+      )[0];
+
+    if (!sub) {
       return new Response(JSON.stringify({ restored: false, reason: "no_active_subscription" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const sub = subs.data[0];
     const priceId = sub.items.data[0]?.price?.id;
-    let plan = "monthly";
-    if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
+    let plan: string | null = null;
+    if (priceId === STRIPE_PRICE_MONTHLY) plan = "monthly";
+    else if (priceId === STRIPE_PRICE_THREE_MONTH) plan = "three_month";
     else if (priceId === STRIPE_PRICE_YEARLY) plan = "annual";
+    if (!plan) {
+      throw new Error(`Unsupported recurring Stripe price: ${priceId ?? "missing"}`);
+    }
 
     const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
 
     // Check current entitlement
-    const supabase = createClient(supabaseUrl, serviceKey);
     const { data: existing } = await supabase
       .from("user_entitlements")
       .select("plan, status, current_period_end")

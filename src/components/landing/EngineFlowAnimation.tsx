@@ -6,7 +6,7 @@ const STEPS = [
   {
     icon: Database,
     title: "API Football Data",
-    description: "Real-time stats from 1000+ leagues",
+    description: "Current fixture and team statistics",
     color: "text-blue-400",
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/30",

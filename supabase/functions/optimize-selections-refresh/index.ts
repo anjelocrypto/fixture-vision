@@ -8,7 +8,13 @@ import { ODDS_MIN, ODDS_MAX, KEEP_TOP_BOOKMAKERS, UPCOMING_WINDOW_HOURS } from "
 import { detectAvailableMarkets } from "../_shared/market_detection.ts";
 import { hasKeyAttackingInjuries } from "../_shared/injuries.ts";
 import { BLACKLISTED_LEAGUE_IDS } from "../_shared/dynamic_weights.ts";
-import { isAllowlisted, ALLOWED_LEAGUE_IDS, BANNED_MARKETS, GLOBAL_ODDS_CAP } from "../_shared/green_allowlist.ts";
+import { BANNED_MARKETS, GLOBAL_ODDS_CAP } from "../_shared/green_allowlist.ts";
+import {
+  isAllowedByGreenPolicy,
+  isLineAllowedByGreenPolicy,
+  loadGreenPolicy,
+} from "../_shared/green_policy.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,11 +33,33 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabaseClient,
+      serviceRoleKey,
+      "[optimize-selections-refresh]",
+    );
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     console.log(`[optimize-selections-refresh] Starting refresh (internal call)`);
+    const greenPolicy = await loadGreenPolicy(supabaseClient);
+    console.log(
+      `[optimize-selections-refresh] Policy mode=${greenPolicy.mode} ` +
+      `version=${greenPolicy.versionId ?? "none"} buckets=${greenPolicy.bucketCount} stale=${greenPolicy.stale}`,
+    );
 
     // Parse window_hours from request body (default 48h for production)
-    const { window_hours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
+    const { window_hours: requestedWindowHours = UPCOMING_WINDOW_HOURS } = await req.json().catch(() => ({}));
+    const window_hours = Math.min(
+      Math.max(Number(requestedWindowHours) || UPCOMING_WINDOW_HOURS, 1),
+      168,
+    );
 
     // GUARD: Don't let short-window cron stomps long-window manual runs
     // If this is a short window (≤24h) and a longer window is running, skip
@@ -239,8 +267,8 @@ serve(async (req) => {
     for (const fixture of fixtures) {
       scanned++;
       
-      // GREEN ALLOWLIST: Only process allowed leagues (replaces old blacklist)
-      if (fixture.league_id && !ALLOWED_LEAGUE_IDS.includes(fixture.league_id)) {
+      // Use the same immutable policy snapshot as ticket generation.
+      if (fixture.league_id && !greenPolicy.leagueIds.includes(fixture.league_id)) {
         skipped++;
         continue;
       }
@@ -389,12 +417,11 @@ serve(async (req) => {
         if (bookmakerOdds.length === 0 && !hasOdds) {
           // GREEN ALLOWLIST: For model-only, validate league+market+line (skip odds check)
           // Use a dummy odds value within range just to pass the allowlist line/market check
-          const dummyOddsForLineCheck = isAllowlisted({
+          const dummyOddsForLineCheck = isLineAllowedByGreenPolicy(greenPolicy, {
             league_id: fixture.league_id,
             market,
             side: pick.side,
             line: pick.line,
-            odds: 1.50, // dummy value within all bands — we only care about line validation
           });
           if (!dummyOddsForLineCheck.allowed) {
             console.log(`[optimize] ALLOWLIST_REJECT model-only fixture=${fixture.id} market=${market} line=${pick.line} reason=${dummyOddsForLineCheck.reason}`);
@@ -448,7 +475,7 @@ serve(async (req) => {
 
         for (const { bookmaker, odds } of topBookmakers) {
           // GREEN ALLOWLIST: Final gate — reject if not allowlisted
-          const allowCheck = isAllowlisted({
+          const allowCheck = isAllowedByGreenPolicy(greenPolicy, {
             league_id: fixture.league_id,
             market,
             side: pick.side,
@@ -522,37 +549,31 @@ serve(async (req) => {
       console.warn(`[optimize-selections-refresh] ⚠️ LOW SELECTIONS: Only ${selections.length} selections from ${with_odds} fixtures with odds (expected ~${with_odds * 4}+)`);
     }
 
-    // Upsert selections (batch)
+    // Replace selections in one database transaction. A failed insert leaves
+    // the previous valid set untouched.
     if (selections.length > 0) {
-      // Cleanup: remove stale rows for this window to avoid persisting bad/outdated odds
-      const { error: cleanupError } = await supabaseClient
-        .from("optimized_selections")
-        .delete()
-        .in("fixture_id", fixtureIds)
-        .eq("is_live", false)
-        .gte("utc_kickoff", now.toISOString())
-        .lte("utc_kickoff", endDate.toISOString());
+      const { data: replacedCount, error: replacementError } = await supabaseClient.rpc(
+        "replace_optimized_selections",
+        {
+          p_fixture_ids: fixtureIds,
+          p_window_start: now.toISOString(),
+          p_window_end: endDate.toISOString(),
+          p_selections: selections,
+        },
+      );
 
-      if (cleanupError) {
-        console.warn("[optimize-selections-refresh] Cleanup warning:", cleanupError.message);
-      }
-
-      const { error: upsertError } = await supabaseClient
-        .from("optimized_selections")
-        .upsert(selections, {
-          onConflict: "fixture_id,market,side,line,bookmaker,is_live",
-          ignoreDuplicates: false,
-        });
-
-      if (upsertError) {
-        console.error("[optimize-selections-refresh] Upsert error:", upsertError);
+      if (replacementError || Number(replacedCount) !== selections.length) {
+        console.error("[optimize-selections-refresh] Atomic replacement error:", replacementError);
         return new Response(
-          JSON.stringify({ error: "Failed to upsert selections", details: upsertError.message }),
+          JSON.stringify({
+            error: "Failed to replace selections",
+            details: replacementError?.message ?? "replacement count mismatch",
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
         );
       }
 
-      inserted = selections.length;
+      inserted = Number(replacedCount);
     }
 
     console.log(`[optimize-selections-refresh] Successfully upserted ${inserted} selections`);
@@ -582,6 +603,12 @@ serve(async (req) => {
           acc[k] = v;
           return acc;
         }, {}),
+        green_policy: {
+          mode: greenPolicy.mode,
+          version_id: greenPolicy.versionId,
+          stale: greenPolicy.stale,
+          bucket_count: greenPolicy.bucketCount,
+        },
       },
       scanned,
       with_odds,
@@ -602,6 +629,12 @@ serve(async (req) => {
         failed: 0,
         window: { start: now.toISOString(), end: endDate.toISOString() },
         rules_version: RULES_VERSION,
+        green_policy: {
+          mode: greenPolicy.mode,
+          version_id: greenPolicy.versionId,
+          stale: greenPolicy.stale,
+          bucket_count: greenPolicy.bucketCount,
+        },
         duration_ms,
         status_filter: {
           kept_nstd: fixtures.length,
