@@ -198,7 +198,7 @@
   "safe_zone_over_rate": ">%",
   "analytics_tools": "ანალიტიკის ინსტრუმენტები",
   "safe_zone_bot_title": "უსაფრთხო ზონის ბოტი",
-  "safe_zone_bot_greeting": "გამარჯობა — შემიძლია გაჩვენო ყველაზე უსაფრთხო არჩევანები მომდევნო 48 საათისთვის. სცადე: „Top 10 corners picks today" ან დააჭირე ქვემოთ არსებულ ღილაკებს.",
+  "safe_zone_bot_greeting": "გამარჯობა — შემიძლია გაჩვენო ყველაზე უსაფრთხო არჩევანები მომდევნო 48 საათისთვის. სცადე: „Top 10 corners picks today“ ან დააჭირე ქვემოთ არსებულ ღილაკებს.",
   "safe_zone_bot_paywall": "უსაფრთხო ზონის ბოტი ხელმისაწვდომია მხოლოდ პრემიუმ გამოწერით.",
   "safe_zone_bot_view_plans": "პაკეტების ნახვა",
   "safe_zone_bot_thinking": "ვამუშავებ...",
@@ -217,5 +217,27 @@
   "safe_zone_bot_chip_48h": "48 სთ",
   "safe_zone_bot_corners": "კუთხურები",
   "safe_zone_bot_goals": "გოლები",
-  "safe_zone_bot_over": "მეტი"
+  "safe_zone_bot_over": "მეტი",
+  "tab_current_slip": "მიმდინარე ბილეთი",
+  "tab_ticket_history": "ბილეთების ისტორია",
+  "history_fixture": "მატჩი",
+  "history_actual": "ფაქტობრივი",
+  "history_legs_settled": "პოზიციები",
+  "history_no_legs": "დეტალები მიუწვდომელია",
+  "history_error_title": "ისტორიის ჩატვირთვა ვერ მოხერხდა",
+  "history_error_body": "შეამოწმეთ კავშირი და სცადეთ ხელახლა.",
+  "history_retry": "ხელახლა ცდა",
+  "history_empty_title": "შენახული ბილეთები არ არის",
+  "history_empty_body": "გენერირებული ბილეთები და შედეგები აქ გამოჩნდება.",
+  "history_load_more": "მეტის ჩატვირთვა",
+  "settlement": {
+    "hold": {
+      "title": "ანგარიშსწორება მოწმდება",
+      "reason": {
+        "scheduleChanged": "მატჩის განრიგი შეიცვალა",
+        "fixtureDetailsChanged": "მატჩის დეტალები შეიცვალა",
+        "generic": "მატჩის განრიგი შეიცვალა"
+      }
+    }
+  }
 }
