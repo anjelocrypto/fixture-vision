@@ -20,7 +20,7 @@ export const MAX_KICKOFF_DRIFT_SECONDS = 86400;
 export type SettlementHoldReason = "kickoff_drift" | "team_direction_mismatch";
 
 const ACCENTS = "àáâãäåāăąèéêëēĕėęěìíîïĩīĭįıòóôõöøōŏőùúûüũūŭůűųçćĉċčñńņňýÿŷšśşžźżđğłß";
-const PLAIN = "aaaaaaaaaeeeeeeeeeiiiiiiiiiooooooooouuuuuuuuuucccccnnnnyyysssszzzdgls";
+const PLAIN = "aaaaaaaaaeeeeeeeeeiiiiiiiiiooooooooouuuuuuuuuucccccnnnnyyyssszzzdgls";
 
 const SUFFIX_TOKENS =
   /\b(fc|afc|sc|cf|ac|ss|ssc|cd|ud|sv|fk|nk|bk|if|tc|club|city|calcio|futbol|football)\b/g;
