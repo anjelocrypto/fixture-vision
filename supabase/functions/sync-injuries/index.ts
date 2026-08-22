@@ -1,11 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { fetchLeagueInjuries } from "../_shared/injuries.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
+import { readJsonWithLimit } from "../_shared/request.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
+import {
+  boundedRotatingSelection,
+  clampProviderCallLimit,
+  ProviderCallBudget,
+  ProviderControlError,
+} from "../_shared/provider_budget.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-key",
 };
+const MAX_PROVIDER_CALLS_PER_RUN = 4;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -13,76 +24,40 @@ serve(async (req) => {
   }
 
   try {
-    // Authorization: X-CRON-KEY for internal cron calls
-    const cronKey = req.headers.get("X-CRON-KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      serviceRoleKey,
     );
-
-    // Verify CRON key
-    if (cronKey) {
-      const { data: keyData } = await supabaseClient.rpc("get_cron_internal_key");
-      if (cronKey !== keyData) {
-        console.log("[sync-injuries] Invalid CRON key");
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      console.log("[sync-injuries] Authorized via X-CRON-KEY");
-    } else {
-      // JWT verification for manual admin calls
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: "Missing authorization header" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Check if user is admin
-      const { data: isAdmin } = await supabaseClient.rpc("has_role", {
-        _user_id: user.id,
-        _role: "admin",
+    const auth = await checkCronOrAdminAuth(req, supabaseClient, serviceRoleKey, "[sync-injuries]");
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-
-      if (!isAdmin) {
-        return new Response(
-          JSON.stringify({ error: "Admin access required" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
     }
 
-    // Parse request body
-    const { league_ids, season } = await req.json().catch(() => ({}));
-    
-    // Default to current season
+    const body = (await readJsonWithLimit(req, 16_384).catch(() => null) ?? {}) as Record<string, unknown>;
+    if (auth.method !== "cron_key" && body.confirm_provider_calls !== true) {
+      return new Response(JSON.stringify({ error: "Manual provider calls require confirm_provider_calls=true" }), {
+        status: 412,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const providerBudget = new ProviderCallBudget(
+      clampProviderCallLimit(body.max_provider_calls, MAX_PROVIDER_CALLS_PER_RUN),
+    );
     const now = new Date();
-    const month = now.getUTCMonth();
-    const year = now.getUTCFullYear();
-    const currentSeason = season || (month >= 7 ? year : year - 1);
     
     // Default to all active leagues if not specified
-    let leagueIds = league_ids;
+    let leagueIds = Array.isArray(body.league_ids) ? body.league_ids.map(Number).filter(Number.isInteger) : [];
     if (!leagueIds || !Array.isArray(leagueIds) || leagueIds.length === 0) {
       // Fetch distinct league IDs from upcoming fixtures
       const { data: upcomingLeagues } = await supabaseClient
         .from("fixtures")
         .select("league_id")
         .gte("timestamp", Math.floor(Date.now() / 1000))
-        .lte("timestamp", Math.floor((Date.now() + 120 * 60 * 60 * 1000) / 1000))
+        .lte("timestamp", Math.floor((Date.now() + UPCOMING_WINDOW_HOURS * 60 * 60 * 1000) / 1000))
         .in("status", ["NS", "TBD"]);
       
       if (upcomingLeagues && upcomingLeagues.length > 0) {
@@ -92,7 +67,13 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[sync-injuries] Syncing injuries for ${leagueIds.length} leagues, season ${currentSeason}`);
+    leagueIds = boundedRotatingSelection(
+      [...new Set<number>(leagueIds)],
+      providerBudget.limit,
+      Math.floor(now.getTime() / (4 * 60 * 60 * 1000)),
+    );
+
+    console.log(`[sync-injuries] Syncing injuries for ${leagueIds.length} bounded leagues`);
 
     // Insert initial pipeline log for observability
     const runStarted = new Date();
@@ -104,11 +85,11 @@ serve(async (req) => {
           job_name: "sync-injuries",
           run_started: runStarted.toISOString(),
           success: false,
-          mode: cronKey ? "cron" : "manual",
+          mode: auth.method === "cron_key" ? "cron" : "manual",
           processed: 0,
           failed: 0,
           leagues_covered: leagueIds,
-          details: { status: "started", season: currentSeason },
+          details: { status: "started", provider: providerBudget.snapshot() },
         })
         .select("id")
         .single();
@@ -119,12 +100,16 @@ serve(async (req) => {
 
     let totalFetched = 0;
     let totalUpserted = 0;
+    let failedLeagues = 0;
     const leagueResults: Record<number, number> = {};
 
     // Fetch and upsert injuries for each league
     for (const leagueId of leagueIds) {
       try {
-        const injuries = await fetchLeagueInjuries(leagueId, currentSeason);
+        const season = typeof body.season === "number"
+          ? Math.floor(body.season)
+          : getFootballSeasonForLeague(leagueId, now);
+        const injuries = await fetchLeagueInjuries(leagueId, season, providerBudget);
         leagueResults[leagueId] = injuries.length;
         totalFetched += injuries.length;
 
@@ -172,7 +157,9 @@ serve(async (req) => {
         // Rate limiting: 50 requests per minute
         await new Promise(resolve => setTimeout(resolve, 1200));
       } catch (err) {
+        failedLeagues++;
         console.error(`[sync-injuries] Error processing league ${leagueId}:`, err);
+        if (err instanceof ProviderControlError) break;
       }
     }
 
@@ -185,15 +172,15 @@ serve(async (req) => {
           .from("pipeline_run_logs")
           .update({
             run_finished: new Date().toISOString(),
-            success: true,
+            success: failedLeagues === 0 && providerBudget.failures === 0,
             processed: totalUpserted,
-            failed: 0,
+            failed: failedLeagues,
             leagues_covered: leagueIds,
             details: { 
-              season: currentSeason,
               total_fetched: totalFetched,
               total_upserted: totalUpserted,
               league_results: leagueResults,
+              provider: providerBudget.snapshot(),
             },
           })
           .eq("id", pipelineLogId);
@@ -204,14 +191,17 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
-        season: currentSeason,
+        success: failedLeagues === 0 && providerBudget.failures === 0,
         leagues_processed: leagueIds.length,
         total_injuries_fetched: totalFetched,
         total_injuries_upserted: totalUpserted,
         league_results: leagueResults,
+        provider: providerBudget.snapshot(),
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: failedLeagues === 0 && providerBudget.failures === 0 ? 200 : 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   } catch (error) {
     console.error("[sync-injuries] Error:", error);

@@ -20,6 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { normalizeScoreBatchSize } from "../_shared/gate_d_health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +72,7 @@ serve(async (req) => {
   try {
     // Parse optional batch_size param
     const url = new URL(req.url);
-    const batchSize = Math.min(parseInt(url.searchParams.get("batch_size") || "500"), 1000);
+    const batchSize = normalizeScoreBatchSize(url.searchParams.get("batch_size"));
 
     logs.push(`[score] Starting with batch_size=${batchSize}`);
 

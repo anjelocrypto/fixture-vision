@@ -11,6 +11,7 @@
 // 7. Powers injury display in FixtureStatsDisplay, GeminiAnalysis, and RightRail components
 
 import { API_BASE, apiHeaders } from "./api.ts";
+import { fetchWithProviderBudget, ProviderCallBudget } from "./provider_budget.ts";
 
 export interface PlayerInjury {
   player_id: number;
@@ -36,12 +37,15 @@ const ATTACKING_POSITIONS = new Set([
  */
 export async function fetchLeagueInjuries(
   leagueId: number,
-  season: number
+  season: number,
+  budget?: ProviderCallBudget,
 ): Promise<PlayerInjury[]> {
   console.log(`[injuries] Fetching injuries for league ${leagueId}, season ${season}`);
   
   const url = `${API_BASE}/injuries?league=${leagueId}&season=${season}`;
-  const res = await fetch(url, { headers: apiHeaders() });
+  const res = budget
+    ? await fetchWithProviderBudget(url, { headers: apiHeaders() }, budget)
+    : await fetch(url, { headers: apiHeaders() });
   
   if (!res.ok) {
     console.error(`[injuries] Failed to fetch injuries: HTTP ${res.status}`);

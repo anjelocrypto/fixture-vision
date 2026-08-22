@@ -248,12 +248,12 @@ serve(async (req) => {
     console.log(`[btts-refresh] Complete: ${teamsProcessed} teams in ${leaguesProcessed} leagues, ${errors.length} errors, ${duration}ms`);
 
     return jsonResponse({
-      ok: true,
+      ok: errors.length === 0,
       teams_processed: teamsProcessed,
       leagues_processed: leaguesProcessed,
       errors: errors.length > 0 ? errors : null,
       duration_ms: duration,
-    }, origin);
+    }, origin, errors.length === 0 ? 200 : 502, req);
 
   } catch (error) {
     console.error("[btts-refresh] Fatal error:", error);

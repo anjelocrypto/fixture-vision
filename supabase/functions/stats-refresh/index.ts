@@ -17,6 +17,8 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { computeLastFiveAverages } from "../_shared/stats.ts";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
+import { ProviderCallBudget, ProviderControlError } from "../_shared/provider_budget.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 // =============================================================================
 // SAFE MACHINE MODE v2 CONFIGURATION
@@ -29,6 +31,7 @@ import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 
 /** Maximum teams per run - REDUCED to 6 for more reliable batch completion */
 const MAX_TEAMS_PER_RUN = 6;
+const MAX_PROVIDER_CALLS_PER_RUN = 25;
 
 /** Stop processing new teams after 50s (gives 10s buffer before 60s timeout) */
 const SOFT_TIME_LIMIT_MS = 50_000;
@@ -58,6 +61,7 @@ const AdminRequestSchema = z.object({
   window_hours: z.number().int().min(1).max(720).optional(),
   stats_ttl_hours: z.number().int().min(1).max(168).optional(),
   force: z.boolean().optional(),
+  confirm_provider_calls: z.boolean().optional(),
 });
 
 // Simple delay helper
@@ -67,9 +71,11 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 async function computeWithRetry(
   teamId: number, 
   supabase: any, 
-  retries = 2,
-  startedAt: number
+  startedAt: number,
+  leagueId: number,
+  budget: ProviderCallBudget,
 ): Promise<{ result: any; attempts: number; durationMs: number }> {
+  const retries = 0;
   let attempt = 0;
   const computeStart = Date.now();
   
@@ -77,7 +83,11 @@ async function computeWithRetry(
     try {
       console.log(`[stats-refresh] 🔄 Team ${teamId}: starting compute (attempt ${attempt + 1}/${retries + 1}, elapsed=${Date.now() - startedAt}ms)`);
       
-      const result = await computeLastFiveAverages(teamId, supabase);
+      const result = await computeLastFiveAverages(teamId, supabase, {
+        leagueId,
+        season: getFootballSeasonForLeague(leagueId),
+        budget,
+      });
       
       const durationMs = Date.now() - computeStart;
       console.log(`[stats-refresh] ✅ Team ${teamId}: compute SUCCESS in ${durationMs}ms (sample=${result.sample_size})`);
@@ -88,6 +98,7 @@ async function computeWithRetry(
       const errMsg = e?.message || String(e);
       console.warn(`[stats-refresh] ⚠️ Team ${teamId}: attempt ${attempt + 1} FAILED: ${errMsg.slice(0, 100)}`);
       
+      if (e instanceof ProviderControlError) throw e;
       if (attempt < retries) {
         const delay = 1000 * Math.pow(2, attempt) + Math.floor(Math.random() * 300);
         console.log(`[stats-refresh] Team ${teamId}: retrying in ${delay}ms...`);
@@ -129,6 +140,8 @@ Deno.serve(async (req) => {
   let window_hours = UPCOMING_WINDOW_HOURS;
   let stats_ttl_hours = 24;
   let force = false;
+  let confirmProviderCalls = false;
+  const providerBudget = new ProviderCallBudget(MAX_PROVIDER_CALLS_PER_RUN);
   
   // Track state for finally block
   let lockToken: string | null = null;
@@ -159,6 +172,7 @@ Deno.serve(async (req) => {
       if (parsed.window_hours !== undefined) window_hours = parsed.window_hours;
       if (parsed.stats_ttl_hours !== undefined) stats_ttl_hours = parsed.stats_ttl_hours;
       if (parsed.force !== undefined) force = parsed.force;
+      if (parsed.confirm_provider_calls !== undefined) confirmProviderCalls = parsed.confirm_provider_calls;
     } catch (e: any) {
       if (e.errors) {
         console.error("[stats-refresh] Invalid request body:", e.errors);
@@ -183,6 +197,7 @@ Deno.serve(async (req) => {
     const cronKeyHeader = req.headers.get('x-cron-key') ?? req.headers.get('X-CRON-KEY');
     const authHeader = req.headers.get('authorization') ?? req.headers.get('Authorization');
     let isAuthorized = false;
+    let isCronRequest = false;
 
     if (cronKeyHeader) {
       const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
@@ -193,6 +208,7 @@ Deno.serve(async (req) => {
         const providedKey = String(cronKeyHeader || "").trim();
         if (providedKey && expectedKey && providedKey === expectedKey) {
           isAuthorized = true;
+          isCronRequest = true;
           console.log("[stats-refresh] ✓ Authorized via X-CRON-KEY");
         }
       }
@@ -221,6 +237,10 @@ Deno.serve(async (req) => {
     if (!isAuthorized) {
       console.error("[stats-refresh] Authorization failed - no valid credentials");
       return errorResponse("Unauthorized", origin, 401, req);
+    }
+
+    if (!isCronRequest && !confirmProviderCalls) {
+      return errorResponse("Manual provider calls require confirm_provider_calls=true", origin, 412, req);
     }
 
     // Acquire lock
@@ -419,13 +439,28 @@ Deno.serve(async (req) => {
         break;
       }
 
+      if (providerBudget.remaining === 0) {
+        earlyExit = true;
+        earlyExitReason = "provider_call_budget_exhausted";
+        notes.push(earlyExitReason);
+        break;
+      }
+
       try {
         // Inter-team delay for rate limiting
         if (i > 0) {
           await sleep(INTER_TEAM_DELAY_MS);
         }
 
-        const { result: stats, attempts, durationMs } = await computeWithRetry(teamId, supabase, 2, startedAt);
+        const leagueId = [...(teamLeagueMap.get(teamId) ?? [])][0];
+        if (!leagueId) throw new Error(`team_${teamId}_missing_league`);
+        const { result: stats, attempts, durationMs } = await computeWithRetry(
+          teamId,
+          supabase,
+          startedAt,
+          leagueId,
+          providerBudget,
+        );
 
         const upsertStart = Date.now();
         const { error: upsertError } = await supabase.from("stats_cache").upsert({
@@ -470,6 +505,13 @@ Deno.serve(async (req) => {
         }
 
       } catch (error: any) {
+        if (error instanceof ProviderControlError) {
+          earlyExit = true;
+          earlyExitReason = error.reason;
+          notes.push(error.reason);
+          console.warn(`[stats-refresh] Provider stop: ${error.reason}`);
+          break;
+        }
         failed++;
         const teamTotalMs = Date.now() - loopStartMs;
         teamTimings.push({ teamId, durationMs: teamTotalMs, attempts: 3, success: false });
@@ -534,6 +576,7 @@ Deno.serve(async (req) => {
         window_hours,
         stats_ttl_hours,
         force,
+        provider: providerBudget.snapshot(),
       },
       result: {
         scanned,
@@ -583,6 +626,7 @@ Deno.serve(async (req) => {
             window_hours,
             stats_ttl_hours,
             force,
+            provider: providerBudget.snapshot(),
             early_exit: earlyExit,
             early_exit_reason: earlyExitReason || null,
             teams_attempted: teamsToProcessCount,
@@ -626,6 +670,7 @@ Deno.serve(async (req) => {
             window_hours,
             stats_ttl_hours,
             duration_ms: durationMs,
+            provider: providerBudget.snapshot(),
           },
           error_message: notes.length > 0 ? notes.slice(0, 5).join(" | ") : null,
         });

@@ -9,6 +9,7 @@
 // ============================================================================
 
 import { API_BASE, apiHeaders } from "./api.ts";
+import { ProviderCallBudget, ProviderControlError } from "./provider_budget.ts";
 
 // Configuration via environment (tunable per plan)
 const DEFAULT_MAX_RPM = 50;  // Safe default for most plans
@@ -92,6 +93,7 @@ export async function fetchAPIFootball(
     maxRetries?: number;
     skipRateLimit?: boolean;
     logPrefix?: string;
+    budget?: ProviderCallBudget;
   } = {}
 ): Promise<{ ok: boolean; status: number; data: any; error?: string }> {
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
@@ -107,7 +109,9 @@ export async function fetchAPIFootball(
       }
       
       const startTime = Date.now();
+      options.budget?.reserve();
       const response = await fetch(url, { headers: apiHeaders() });
+      options.budget?.observeResponse(response.status);
       const durationMs = Date.now() - startTime;
       
       logRequest(url, response.status, attempt, durationMs);
@@ -143,6 +147,7 @@ export async function fetchAPIFootball(
       };
       
     } catch (error) {
+      if (error instanceof ProviderControlError) throw error;
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`${prefix} Network error on attempt ${attempt + 1}/${maxRetries}: ${errorMsg}`);
       
