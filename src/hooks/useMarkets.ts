@@ -43,12 +43,8 @@ export interface UserCoins {
 }
 
 export interface LeaderboardEntry {
-  user_id: string;
   display_name: string;
   balance: number;
-  total_wagered: number;
-  total_won: number;
-  total_fees_paid: number;
   positions_count: number;
   wins_count: number;
   losses_count: number;
@@ -56,6 +52,7 @@ export interface LeaderboardEntry {
   roi: number;
   rank: number;
 }
+
 
 // Fetch open markets
 export function useMarkets(status: "open" | "closed" | "resolved" | "all" = "open") {
