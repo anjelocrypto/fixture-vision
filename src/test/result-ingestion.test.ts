@@ -14,6 +14,9 @@ import {
   TARGETED_WITH_STATS_MAX_CALLS,
 } from "../../supabase/functions/_shared/result_ingestion.ts";
 import { ProviderCallBudget } from "../../supabase/functions/_shared/provider_budget.ts";
+import autoBackfillSrc from "../../supabase/functions/auto-backfill-results/index.ts?raw";
+import resultsRefreshSrc from "../../supabase/functions/results-refresh/index.ts?raw";
+import legacyBackfillSrc from "../../supabase/functions/backfill-fixture-results/index.ts?raw";
 
 const API_BASE = "https://v3.football.api-sports.io";
 
@@ -241,9 +244,12 @@ describe("targeted ingestion", () => {
 
 describe("source-level guarantees of the deployed functions", () => {
   const read = async (p: string) => {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-    return fs.readFile(path.resolve(process.cwd(), p), "utf8");
+    const sources: Record<string, string> = {
+      "supabase/functions/auto-backfill-results/index.ts": autoBackfillSrc,
+      "supabase/functions/results-refresh/index.ts": resultsRefreshSrc,
+      "supabase/functions/backfill-fixture-results/index.ts": legacyBackfillSrc,
+    };
+    return sources[p];
   };
 
   it("auto-backfill-results does not chain the scorer", async () => {
