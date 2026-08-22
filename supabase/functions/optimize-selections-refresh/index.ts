@@ -15,6 +15,7 @@ import {
   loadGreenPolicy,
 } from "../_shared/green_policy.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -306,9 +307,7 @@ serve(async (req) => {
 
       // Fetch key player injuries with importance scores
       const fixtureDate = new Date(fixture.timestamp * 1000);
-      const month = fixtureDate.getUTCMonth();
-      const year = fixtureDate.getUTCFullYear();
-      const season = (month >= 7) ? year : year - 1;
+      const season = getFootballSeasonForLeague(fixture.league_id, fixtureDate);
       
       const { getKeyAttackingInjuries } = await import("../_shared/injuries.ts");
       const [homeInjuries, awayInjuries] = await Promise.all([

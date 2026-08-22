@@ -9,8 +9,9 @@
 import { describe, it, expect } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.TEST_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = process.env.TEST_SUPABASE_PUBLISHABLE_KEY;
+const testEnv = import.meta.env as Record<string, string | undefined>;
+const SUPABASE_URL = testEnv.TEST_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = testEnv.TEST_SUPABASE_PUBLISHABLE_KEY;
 const integrationEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
 const anonClient = createClient(

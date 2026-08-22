@@ -2,105 +2,61 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { syncLeaguePlayerImportance } from "../_shared/player_importance.ts";
 import { ALLOWED_LEAGUE_IDS } from "../_shared/leagues.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { readJsonWithLimit } from "../_shared/request.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
+import {
+  clampProviderCallLimit,
+  ProviderCallBudget,
+  ProviderControlError,
+} from "../_shared/provider_budget.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+const MAX_PROVIDER_CALLS_PER_RUN = 10;
 
 serve(async (req) => {
-  console.log("[sync-player-importance] Function invoked", { method: req.method, headers: Object.fromEntries(req.headers.entries()) });
+  console.log("[sync-player-importance] Function invoked", { method: req.method });
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      serviceRoleKey,
     );
-    
-    // Authorization: X-CRON-KEY for internal cron calls, or admin JWT for manual calls
-    const cronKey = req.headers.get("X-CRON-KEY");
-    
-    if (cronKey) {
-      // Verify CRON key
-      console.log("[sync-player-importance] Checking X-CRON-KEY...");
-      const { data: keyData, error: keyError } = await supabaseClient.rpc("get_cron_internal_key");
-      
-      if (keyError) {
-        console.error("[sync-player-importance] Error fetching cron key:", keyError);
-        return new Response(
-          JSON.stringify({ error: "Internal error verifying cron key" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      if (cronKey !== keyData) {
-        console.error("[sync-player-importance] Invalid CRON key provided");
-        return new Response(
-          JSON.stringify({ error: "Unauthorized - invalid cron key" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      console.log("[sync-player-importance] ✅ Authorized via X-CRON-KEY");
-    } else {
-      // JWT verification for manual admin calls
-      console.log("[sync-player-importance] No X-CRON-KEY, checking JWT authorization...");
-      const authHeader = req.headers.get("Authorization");
-      
-      if (!authHeader) {
-        console.error("[sync-player-importance] Missing authorization header");
-        return new Response(
-          JSON.stringify({ error: "Missing authorization header" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
-      if (authError || !user) {
-        console.error("[sync-player-importance] Invalid JWT token:", authError);
-        return new Response(
-          JSON.stringify({ error: "Unauthorized - invalid token" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Check if user is admin
-      const { data: isAdmin, error: roleError } = await supabaseClient.rpc("has_role", {
-        _user_id: user.id,
-        _role: "admin",
+    const auth = await checkCronOrAdminAuth(req, supabaseClient, serviceRoleKey, "[sync-player-importance]");
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-
-      if (roleError || !isAdmin) {
-        console.error("[sync-player-importance] User is not admin:", roleError);
-        return new Response(
-          JSON.stringify({ error: "Admin access required" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      console.log("[sync-player-importance] ✅ Authorized as admin user");
     }
-    
-    // Parse request body
-    const { league_ids, season } = await req.json().catch(() => ({}));
-    
-    // Default to current season
+
+    const body = (await readJsonWithLimit(req, 16_384).catch(() => null) ?? {}) as Record<string, unknown>;
+    if (auth.method !== "cron_key" && body.confirm_provider_calls !== true) {
+      return new Response(JSON.stringify({ error: "Manual provider calls require confirm_provider_calls=true" }), {
+        status: 412,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const providerBudget = new ProviderCallBudget(
+      clampProviderCallLimit(body.max_provider_calls, MAX_PROVIDER_CALLS_PER_RUN),
+    );
     const now = new Date();
-    const month = now.getUTCMonth();
-    const year = now.getUTCFullYear();
-    const currentSeason = season || ((month >= 7) ? year : year - 1);
     
     // Default leagues: top 5 major leagues (EPL, La Liga, Serie A, Bundesliga, Ligue 1)
     // We limit to these to keep sync fast and API costs reasonable
     const TOP_LEAGUES = [39, 140, 135, 78, 61]; // Premier League, La Liga, Serie A, Bundesliga, Ligue 1
-    let targetLeagues = league_ids || TOP_LEAGUES;
+    let targetLeagues = Array.isArray(body.league_ids)
+      ? body.league_ids.map(Number).filter((id) => ALLOWED_LEAGUE_IDS.includes(id))
+      : TOP_LEAGUES;
     
     // Safety limit: max 10 leagues per run to avoid timeout (60s Edge Function limit)
     // Each league takes ~5-10 seconds depending on number of teams
@@ -109,7 +65,7 @@ serve(async (req) => {
       targetLeagues = targetLeagues.slice(0, 10);
     }
     
-    console.log(`[sync-player-importance] 🚀 Starting sync for season ${currentSeason}`);
+    console.log(`[sync-player-importance] 🚀 Starting bounded sync`);
     console.log(`[sync-player-importance] Target leagues: [${targetLeagues.join(', ')}]`);
     
     // Insert initial pipeline log for observability
@@ -122,11 +78,11 @@ serve(async (req) => {
           job_name: "sync-player-importance",
           run_started: runStarted.toISOString(),
           success: false,
-          mode: cronKey ? "cron" : "manual",
+          mode: auth.method === "cron_key" ? "cron" : "manual",
           processed: 0,
           failed: 0,
           leagues_covered: targetLeagues,
-          details: { status: "started", season: currentSeason },
+          details: { status: "started", provider: providerBudget.snapshot() },
         })
         .select("id")
         .single();
@@ -140,9 +96,19 @@ serve(async (req) => {
     let totalPlayers = 0;
     
     for (const leagueId of targetLeagues) {
+      if (providerBudget.remaining === 0) break;
       try {
         console.log(`[sync-player-importance] Processing league ${leagueId}...`);
-        const result = await syncLeaguePlayerImportance(leagueId, currentSeason, supabaseClient);
+        const season = typeof body.season === "number"
+          ? Math.floor(body.season)
+          : getFootballSeasonForLeague(leagueId, now);
+        const result = await syncLeaguePlayerImportance(
+          leagueId,
+          season,
+          supabaseClient,
+          providerBudget,
+          Math.floor(now.getTime() / (24 * 60 * 60 * 1000)),
+        );
         
         results.push({
           league_id: leagueId,
@@ -164,6 +130,7 @@ serve(async (req) => {
           players_synced: 0,
           error: errorMsg,
         });
+        if (error instanceof ProviderControlError) break;
       }
     }
     
@@ -177,15 +144,15 @@ serve(async (req) => {
           .from("pipeline_run_logs")
           .update({
             run_finished: new Date().toISOString(),
-            success: failedLeagues === 0,
+            success: failedLeagues === 0 && providerBudget.failures === 0,
             processed: totalPlayers,
             failed: failedLeagues,
             leagues_covered: targetLeagues,
             details: { 
-              season: currentSeason,
               total_teams: totalTeams,
               total_players: totalPlayers,
               results,
+              provider: providerBudget.snapshot(),
             },
           })
           .eq("id", pipelineLogId);
@@ -196,14 +163,17 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({
-        success: true,
-        season: currentSeason,
+        success: failedLeagues === 0 && providerBudget.failures === 0,
         leagues_processed: targetLeagues.length,
         total_teams: totalTeams,
         total_players: totalPlayers,
         results,
+        provider: providerBudget.snapshot(),
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: failedLeagues === 0 && providerBudget.failures === 0 ? 200 : 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
     
   } catch (error) {

@@ -14,6 +14,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
+import { calculateFreshCoverage } from "../_shared/gate_d_health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,40 +94,46 @@ Deno.serve(async (req: Request) => {
     const futureTimestampSec = nowSec + (UPCOMING_WINDOW_HOURS * 3600);
 
     // Query 1: Get total teams with upcoming fixtures in 48h window
-    let totalTeams = 0;
+    const upcomingTeamIds = new Set<number>();
     try {
-      const { data: fixtures } = await supabase
+      const { data: fixtures, error: fixturesError } = await supabase
         .from("fixtures")
         .select("teams_home, teams_away")
         .gte("timestamp", nowSec)
         .lte("timestamp", futureTimestampSec)
         .not("status", "in", '("FT","AET","PEN")')
         .limit(2000);
+      if (fixturesError) throw fixturesError;
 
       if (fixtures) {
-        const teamIds = new Set<number>();
         for (const f of fixtures) {
           const homeId = f.teams_home?.id;
           const awayId = f.teams_away?.id;
-          if (homeId) teamIds.add(Number(homeId));
-          if (awayId) teamIds.add(Number(awayId));
+          if (homeId) upcomingTeamIds.add(Number(homeId));
+          if (awayId) upcomingTeamIds.add(Number(awayId));
         }
-        totalTeams = teamIds.size;
       }
     } catch (e) {
       console.error("[stats-health-check] Fixtures query failed:", e);
+      return jsonOk({ ok: false, error: "fixtures_query_failed" });
     }
 
-    // Query 2: Count fresh teams in stats_cache (sample_size >= 5)
-    let freshTeams = 0;
+    // Query 2: Load cache rows only for teams in the same 48h denominator.
+    // A row is fresh only when it has a usable sample and was computed in the
+    // last 24 hours, matching stats-refresh's default TTL.
+    let statsRows: Array<{ team_id: number; sample_size: number | null; computed_at: string | null }> = [];
     try {
-      const { count } = await supabase
-        .from("stats_cache")
-        .select("*", { count: "exact", head: true })
-        .gte("sample_size", 5);
-      freshTeams = count || 0;
+      if (upcomingTeamIds.size > 0) {
+        const { data, error } = await supabase
+          .from("stats_cache")
+          .select("team_id, sample_size, computed_at")
+          .in("team_id", [...upcomingTeamIds]);
+        if (error) throw error;
+        statsRows = data || [];
+      }
     } catch (e) {
       console.error("[stats-health-check] Stats cache query failed:", e);
+      return jsonOk({ ok: false, error: "stats_cache_query_failed" });
     }
 
     // Query 3: Stats refresh activity in last hour
@@ -177,10 +184,12 @@ Deno.serve(async (req: Request) => {
       console.error("[stats-health-check] Locks query failed:", e);
     }
 
-    // Calculate coverage percentage
-    const freshCoveragePct = totalTeams > 0 
-      ? Math.round((freshTeams / totalTeams) * 100 * 10) / 10 
-      : 0;
+    const freshAfter = new Date(Date.now() - 24 * 3600 * 1000);
+    const { totalTeams, freshTeams, freshCoveragePct } = calculateFreshCoverage(
+      upcomingTeamIds,
+      statsRows,
+      freshAfter,
+    );
 
     const durationMs = Date.now() - startTime;
 

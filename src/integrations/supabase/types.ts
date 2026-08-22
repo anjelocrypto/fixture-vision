@@ -3343,6 +3343,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_ticket_pipeline_health_metrics: { Args: never; Returns: Json }
       get_trial_credits: { Args: never; Returns: number }
       has_role: {
         Args: {
