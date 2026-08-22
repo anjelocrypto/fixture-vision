@@ -674,6 +674,51 @@ export type Database = {
           },
         ]
       }
+      football_league_teams: {
+        Row: {
+          active: boolean
+          first_seen_at: string
+          last_seen_at: string
+          league_id: number
+          provider: string
+          season: number
+          team_code: string | null
+          team_country: string | null
+          team_id: number
+          team_logo: string | null
+          team_name: string
+          venue: Json
+        }
+        Insert: {
+          active?: boolean
+          first_seen_at?: string
+          last_seen_at?: string
+          league_id: number
+          provider?: string
+          season: number
+          team_code?: string | null
+          team_country?: string | null
+          team_id: number
+          team_logo?: string | null
+          team_name: string
+          venue?: Json
+        }
+        Update: {
+          active?: boolean
+          first_seen_at?: string
+          last_seen_at?: string
+          league_id?: number
+          provider?: string
+          season?: number
+          team_code?: string | null
+          team_country?: string | null
+          team_id?: number
+          team_logo?: string | null
+          team_name?: string
+          venue?: Json
+        }
+        Relationships: []
+      }
       generated_tickets: {
         Row: {
           created_at: string | null
@@ -3251,6 +3296,10 @@ export type Database = {
       release_ticket_leg_score_claim: {
         Args: { p_claim_token: string; p_leg_id: string }
         Returns: boolean
+      }
+      replace_football_league_roster: {
+        Args: { p_league_id: number; p_season: number; p_teams: Json }
+        Returns: number
       }
       replace_optimized_selections: {
         Args: {
