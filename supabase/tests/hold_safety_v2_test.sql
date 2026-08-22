@@ -68,13 +68,13 @@ INSERT INTO public.ticket_leg_outcomes
   (id, ticket_id, user_id, fixture_id, market, side, line, odds, kickoff_at, result_status, actual_value)
 SELECT (SELECT v FROM ids WHERE k='legA1'), (SELECT v FROM ids WHERE k='tA1'),
        (SELECT v FROM ids WHERE k='userA'), 2001, 'goals','over',1.5,1.4,
-       timestamptz '2026-02-10 19:45+00','PENDING',NULL
+       timestamptz '2026-02-10 19:45+00','PENDING',NULL::numeric
 UNION ALL SELECT (SELECT v FROM ids WHERE k='legA2'), (SELECT v FROM ids WHERE k='tA2'),
        (SELECT v FROM ids WHERE k='userA'), 2001, 'goals','over',1.5,1.4,
-       timestamptz '2026-02-10 19:45+00','PENDING',NULL
+       timestamptz '2026-02-10 19:45+00','PENDING',NULL::numeric
 UNION ALL SELECT (SELECT v FROM ids WHERE k='legWin'), (SELECT v FROM ids WHERE k='tB1'),
        (SELECT v FROM ids WHERE k='userB'), 2001, 'goals','over',1.5,1.4,
-       timestamptz '2026-02-10 19:45+00','WIN',3
+       timestamptz '2026-02-10 19:45+00','WIN',3::numeric
 UNION ALL SELECT (SELECT v FROM ids WHERE k='legOther'), (SELECT v FROM ids WHERE k='tB1'),
        (SELECT v FROM ids WHERE k='userB'), 2002, 'goals','over',2.5,1.9,
        timestamptz '2026-02-10 19:45+00','PENDING',NULL;
