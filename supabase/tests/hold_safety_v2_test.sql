@@ -37,6 +37,8 @@ GRANT SELECT ON public.generated_tickets, public.ticket_outcomes, public.ticket_
 GRANT ALL ON public.generated_tickets, public.ticket_outcomes, public.ticket_leg_outcomes
   TO service_role;
 
+GRANT SELECT ON public._test_ctx TO anon, authenticated;
+
 -- Fixtures / tickets --------------------------------------------------------
 INSERT INTO public.fixtures (id, league_id, "timestamp", status, teams_home, teams_away) VALUES
   (2001, 51, extract(epoch FROM timestamptz '2026-04-14 18:45+00')::bigint, 'NS',
