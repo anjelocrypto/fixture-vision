@@ -3064,6 +3064,7 @@ export type Database = {
           skipped: number
         }[]
       }
+      canonical_cron_job_name: { Args: { p_job_name: string }; Returns: string }
       check_username_available: {
         Args: { p_username: string }
         Returns: boolean
