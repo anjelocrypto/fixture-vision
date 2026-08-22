@@ -47,6 +47,8 @@ import {
   loadGreenPolicy,
 } from "../_shared/green_policy.ts";
 import { readJsonWithLimit, RequestBodyTooLargeError } from "../_shared/request.ts";
+import { SETTLEMENT_POLICY_VERSION } from "../_shared/settlement_safety.ts";
+
 import { 
   loadPerformanceWeights, 
   areWeightsLoaded,
