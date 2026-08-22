@@ -43,11 +43,10 @@ BEGIN
 END;
 $$;
 
--- Entitlement view that considers whitelist emails "active"
+-- Entitlement view backed by the database role table.
 CREATE OR REPLACE VIEW public.current_user_is_whitelisted AS
 SELECT
-  (lower(COALESCE((current_setting('request.jwt.claims', true))::json->>'email', '')) IN
-   (SELECT unnest(ARRAY['lukaanjaparidzee99@gmail.com']))) AS is_whitelisted;
+  public.has_role(auth.uid(), 'admin'::public.app_role) AS is_whitelisted;
 
 -- Atomic RPC to check access for a feature and decrement the trial if needed
 CREATE OR REPLACE FUNCTION public.try_use_feature(feature_key text)

@@ -1,0 +1,56 @@
+table,classification,cutover_action,reason
+admin_market_audit_log,must_preserve,full_import,privileged market audit evidence
+analysis_cache,rebuildable,skip_or_warm_import,derived analysis cache
+analytics_events,retention_controlled,import_approved_window_only,behavioral telemetry
+app_settings,reference_seed,review_and_seed,application configuration
+basketball_game_team_stats,rebuildable,skip_or_warm_import,provider-derived statistics
+basketball_games,rebuildable,skip_or_warm_import,provider-derived schedule and results
+basketball_stats_cache,rebuildable,skip,derived cache
+basketball_teams,reference_seed,review_and_seed,provider team catalog
+countries,reference_seed,review_and_seed,stable catalog
+cron_job_locks,ephemeral,skip,active process locks
+daily_safest_insights,rebuildable,skip,derived daily output
+fixture_results,rebuildable,optional_warm_import,provider-derived results
+fixtures,rebuildable,optional_warm_import,provider-derived fixtures
+generated_tickets,rebuildable,optional_warm_import,generated product output
+green_buckets,rebuildable,skip,derived optimization state
+h2h_cache,rebuildable,skip,derived cache
+hockey_games,rebuildable,skip_or_warm_import,provider-derived schedule and results
+hockey_h2h_cache,rebuildable,skip,derived cache
+hockey_iceedge_cache,rebuildable,skip,derived cache
+hockey_leagues,reference_seed,review_and_seed,provider league catalog
+hockey_odds_cache,rebuildable,skip,derived cache
+hockey_team_stats_cache,rebuildable,skip,derived cache
+hockey_teams,reference_seed,review_and_seed,provider team catalog
+league_history_sync_state,ephemeral,skip,restartable worker cursor
+league_stats_coverage,rebuildable,skip,derived coverage state
+leagues,reference_seed,review_and_seed,supported product catalog
+market_coins,must_preserve,full_import,per-user virtual balance ledger
+market_leaderboard_snapshots,must_preserve,full_import,market history and auditability
+market_positions,must_preserve,full_import,per-user market positions
+odds_cache,rebuildable,skip_or_warm_import,provider-derived cache
+optimized_selections,rebuildable,skip,derived recommendation state
+optimizer_cache,rebuildable,skip,derived cache
+optimizer_run_logs,retention_controlled,import_approved_window_only,operational logs
+outcome_selections,rebuildable,skip_or_warm_import,derived market selections
+performance_weights,must_preserve,full_import,learned production model state
+pipeline_alerts,retention_controlled,import_open_and_approved_window,operational incidents
+pipeline_run_logs,retention_controlled,import_approved_window_only,operational logs
+player_importance,rebuildable,skip_or_warm_import,provider-derived model input
+player_injuries,rebuildable,skip_or_warm_import,provider-derived data
+prediction_markets,must_preserve,full_import,market state and settlement record
+predictions_cache,rebuildable,skip,derived cache
+profiles,must_preserve,full_import_with_identity,user profile and username
+safe_zone_picks,rebuildable,skip,derived recommendations
+stats_cache,rebuildable,skip,derived cache
+stats_health_violations,retention_controlled,import_open_only,operational exceptions
+team_btts_metrics,rebuildable,skip,derived metrics
+team_totals_candidates,rebuildable,skip,derived candidates
+ticket_leg_outcomes,must_preserve,full_import,user-visible result history
+ticket_outcomes,must_preserve,full_import,user-visible result history
+user_entitlements,must_preserve,full_import_with_identity_and_stripe,paid-access source of truth
+user_rate_limits,ephemeral,skip,short-lived counters
+user_roles,must_preserve,full_import_with_identity,authorization roles
+user_tickets,must_preserve,full_import_with_identity,user-owned tickets
+user_trial_credits,must_preserve,full_import_with_identity,user credit balance
+webhook_events,must_preserve,import_recent_window,Stripe idempotency continuity

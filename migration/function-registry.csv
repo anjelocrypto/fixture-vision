@@ -1,0 +1,88 @@
+function,gateway_jwt,handler_auth,initial_cutover_state,notes
+admin-health,false,admin_jwt,deploy,admin health UI
+admin-remediate-stats-gaps,false,cron_or_admin,hold,high-cost remediation
+admin-void-legs,false,cron_or_admin,deploy_no_schedule,privileged repair
+allowlist-compliance,false,cron_or_admin,deploy_no_schedule,compliance worker
+analyze-cup-coverage,true,admin_jwt,hold,diagnostic write job
+analyze-fixture,false,entitled_user,deploy,premium user endpoint
+analyze-ticket,true,user_jwt,deploy,user AI endpoint
+auto-backfill-results,false,cron_or_admin,deploy_no_schedule,provider worker
+backfill-fixture-results,false,cron_or_admin,hold,manual backfill
+backfill-odds,false,cron_or_admin,hold,manual high-cost backfill
+backfill-ticket-outcomes,true,admin_jwt,hold,manual user-data repair
+basketball-backfill,false,cron_or_admin,hold,manual provider backfill
+basketball-safe-zone,true,entitled_user,deploy,premium user endpoint
+basketball-stats-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
+basketball-sync-fixtures,false,cron_or_admin,deploy_no_schedule,provider worker
+basketball-sync-results,false,cron_or_admin,deploy_no_schedule,provider worker
+billing-portal,true,user_jwt,deploy,billing endpoint
+btts-index,false,entitled_user,deploy,premium user endpoint
+btts-refresh,false,cron_or_admin,deploy_no_schedule,derived-data worker
+calculate-value,false,entitled_user,deploy,premium user endpoint
+cancel-subscription,true,user_jwt,deploy,billing endpoint
+card-war,false,entitled_user,deploy,premium user endpoint
+cors-selftest,true,gateway_jwt,hold,test utility
+create-checkout-session,true,user_jwt,deploy,billing endpoint
+cron-fetch-fixtures,false,cron_key,deploy_no_schedule,provider worker
+cron-warmup-odds,false,cron_key,deploy_no_schedule,provider worker
+cup-coverage-report,true,admin_jwt,hold,diagnostic report
+daily-safest-insights,true,admin_jwt,deploy_no_schedule,derived-data worker
+debug-league-coverage,true,admin_jwt,hold,debug utility
+debug-team-stats,true,admin_jwt,hold,debug utility and provider calls
+demo-fixtures,false,public_rate_limited,deploy,fixed public demo allowlist
+export-users,true,admin_or_service,hold,migration-only PII export
+extend-subscriptions,false,cron_or_admin,hold,expired one-off billing repair
+fetch-fixtures,false,cron_or_admin,deploy_no_schedule,provider worker
+fetch-leagues,true,user_jwt,deploy,user catalog endpoint
+fetch-odds,true,user_jwt,deploy,user data endpoint
+fetch-odds-bets,true,user_jwt,deploy,user data endpoint
+fetch-predictions,false,cron_or_admin,deploy_no_schedule,provider worker
+filterizer-query,false,entitled_user,deploy,premium user endpoint
+fixtures-history-backfill,false,cron_or_admin,hold,manual provider backfill
+generate-ticket,true,user_jwt,deploy,user product endpoint
+get-latest-odds,true,gateway_jwt,deploy,user data endpoint
+green-bucket-diagnostics,false,cron_or_admin,hold,diagnostic utility
+hockey-iceedge-compute,false,cron_or_admin,deploy_no_schedule,derived-data worker
+hockey-stats-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
+hockey-sync-fixtures,false,cron_or_admin,deploy_no_schedule,provider worker
+hockey-sync-odds,false,cron_or_admin,deploy_no_schedule,provider worker
+hockey-sync-results,false,cron_or_admin,deploy_no_schedule,provider worker
+list-leagues-grouped,true,user_jwt,deploy,user catalog endpoint
+market-auto-resolve,false,cron_or_admin,deploy_no_schedule,market settlement worker
+market-close-expired,false,cron_or_admin,deploy_no_schedule,market lifecycle worker
+market-create,true,admin_jwt,deploy,admin market endpoint
+market-place-bet,true,user_jwt,deploy,user market endpoint
+market-resolve,true,admin_jwt,deploy,admin settlement endpoint
+optimize-selections-refresh,false,cron_or_admin,deploy_no_schedule,high-cost derived-data worker
+pipeline-health-check,false,cron_or_admin,deploy_no_schedule,operations worker
+pipeline-health-snapshot,false,cron_or_admin,deploy_no_schedule,operations worker
+populate-safe-zone-picks,false,cron_or_admin,deploy_no_schedule,derived-data worker
+populate-team-totals-candidates,false,cron_or_admin,deploy_no_schedule,derived-data worker
+populate-winner-outcomes,false,cron_or_admin,deploy_no_schedule,derived-data worker
+rebuild-green-buckets,false,cron_or_admin,hold,manual rebuild
+reconcile-entitlements,false,cron_or_admin,deploy_no_schedule,billing reconciliation
+restore-purchase,true,user_jwt,deploy,billing recovery endpoint
+results-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
+safe-zone,false,entitled_user,deploy,premium user endpoint
+safe-zone-chat,true,entitled_user,deploy,premium AI endpoint
+score-ticket-legs,false,cron_or_admin,deploy_no_schedule,user outcome worker
+shuffle-ticket,false,entitled_user,deploy,premium user endpoint
+smoke-test-analytics,false,cron_or_admin,hold,test utility
+stats-audit-last-five,false,cron_or_admin,deploy_no_schedule,operations audit
+stats-consistency-audit,false,cron_or_admin,deploy_no_schedule,operations audit
+stats-health-check,false,cron_or_admin,deploy_no_schedule,operations worker
+stats-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
+stats-turbo-backfill,false,cron_or_admin,hold,manual high-cost backfill
+stripe-webhook,false,stripe_signature,deploy,billing webhook
+sync-injuries,false,cron_or_admin,deploy_no_schedule,provider worker
+sync-player-importance,false,cron_or_admin,deploy_no_schedule,provider worker
+team-totals-refresh,false,cron_or_admin,deploy_no_schedule,derived-data worker
+test-h2h,true,admin_jwt,hold,test utility and provider calls
+test-injury-coverage,false,admin_jwt,hold,test utility and provider calls
+test-uefa-competitions,true,admin_jwt,hold,test utility and provider calls
+update-performance-weights,false,cron_or_admin,deploy_no_schedule,model-state worker
+verify-team-totals,true,user_jwt,deploy,user verification endpoint
+verify-checkout-session,true,user_jwt,deploy,billing verification endpoint
+void-cancelled-invoices,false,cron_or_admin,hold,destructive billing utility
+warmup-odds,false,cron_or_admin,deploy_no_schedule,provider worker
+who-concedes,false,entitled_user,deploy,premium user endpoint

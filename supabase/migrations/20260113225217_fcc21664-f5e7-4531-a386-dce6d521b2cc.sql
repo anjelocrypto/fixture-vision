@@ -27,21 +27,12 @@ DECLARE
   v_description text;
   v_status text;
   v_market_id uuid;
-  v_email text;
   v_is_admin boolean := false;
 BEGIN
   -- -----------------------------
-  -- 0) Admin check (email whitelist + optional role function)
+  -- 0) Admin check (database role only)
   -- -----------------------------
-  v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
-
-  -- Hard whitelist
-  IF v_email = 'lukaanjaparidzee99@gmail.com' THEN
-    v_is_admin := true;
-  END IF;
-
-  -- Optional: if your project has public.has_role(uuid,text), accept DB admins too
-  IF NOT v_is_admin AND to_regprocedure('public.has_role(uuid,text)') IS NOT NULL THEN
+  IF to_regprocedure('public.has_role(uuid,text)') IS NOT NULL THEN
     EXECUTE 'SELECT public.has_role($1, $2)'
       INTO v_is_admin
       USING auth.uid(), 'admin';
