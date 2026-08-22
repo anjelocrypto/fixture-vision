@@ -3,9 +3,10 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Trash2, RefreshCw, Copy, Ticket, X, ChevronRight, Zap, Clock } from "lucide-react";
+import { Trash2, RefreshCw, Copy, Ticket, X, ChevronRight, Zap, Clock, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,11 +15,13 @@ import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
 import { formatDateWithLocale } from "@/lib/i18nFormatters";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { TicketHistoryPanel } from "@/components/tickets/TicketHistoryPanel";
 
 interface MyTicketDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
 
 export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const { legs, stake, setStake, removeLeg, clear, refreshOdds } = useTicket();
@@ -27,6 +30,8 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   useRegisterOverlay("my-ticket-drawer", open, () => onOpenChange(false));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"slip" | "history">("slip");
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -98,8 +103,30 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
           </div>
         </div>
 
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as "slip" | "history")}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          <TabsList className="mx-5 mt-3 grid w-auto grid-cols-2">
+            <TabsTrigger value="slip" className="text-xs gap-1.5">
+              <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("tab_current_slip", "Current Slip")}
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs gap-1.5">
+              <History className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("tab_ticket_history", "Ticket History")}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="history" className="flex-1 overflow-y-auto px-5 py-4 mt-0">
+            <TicketHistoryPanel active={tab === "history"} />
+          </TabsContent>
+
+          <TabsContent value="slip" className="flex-1 flex flex-col min-h-0 mt-0 data-[state=inactive]:hidden">
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
+
           {legs.length === 0 ? (
             /* ── Empty State ── */
             <div className="flex flex-col items-center justify-center h-full text-center py-16">
@@ -266,7 +293,10 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
             </p>
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
+
   );
 }

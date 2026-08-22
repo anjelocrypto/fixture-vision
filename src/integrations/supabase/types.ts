@@ -2363,6 +2363,45 @@ export type Database = {
         }
         Relationships: []
       }
+      settlement_hold_audit: {
+        Row: {
+          actor: string
+          created_at: string
+          drift_seconds: number | null
+          fixture_id: number
+          id: string
+          leg_id: string
+          policy_version: string
+          reason: string
+          source: string
+          ticket_id: string | null
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          drift_seconds?: number | null
+          fixture_id: number
+          id?: string
+          leg_id: string
+          policy_version: string
+          reason: string
+          source: string
+          ticket_id?: string | null
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          drift_seconds?: number | null
+          fixture_id?: number
+          id?: string
+          leg_id?: string
+          policy_version?: string
+          reason?: string
+          source?: string
+          ticket_id?: string | null
+        }
+        Relationships: []
+      }
       stats_cache: {
         Row: {
           cards: number
@@ -3442,12 +3481,24 @@ export type Database = {
         }
         Returns: boolean
       }
-      hold_unsafe_pending_legs: {
-        Args: { p_batch_limit?: number }
+      hold_unsafe_pending_legs_v2: {
+        Args: {
+          p_confirm?: string
+          p_dry_run?: boolean
+          p_fixture_id: number
+          p_max_rows: number
+        }
         Returns: {
-          alerts_recorded: number
-          held_fixtures: number
-          held_legs: number
+          applied: boolean
+          drift_seconds: number
+          fixture_id: number
+          leg_id: string
+          reason: string
+          result_status: string
+          score_attempts: number
+          selected_count: number
+          ticket_id: string
+          updated_count: number
         }[]
       }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
