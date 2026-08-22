@@ -52,6 +52,7 @@ INSERT INTO ids VALUES
   ('tA1', gen_random_uuid()), ('tA2', gen_random_uuid()), ('tB1', gen_random_uuid()),
   ('legA1', gen_random_uuid()), ('legA2', gen_random_uuid()),
   ('legWin', gen_random_uuid()), ('legOther', gen_random_uuid());
+GRANT SELECT ON ids TO anon, authenticated;
 
 INSERT INTO public.generated_tickets (id, user_id, total_odds, legs, ticket_mode)
 SELECT (SELECT v FROM ids WHERE k='tA1'), (SELECT v FROM ids WHERE k='userA'), 34.65,
