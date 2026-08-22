@@ -2425,6 +2425,8 @@ export type Database = {
           source: string
           status: string
           stripe_customer_id: string | null
+          stripe_event_created_at: string | null
+          stripe_event_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
           user_id: string
@@ -2437,6 +2439,8 @@ export type Database = {
           source?: string
           status: string
           stripe_customer_id?: string | null
+          stripe_event_created_at?: string | null
+          stripe_event_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id: string
@@ -2449,6 +2453,8 @@ export type Database = {
           source?: string
           status?: string
           stripe_customer_id?: string | null
+          stripe_event_created_at?: string | null
+          stripe_event_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
@@ -2535,16 +2541,40 @@ export type Database = {
       }
       webhook_events: {
         Row: {
+          attempts: number
           created_at: string
+          event_created_at: string | null
           event_id: string
+          event_type: string | null
+          last_error: string | null
+          lease_expires_at: string | null
+          processed_at: string | null
+          status: string
+          updated_at: string
         }
         Insert: {
+          attempts?: number
           created_at?: string
+          event_created_at?: string | null
           event_id: string
+          event_type?: string | null
+          last_error?: string | null
+          lease_expires_at?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
         }
         Update: {
+          attempts?: number
           created_at?: string
+          event_created_at?: string | null
           event_id?: string
+          event_type?: string | null
+          last_error?: string | null
+          lease_expires_at?: string | null
+          processed_at?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2842,6 +2872,16 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_stripe_entitlement_event: {
+        Args: {
+          p_event_created_at: string
+          p_event_id: string
+          p_expected_subscription_id?: string
+          p_patch: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
       auto_release_stuck_locks: {
         Args: { max_age_minutes?: number }
         Returns: {
@@ -2864,13 +2904,29 @@ export type Database = {
         Args: { p_username: string }
         Returns: boolean
       }
+      claim_stripe_webhook_event: {
+        Args: {
+          p_event_created_at: string
+          p_event_id: string
+          p_event_type: string
+        }
+        Returns: string
+      }
       close_expired_markets: { Args: never; Returns: Json }
+      complete_stripe_webhook_event: {
+        Args: { p_event_id: string }
+        Returns: undefined
+      }
       create_profile_with_username: {
         Args: { p_username: string }
         Returns: Json
       }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
+      fail_stripe_webhook_event: {
+        Args: { p_error: string; p_event_id: string }
+        Returns: undefined
+      }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
         Args: {
