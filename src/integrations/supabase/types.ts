@@ -3048,6 +3048,16 @@ export type Database = {
       }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      persist_generated_ticket: {
+        Args: {
+          p_leg_outcomes: Json
+          p_optimizer_cache_rows: Json
+          p_ticket: Json
+          p_ticket_outcome: Json
+          p_user_id: string
+        }
+        Returns: string
+      }
       place_market_bet: {
         Args: { _market_id: string; _outcome: string; _stake: number }
         Returns: Json
@@ -3057,6 +3067,15 @@ export type Database = {
       release_feature_use: {
         Args: { p_reservation_id: string }
         Returns: boolean
+      }
+      replace_optimized_selections: {
+        Args: {
+          p_fixture_ids: number[]
+          p_selections: Json
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: number
       }
       reserve_feature_use: {
         Args: { p_feature_key: string }
