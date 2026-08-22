@@ -21,7 +21,7 @@ const TermsOfService = () => {
           <article className="prose prose-slate dark:prose-invert max-w-none">
             <header className="mb-8">
               <h1 className="text-4xl font-bold mb-2">Terms of Service</h1>
-              <p className="text-muted-foreground">Last updated: October 31, 2025</p>
+              <p className="text-muted-foreground">Last updated: August 22, 2026</p>
             </header>
 
             <section id="who-we-are">

@@ -36,6 +36,17 @@ import { ODDS_MIN, ODDS_MAX } from "../_shared/config.ts";
 import { checkSuspiciousOdds } from "../_shared/suspicious_odds_guards.ts";
 import { validateFixturesBatch, MIN_SAMPLE_SIZE } from "../_shared/stats_integrity.ts";
 import { checkUserRateLimit, buildRateLimitResponse } from "../_shared/rate_limit.ts";
+import {
+  finalizeFeatureUse,
+  releaseFeatureUse,
+  reserveFeatureUse,
+  responseDeliveredValue,
+} from "../_shared/feature_usage.ts";
+import {
+  isAllowedByGreenPolicy,
+  loadGreenPolicy,
+} from "../_shared/green_policy.ts";
+import { readJsonWithLimit, RequestBodyTooLargeError } from "../_shared/request.ts";
 import { 
   loadPerformanceWeights, 
   areWeightsLoaded,
@@ -48,19 +59,13 @@ import {
   BLACKLISTED_LEAGUE_IDS
 } from "../_shared/dynamic_weights.ts";
 import {
-  isAllowlisted,
-  isInGreenBucket,
-  buildGreenBucketsContext,
   makeBucketKey,
   computeOddsBand,
   normalizeLine as normalizeLineAllowlist,
-  ALLOWED_LEAGUE_IDS,
-  ALLOWED_MARKET_LINES,
   GLOBAL_ODDS_CAP,
   BANNED_MARKETS,
   MAX_TICKET_LEGS,
   DEFAULT_TICKET_LEGS,
-  type GreenBucketsContext,
 } from "../_shared/green_allowlist.ts";
 
 const corsHeaders = {
@@ -125,6 +130,41 @@ const BetOptimizerSchema = z.object({
   minLegs: z.number().int().min(1).max(50).optional(),
 });
 
+async function runWithReservedFeatureUse(
+  userClient: any,
+  operation: () => Promise<Response>,
+): Promise<Response> {
+  const reservation = await reserveFeatureUse(userClient, "bet_optimizer");
+  if (!reservation.allowed) {
+    return new Response(
+      JSON.stringify({
+        code: "PAYWALL",
+        error: "This feature requires a subscription",
+        reason: reservation.reason,
+        remaining_uses: reservation.remainingUses,
+      }),
+      { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  try {
+    const response = await operation();
+    if (reservation.reservationId) {
+      if (await responseDeliveredValue(response)) {
+        await finalizeFeatureUse(userClient, reservation.reservationId);
+      } else {
+        await releaseFeatureUse(userClient, reservation.reservationId);
+      }
+    }
+    return response;
+  } catch (error) {
+    if (reservation.reservationId) {
+      await releaseFeatureUse(userClient, reservation.reservationId);
+    }
+    throw error;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -157,47 +197,11 @@ serve(async (req) => {
       );
     }
 
-    // Check access for optimizer feature (paid, whitelisted, or trial)
-    // Use user client so auth.uid() works in the RPC
-    const { data: accessCheck, error: accessError } = await supabaseUser.rpc('try_use_feature', {
-      feature_key: 'bet_optimizer'
-    });
-    
     // Create service role client for database operations
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
-
-    if (accessError) {
-      console.error('[generate-ticket] Access check error:', accessError);
-      // Return 500 with detailed error for debugging, but user-friendly message
-      return new Response(
-        JSON.stringify({ 
-          error: 'Access check failed', 
-          details: accessError.message || 'Unable to verify your subscription status. Please try again or contact support.',
-          code: accessError.code
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const accessResult = Array.isArray(accessCheck) ? accessCheck[0] : accessCheck;
-    
-    if (!accessResult?.allowed) {
-      console.log(`[generate-ticket] Access denied: ${accessResult?.reason}`);
-      return new Response(
-        JSON.stringify({ 
-          code: 'PAYWALL',
-          error: 'This feature requires a subscription',
-          reason: accessResult?.reason || 'no_access',
-          remaining_uses: accessResult?.remaining_uses
-        }),
-        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[generate-ticket] Access granted: ${accessResult.reason}, remaining: ${accessResult.remaining_uses ?? 'unlimited'}`);
 
     // P0: Per-user rate limiting (5 requests/minute for Ticket Creator)
     const rateLimitResult = await checkUserRateLimit({
@@ -212,7 +216,19 @@ serve(async (req) => {
     }
 
     // Parse and validate request body
-    const bodyRaw = await req.json().catch(() => null);
+    let bodyRaw: any;
+    try {
+      bodyRaw = await readJsonWithLimit(req, 64 * 1024);
+    } catch (error) {
+      const tooLarge = error instanceof RequestBodyTooLargeError;
+      return new Response(
+        JSON.stringify({ error: tooLarge ? "Request body too large" : "Invalid request body" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: tooLarge ? 413 : 400,
+        },
+      );
+    }
     if (!bodyRaw) {
       return new Response(
         JSON.stringify({ error: "Invalid request body" }),
@@ -244,7 +260,10 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
-      return await handleAITicketCreator(validation.data, supabase, user.id, token);
+      return await runWithReservedFeatureUse(
+        supabaseUser,
+        () => handleAITicketCreator(validation.data, supabase, user.id, token),
+      );
     } else {
       const validation = BetOptimizerSchema.safeParse(bodyRaw);
       if (!validation.success) {
@@ -261,7 +280,10 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 }
         );
       }
-      return await handleBetOptimizer(validation.data, supabase, user.id, token);
+      return await runWithReservedFeatureUse(
+        supabaseUser,
+        () => handleBetOptimizer(validation.data, supabase, user.id, token),
+      );
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -322,10 +344,11 @@ async function processFixtureToPool(
 
   const combined = analysisData.combined;
 
-  let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
+  const { data: initialOddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
     headers: { Authorization: `Bearer ${token}` },
     body: { fixtureId, live: useLiveOdds },
   });
+  let oddsData = initialOddsData;
 
   if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
     // CRITICAL: if useLiveOdds=false, never try live endpoint - go straight to cache
@@ -485,7 +508,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   
   // Load dynamic weights for max_win_rate mode
   let useDynamicWeights = false;
-  let maxWinRateStats = { 
+  const maxWinRateStats = {
     total_candidates: 0, 
     rejected_by_avoid: 0, 
     rejected_by_league_weight: 0, 
@@ -497,7 +520,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   };
   
   // === EDGE FILTER STATS ===
-  let edgeFilterStats = {
+  const edgeFilterStats = {
     total_checked: 0,
     dropped_negative_edge: 0,
     dropped_marginal_edge: 0, // 0 < edge < 3%
@@ -570,38 +593,20 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   console.log(`[ticket] cfg {target:[${minOdds},${maxOdds}], legs:[${legsMin},${legsMax}], markets:[${markets.join(',')}], perLegBand:[${ODDS_MIN},${ODDS_MAX}], mode:${ticketMode}}`);
   console.log(`[ticket] DATE FILTER: ${dayRangeLabel} → [${now.toISOString().split('T')[0]} 00:00, ${endDate.toISOString().split('T')[0]} 00:00) UTC`);
 
-  // === GREEN BUCKETS: Load from DB — single source of truth for filtering ===
-  let gbContext: import("../_shared/green_allowlist.ts").GreenBucketsContext | null = null;
-  {
-    const { data: gbRows, error: gbError } = await supabase
-      .from("green_buckets")
-      .select("league_id, market, side, line_norm, odds_band, hit_rate_pct, sample_size, roi_pct");
-    
-    if (gbError) {
-      console.error("[generate-ticket] Failed to load green_buckets:", gbError);
-      logs.push(`[GREEN_BUCKETS] Warning: could not load green_buckets table: ${gbError.message}`);
-    } else if (gbRows && gbRows.length > 0) {
-      gbContext = buildGreenBucketsContext(gbRows as any);
-      logs.push(`[GREEN_BUCKETS] Loaded ${gbRows.length} green buckets → ${gbContext.leagueIds.length} leagues, ${gbContext.markets.length} markets`);
-      console.log(`[generate-ticket] Green buckets: ${gbRows.length} buckets, leagues=[${gbContext.leagueIds.join(',')}], markets=[${gbContext.markets.join(',')}]`);
-    } else {
-      // P0: Empty green_buckets = no data-driven filtering possible. Hard stop.
-      console.error(`[generate-ticket] green_buckets table is empty — cannot generate safe tickets`);
-      return new Response(
-        JSON.stringify({
-          code: "BUCKETS_NOT_BUILT",
-          message: "Green buckets have not been computed yet. Run rebuild-green-buckets first.",
-          logs: [`[GREEN_BUCKETS] FATAL: green_buckets table is empty. Cannot generate tickets without historical performance data.`],
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-      );
-    }
-  }
+  // Load one immutable policy snapshot for the run. Empty learned data now
+  // enters an explicitly labelled conservative bootstrap mode instead of the
+  // self-sustaining BUCKETS_NOT_BUILT outage.
+  const greenPolicy = await loadGreenPolicy(supabase);
+  const gbContext = greenPolicy.context;
+  logs.push(
+    `[GREEN_POLICY] mode=${greenPolicy.mode} version=${greenPolicy.versionId ?? "none"} ` +
+    `buckets=${greenPolicy.bucketCount} stale=${greenPolicy.stale}`,
+  );
 
   // GLOBAL MODE: Query optimized_selections for selected date range
   // GREEN BUCKETS: derive allowed leagues/markets dynamically
-  const gbLeagueIds = gbContext ? gbContext.leagueIds : ALLOWED_LEAGUE_IDS;
-  const gbMarkets = gbContext ? gbContext.markets : ALLOWED_MARKET_LINES.map(ml => ml.market);
+  const gbLeagueIds = greenPolicy.leagueIds;
+  const gbMarkets = greenPolicy.markets;
 
   if (globalMode) {
     logs.push(`[Global Mode] Building candidate pool from ${dayRangeLabel} (GREEN BUCKETS enforced)...`);
@@ -634,7 +639,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (intersected.length > 0) query = query.in("league_id", intersected);
     }
     
-    let { data: selections, error: selectionsError } = await query.limit(500);
+    const { data: initialSelections, error: selectionsError } = await query.limit(500);
+    let selections = initialSelections;
     
     // FALLBACK: If no selections in strict window, try extended 7-day window
     if (!selectionsError && (!selections || selections.length === 0)) {
@@ -686,7 +692,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
           ],
           debug: {
             optimized_selections_total: 0,
-            green_buckets: gbContext ? gbContext.leagueIds.length : 0,
+            green_policy: {
+              mode: greenPolicy.mode,
+              version_id: greenPolicy.versionId,
+              bucket_count: greenPolicy.bucketCount,
+              stale: greenPolicy.stale,
+            },
             effective_markets: effectiveMarkets,
             green_bucket_leagues: gbLeagueIds,
             date_window: `${now.toISOString()} → ${endDate.toISOString()}`,
@@ -714,7 +725,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       }));
       
       const validationResults = await validateFixturesBatch(supabase, fixturesToValidate);
-      let statsIntegrityDropped = 0;
+      const statsIntegrityDropped = 0;
 
       const rawCount = selections.length;
       const byMarket: Record<string, number> = {};
@@ -734,20 +745,17 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         const leagueId = (sel as any).league_id;
         
-        // GREEN BUCKETS: Single gate — candidate must exist in green_buckets table
-        if (gbContext) {
-          const gbCheck = isInGreenBucket(gbContext, {
-            league_id: leagueId,
-            market: (sel as any).market,
-            side: (sel as any).side,
-            line: (sel as any).line,
-            odds: (sel as any).odds,
-          });
-          if (!gbCheck.allowed) {
-            droppedOutOfBand++;
-            logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} ${gbCheck.reason}`);
-            continue;
-          }
+        const gbCheck = isAllowedByGreenPolicy(greenPolicy, {
+          league_id: leagueId,
+          market: (sel as any).market,
+          side: (sel as any).side,
+          line: (sel as any).line,
+          odds: (sel as any).odds,
+        });
+        if (!gbCheck.allowed) {
+          droppedOutOfBand++;
+          logs.push(`[GREEN_BUCKET_REJECT] fixture=${(sel as any).fixture_id} ${gbCheck.reason}`);
+          continue;
         }
         
         // Per-leg odds floor: use global ODDS_MIN (1.25), NOT the total ticket target
@@ -937,10 +945,10 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         
         // Compute bucket score using stored fields directly (no regex parsing)
         let bucketScore = 0;
-        if (gbContext && leg.line != null && leg.side) {
+        if (greenPolicy.context && leg.line != null && leg.side) {
           const lId = (leg as any)._leagueId || 0;
           const bKey = makeBucketKey(lId, leg.market, leg.side, leg.line, leg.odds);
-          const bucket = gbContext.bucketMap.get(bKey);
+          const bucket = greenPolicy.context.bucketMap.get(bKey);
           if (bucket) {
             bucketScore = bucket.hit_rate_pct * 10000 + bucket.sample_size * 10 + bucket.roi_pct;
             logs.push(`[BUCKET_SCORE] fixture=${leg.fixtureId} ${bKey} → hr=${bucket.hit_rate_pct}% n=${bucket.sample_size} roi=${bucket.roi_pct}% score=${bucketScore.toFixed(0)}`);
@@ -1296,33 +1304,74 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   const winProb = ticket.legs.reduce((acc, leg) => acc * (1 / leg.odds), 1);
   const winProbPct = Math.round(winProb * 10000) / 100;
 
-  // 5. PERSIST TO DB
-  try {
-    // Write optimizer_cache rows (one per leg)
-    for (const leg of ticket.legs) {
-      await supabase.from("optimizer_cache").insert({
-        fixture_id: leg.fixtureId,
-        market: leg.market,
-        side: leg.selection.toLowerCase().includes("over") ? "over" : "under",
-        line: parseFloat(leg.selection.match(/[\d.]+/)?.[0] || "0"),
-        combined_value: leg.combinedAvg || 0,
-        bookmaker: leg.bookmaker,
-        odds: leg.odds,
-        source: leg.source || "prematch",
-      });
+  // 5. PERSIST TO DB ATOMICALLY. A user-visible ticket is never returned if
+  // any learning/outcome row fails to persist.
+  const ticketModelProb = ticket.legs.reduce((acc, leg: TicketLeg) => {
+    const legModelProb = leg.modelProb ?? (1 / leg.odds);
+    return acc * legModelProb;
+  }, 1);
+
+  const persistenceFixtureIds = [...new Set(ticket.legs.map((leg: TicketLeg) => leg.fixtureId))];
+  const { data: fixturesData, error: fixturesLookupError } = await supabase
+    .from("fixtures")
+    .select("id, league_id, timestamp")
+    .in("id", persistenceFixtureIds);
+  if (fixturesLookupError) throw fixturesLookupError;
+
+  const fixtureMap = new Map<number, { league_id: number | null; kickoff_at: string | null }>();
+  for (const fixture of fixturesData || []) {
+    fixtureMap.set(fixture.id, {
+      league_id: fixture.league_id,
+      kickoff_at: fixture.timestamp ? new Date(fixture.timestamp * 1000).toISOString() : null,
+    });
+  }
+
+  const pickedAt = new Date().toISOString();
+  const legOutcomes = (ticket.legs as TicketLeg[]).map((leg) => {
+    const selectionLower = (leg.selection || "").toLowerCase().trim();
+    const derivedFromSelection = !leg.side || leg.line === undefined || leg.line <= 0;
+    const side = leg.side || (selectionLower.startsWith("under") || selectionLower.startsWith("u") ? "under" : "over");
+    const parsedLine = selectionLower.match(/([\d.]+)/);
+    const line = leg.line && leg.line > 0 ? leg.line : (parsedLine ? parseFloat(parsedLine[1]) : 0);
+    const fixtureInfo = fixtureMap.get(leg.fixtureId);
+
+    if (!fixtureInfo || line <= 0 || !Number.isFinite(line)) {
+      throw new Error(`Ticket persistence validation failed for fixture ${leg.fixtureId}`);
     }
 
-    // Calculate ticket_model_prob as product of leg model_probs
-    const ticketModelProb = ticket.legs.reduce((acc, leg: TicketLeg) => {
-      const legModelProb = leg.modelProb ?? (1 / leg.odds); // Fallback to implied prob if model_prob missing
-      return acc * legModelProb;
-    }, 1);
+    return {
+      fixture_id: leg.fixtureId,
+      league_id: fixtureInfo.league_id,
+      market: leg.market,
+      side,
+      line,
+      odds: leg.odds,
+      selection_key: `${leg.market}|${side}|${line}`.toLowerCase(),
+      selection: leg.selection,
+      source: leg.source || "prematch",
+      picked_at: pickedAt,
+      kickoff_at: fixtureInfo.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null),
+      derived_from_selection: derivedFromSelection,
+      model_prob: leg.modelProb ?? null,
+    };
+  });
 
-    // Write generated_tickets row and get the ID
-    const { data: insertedTicket, error: ticketError } = await supabase
-      .from("generated_tickets")
-      .insert({
-        user_id: userId,
+  const optimizerCacheRows = (ticket.legs as TicketLeg[]).map((leg) => ({
+    fixture_id: leg.fixtureId,
+    market: leg.market,
+    side: leg.side || (leg.selection.toLowerCase().includes("over") ? "over" : "under"),
+    line: leg.line || parseFloat(leg.selection.match(/[\d.]+/)?.[0] || "0"),
+    combined_value: leg.combinedAvg || 0,
+    bookmaker: leg.bookmaker,
+    odds: leg.odds,
+    source: leg.source || "prematch",
+  }));
+
+  const { data: ticketId, error: persistenceError } = await supabase.rpc(
+    "persist_generated_ticket",
+    {
+      p_user_id: userId,
+      p_ticket: {
         total_odds: ticket.total_odds,
         min_target: minOdds,
         max_target: maxOdds,
@@ -1330,163 +1379,23 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         legs: ticket.legs,
         ticket_mode: ticketMode,
         ticket_model_prob: ticketModelProb,
-      })
-      .select("id")
-      .single();
-
-    if (ticketError) {
-      throw ticketError;
-    }
-
-    const ticketId = insertedTicket.id;
-    logs.push(`[AI-ticket] Created ticket ${ticketId}`);
-
-    // === PHASE 2: Populate ticket_leg_outcomes + ticket_outcomes ===
-    
-    // Step 1: Collect all fixture IDs and fetch league_ids in one query
-    const fixtureIds = [...new Set(ticket.legs.map((leg: TicketLeg) => leg.fixtureId))];
-    const { data: fixturesData } = await supabase
-      .from("fixtures")
-      .select("id, league_id, timestamp")
-      .in("id", fixtureIds);
-    
-    const fixtureMap = new Map<number, { league_id: number | null; kickoff_at: string | null }>();
-    for (const f of fixturesData || []) {
-      fixtureMap.set(f.id, {
-        league_id: f.league_id,
-        kickoff_at: f.timestamp ? new Date(f.timestamp * 1000).toISOString() : null,
-      });
-    }
-
-    // Step 2: Parse each leg into canonical fields
-    const legOutcomes: Array<{
-      ticket_id: string;
-      user_id: string;
-      fixture_id: number;
-      league_id: number | null;
-      market: string;
-      side: string;
-      line: number;
-      odds: number;
-      selection_key: string;
-      selection: string;
-      source: string;
-      picked_at: string;
-      kickoff_at: string | null;
-      result_status: string;
-      derived_from_selection: boolean;
-      model_prob: number | null; // NEW: leg-level model confidence
-    }> = [];
-    
-    let skippedLegs = 0;
-
-    for (const leg of ticket.legs as TicketLeg[]) {
-      // Parse side and line from selection (handles "over 2.5", "Over 2.5", "o2.5", etc.)
-      const selectionLower = (leg.selection || "").toLowerCase().trim();
-      let side: string;
-      let line: number;
-
-      // Use explicit fields if available, otherwise parse from selection
-      if (leg.side && leg.line !== undefined && leg.line > 0) {
-        side = leg.side;
-        line = leg.line;
-      } else {
-        // Parse from selection string
-        side = selectionLower.startsWith("under") || selectionLower.startsWith("u") ? "under" : "over";
-        const lineMatch = selectionLower.match(/([\d.]+)/);
-        line = lineMatch ? parseFloat(lineMatch[1]) : 0;
-      }
-
-      // Skip legs with invalid line (0 means parsing failed)
-      if (line <= 0) {
-        logs.push(`[AI-ticket] Skipped leg: invalid line for fixture ${leg.fixtureId} market ${leg.market} selection "${leg.selection}"`);
-        skippedLegs++;
-        continue;
-      }
-
-      // Get league_id and kickoff from fixture lookup
-      const fixtureInfo = fixtureMap.get(leg.fixtureId);
-      const leagueId = fixtureInfo?.league_id ?? null;
-      // Prefer fixture timestamp over leg.start (more reliable)
-      const kickoffAt = fixtureInfo?.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null);
-
-      // Build selection_key for deterministic matching
-      const selectionKey = `${leg.market}|${side}|${line}`.toLowerCase();
-
-      legOutcomes.push({
-        ticket_id: ticketId,
-        user_id: userId,
-        fixture_id: leg.fixtureId,
-        league_id: leagueId,
-        market: leg.market,
-        side,
-        line,
-        odds: leg.odds,
-        selection_key: selectionKey,
-        selection: leg.selection,
-        source: leg.source || "prematch",
-        picked_at: new Date().toISOString(),
-        kickoff_at: kickoffAt,
-        result_status: "PENDING",
-        derived_from_selection: !leg.side || leg.line === undefined || leg.line <= 0,
-        model_prob: leg.modelProb ?? null, // NEW: store model confidence for calibration
-      });
-    }
-
-    if (skippedLegs > 0) {
-      logs.push(`[AI-ticket] Skipped ${skippedLegs} legs due to invalid line values`);
-    }
-
-    // Step 3: Upsert leg outcomes (idempotent - ignore duplicates on unique index)
-    if (legOutcomes.length > 0) {
-      const { error: legOutcomesError } = await supabase
-        .from("ticket_leg_outcomes")
-        .upsert(legOutcomes, { 
-          onConflict: "ticket_id,fixture_id,market,side,line",
-          ignoreDuplicates: true 
-        });
-
-      if (legOutcomesError) {
-        console.error("[AI-ticket] ticket_leg_outcomes upsert error:", legOutcomesError);
-        logs.push(`[AI-ticket] Warning: leg outcomes upsert failed: ${legOutcomesError.message}`);
-      } else {
-        logs.push(`[AI-ticket] Upserted ${legOutcomes.length} leg outcomes`);
-      }
-    }
-
-    // Step 4: Upsert ticket outcome summary (idempotent)
-    const { error: ticketOutcomeError } = await supabase
-      .from("ticket_outcomes")
-      .upsert({
-        ticket_id: ticketId,
-        user_id: userId,
-        legs_total: legOutcomes.length, // Use actual inserted count (excludes skipped)
-        legs_settled: 0,
-        legs_won: 0,
-        legs_lost: 0,
-        legs_pushed: 0,
-        legs_void: 0,
-        ticket_status: "PENDING",
+      },
+      p_optimizer_cache_rows: optimizerCacheRows,
+      p_leg_outcomes: legOutcomes,
+      p_ticket_outcome: {
         total_odds: ticket.total_odds,
-        ticket_mode: ticketMode, // NEW: store for performance analysis
-        ticket_model_prob: ticketModelProb, // NEW: product of leg model_probs
-      }, {
-        onConflict: "ticket_id",
-        ignoreDuplicates: true
-      });
+        ticket_mode: ticketMode,
+        ticket_model_prob: ticketModelProb,
+      },
+    },
+  );
 
-    if (ticketOutcomeError) {
-      console.error("[AI-ticket] ticket_outcomes upsert error:", ticketOutcomeError);
-      logs.push(`[AI-ticket] Warning: ticket outcome upsert failed: ${ticketOutcomeError.message}`);
-    } else {
-      logs.push(`[AI-ticket] Upserted ticket outcome summary`);
-    }
-
-    logs.push(`[AI-ticket] Persisted ${ticket.legs.length} legs to optimizer_cache, generated_tickets, and outcome tables`);
-  } catch (dbError) {
-    console.error("[AI-ticket] DB persistence error:", dbError);
-    logs.push(`[AI-ticket] Warning: DB persistence failed`);
+  if (persistenceError || !ticketId) {
+    console.error("[AI-ticket] Atomic persistence failed", persistenceError);
+    throw new Error(`Unable to persist generated ticket: ${persistenceError?.message ?? "missing ticket id"}`);
   }
+
+  logs.push(`[AI-ticket] Atomically persisted ticket ${ticketId} with ${legOutcomes.length} legs`);
 
   return new Response(
     JSON.stringify({
@@ -1501,6 +1410,12 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       used_live: usedLive && !fallbackToPrematch,
       fallback_to_prematch: fallbackToPrematch,
       day_range_label: dayRangeLabel,
+      policy: {
+        mode: greenPolicy.mode,
+        version_id: greenPolicy.versionId,
+        activated_at: greenPolicy.activatedAt,
+        stale: greenPolicy.stale,
+      },
       diagnostic: debug ? {
         reason: "SUCCESS",
         target: { min: minOdds, max: maxOdds, logMin, logMax },
@@ -1550,7 +1465,7 @@ async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supa
 
   console.log(`[bet-optimizer] Mode: ${mode}, Date: ${date}`);
 
-  let fixturesQuery = supabase
+  const fixturesQuery = supabase
     .from("fixtures")
     .select("*")
     .eq("date", date);

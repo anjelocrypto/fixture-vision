@@ -24,7 +24,7 @@ const PLANS = [
       "Full access to Ticket Creator",
       "Full access to Filterizer",
       "Full access to Analyze",
-      "Full access to Winner",
+      "Full access to Safe Zone",
       "Full access to Team Totals",
     ],
   },
@@ -39,7 +39,7 @@ const PLANS = [
       "Full access to Ticket Creator",
       "Full access to Filterizer",
       "Full access to Analyze",
-      "Full access to Winner",
+      "Full access to Safe Zone",
       "Full access to Team Totals",
     ],
     recommended: true,
@@ -55,7 +55,7 @@ const PLANS = [
       "Full access to Ticket Creator",
       "Full access to Filterizer",
       "Full access to Analyze",
-      "Full access to Winner",
+      "Full access to Safe Zone",
       "Full access to Team Totals",
     ],
   },
@@ -70,7 +70,7 @@ const PLANS = [
       "Full access to Ticket Creator",
       "Full access to Filterizer",
       "Full access to Analyze",
-      "Full access to Winner",
+      "Full access to Safe Zone",
       "Full access to Team Totals",
     ],
   },
@@ -80,7 +80,7 @@ const Pricing = () => {
   const [loading, setLoading] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { hasAccess, entitlement, loading: accessLoading } = useAccess();
 
   const handleSelectPlan = async (planId: string) => {
@@ -162,13 +162,19 @@ const Pricing = () => {
     trackEvent("pricing_view");
   }, []);
 
-  const statusParam = searchParams.get("status") || searchParams.get("checkout");
-  if (statusParam === "cancelled" || statusParam === "cancel") {
+  useEffect(() => {
+    const statusParam = searchParams.get("status") || searchParams.get("checkout");
+    if (statusParam !== "cancelled" && statusParam !== "cancel") return;
+
     toast({
       title: "Checkout canceled",
       description: "You can return anytime to complete your purchase",
     });
-  }
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("status");
+    nextParams.delete("checkout");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams, toast]);
 
   return (
     <div className="min-h-dvh bg-background flex flex-col relative overflow-hidden">
@@ -353,7 +359,7 @@ const Pricing = () => {
             transition={{ delay: 0.8 }}
           >
             <p className="text-muted-foreground">
-              All paid plans include full access. Cancel anytime. Payments via Stripe.
+              Paid plans include the listed tools. Recurring subscriptions can be canceled before renewal. Payments via Stripe.
             </p>
             <div className="flex items-center justify-center gap-6 mt-4 text-sm text-muted-foreground/70">
               <span className="flex items-center gap-2">

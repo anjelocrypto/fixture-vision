@@ -1,18 +1,23 @@
 /**
  * RLS Enforcement Tests
  * 
- * Uses the REAL Supabase client with the anon key (no auth session)
+ * Uses a staging Supabase client with the publishable key (no auth session)
  * to verify that premium tables return 0 rows to unauthenticated users.
- * This is a real integration test — it hits the actual database.
+ * The suite is skipped unless TEST_SUPABASE_URL and
+ * TEST_SUPABASE_PUBLISHABLE_KEY are explicitly configured.
  */
 import { describe, it, expect } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://dutkpzrisvqgxadxbkxo.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dGtwenJpc3ZxZ3hhZHhia3hvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNjU5MzcsImV4cCI6MjA3Njc0MTkzN30.EnyLh7gSyeldcQo5qJBr5O_D55p_IM52x2xIBmIZlpE";
+const SUPABASE_URL = process.env.TEST_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = process.env.TEST_SUPABASE_PUBLISHABLE_KEY;
+const integrationEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
-// Real anon client — no auth session, simulates an unauthenticated/free user
-const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const anonClient = createClient(
+  SUPABASE_URL ?? "http://127.0.0.1:54321",
+  SUPABASE_PUBLISHABLE_KEY ?? "integration-test-not-configured",
+);
+const describeIntegration = integrationEnabled ? describe : describe.skip;
 
 /**
  * Tables that MUST return 0 rows (or error) to anon users.
@@ -34,7 +39,7 @@ const PUBLIC_READ_TABLES = [
   "countries",
 ] as const;
 
-describe("RLS: Admin-only premium tables block anon reads", () => {
+describeIntegration("RLS: Admin-only premium tables block anon reads", () => {
   for (const table of ADMIN_ONLY_TABLES) {
     it(`anon user gets 0 rows from ${table}`, async () => {
       const { data, error } = await (anonClient as any)
@@ -53,7 +58,7 @@ describe("RLS: Admin-only premium tables block anon reads", () => {
   }
 });
 
-describe("RLS: Public tables are readable by anon", () => {
+describeIntegration("RLS: Public tables are readable by anon", () => {
   for (const table of PUBLIC_READ_TABLES) {
     it(`anon user can read from ${table}`, async () => {
       const { data, error } = await (anonClient as any)
@@ -69,7 +74,7 @@ describe("RLS: Public tables are readable by anon", () => {
   }
 });
 
-describe("RLS: User-scoped tables block anon", () => {
+describeIntegration("RLS: User-scoped tables block anon", () => {
   it("anon user gets 0 rows from user_entitlements", async () => {
     const { data, error } = await (anonClient as any)
       .from("user_entitlements")
@@ -97,7 +102,7 @@ describe("RLS: User-scoped tables block anon", () => {
   });
 });
 
-describe("Premium edge functions require auth", () => {
+describeIntegration("Premium edge functions require auth", () => {
   const PREMIUM_FUNCTIONS = [
     "generate-ticket",
     "analyze-fixture",

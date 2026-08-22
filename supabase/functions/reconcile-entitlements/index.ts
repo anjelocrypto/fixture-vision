@@ -59,6 +59,34 @@ serve(async (req) => {
     let checked = 0;
     let alreadyCorrect = 0;
     const errors: string[] = [];
+    const authUsers: Array<{ id: string; email?: string }> = [];
+    let authPage = 1;
+
+    // Load the complete auth directory once. Calling listUsers() without
+    // pagination inside the subscription loop silently misses users after page 1.
+    while (true) {
+      const { data, error } = await supabase.auth.admin.listUsers({
+        page: authPage,
+        perPage: 1000,
+      });
+      if (error) {
+        throw new Error(`Unable to load auth users: ${error.message}`);
+      }
+      authUsers.push(...data.users);
+      if (data.users.length < 1000) break;
+      authPage++;
+    }
+
+    const authUserIds = new Set(authUsers.map((user) => user.id));
+    const authUserByEmail = new Map<string, string | null>();
+    for (const user of authUsers) {
+      const email = user.email?.trim().toLowerCase();
+      if (!email) continue;
+      authUserByEmail.set(
+        email,
+        authUserByEmail.has(email) ? null : user.id,
+      );
+    }
 
     // Get all active subscriptions from Stripe
     const subscriptions: Stripe.Subscription[] = [];
@@ -84,7 +112,11 @@ serve(async (req) => {
       const priceId = sub.items.data[0]?.price?.id;
       const plan = getPlanFromPriceId(priceId || "");
       const endTs = sub.current_period_end;
-      const periodEnd = endTs ? new Date(endTs * 1000).toISOString() : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      if (plan === "unknown" || !endTs) {
+        errors.push(`Skipped subscription ${sub.id}: unknown price or missing period end`);
+        continue;
+      }
+      const periodEnd = new Date(endTs * 1000).toISOString();
 
       // Find user by stripe_customer_id
       const { data: entitlement } = await supabase
@@ -94,36 +126,60 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!entitlement) {
-        // Try to find by customer email → auth user
+        // Recover from durable Stripe metadata first. Email is only a fallback
+        // when it maps to exactly one auth user.
         try {
           const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-          if (customer.email) {
-            const { data: users } = await supabase.auth.admin.listUsers();
-            const matchedUser = users?.users?.find((u: any) => u.email === customer.email);
-            if (matchedUser) {
-              // Create missing entitlement
-              const { error } = await supabase.from("user_entitlements").upsert({
-                user_id: matchedUser.id,
-                plan,
-                status: "active",
-                current_period_end: periodEnd,
-                stripe_customer_id: customerId,
-                stripe_subscription_id: sub.id,
-                source: "reconciliation",
-              });
-              if (error) {
-                errors.push(`Failed to create entitlement for ${customer.email}: ${error.message}`);
-              } else {
-                fixed++;
-                console.log(`${LOG} FIXED: Created entitlement for ${customer.email} (${plan})`);
-                await supabase.from("pipeline_alerts").insert({
-                  alert_type: "billing_reconciled",
-                  severity: "warning",
-                  message: `Reconciliation created missing entitlement for ${customer.email}`,
-                  details: { user_id: matchedUser.id, plan, subscription_id: sub.id },
-                });
-              }
-            }
+          if (customer.deleted) {
+            errors.push(`Skipped deleted customer ${customerId}`);
+            continue;
+          }
+
+          const metadataUserId = customer.metadata?.user_id;
+          const emailUserId = customer.email
+            ? authUserByEmail.get(customer.email.trim().toLowerCase())
+            : undefined;
+          const matchedUserId = metadataUserId && authUserIds.has(metadataUserId)
+            ? metadataUserId
+            : emailUserId || undefined;
+
+          if (!matchedUserId) {
+            errors.push(`Could not map Stripe customer ${customerId} to one auth user`);
+            continue;
+          }
+
+          if (!metadataUserId) {
+            await stripe.customers.update(customerId, {
+              metadata: { ...customer.metadata, user_id: matchedUserId },
+            });
+          } else if (metadataUserId !== matchedUserId) {
+            errors.push(`Stripe customer ${customerId} has conflicting ownership metadata`);
+            continue;
+          }
+
+          const { error } = await supabase.from("user_entitlements").upsert({
+            user_id: matchedUserId,
+            plan,
+            status: "active",
+            current_period_end: periodEnd,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: sub.id,
+            source: "reconciliation",
+          });
+          if (error) {
+            errors.push(`Failed to create entitlement for ${matchedUserId}: ${error.message}`);
+          } else {
+            fixed++;
+            console.log(`${LOG} FIXED: Created entitlement for user ${matchedUserId} (${plan})`);
+            const fingerprint = `billing:reconciled:${matchedUserId}`;
+            await supabase.rpc("record_pipeline_alert", {
+              p_fingerprint: fingerprint,
+              p_alert_type: "billing_reconciled",
+              p_severity: "warning",
+              p_message: "Reconciliation created a missing entitlement",
+              p_details: { user_id: matchedUserId, plan, subscription_id: sub.id },
+            });
+            await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
           }
         } catch (e) {
           errors.push(`Error looking up customer ${customerId}: ${e instanceof Error ? e.message : String(e)}`);
@@ -161,12 +217,15 @@ serve(async (req) => {
       } else {
         fixed++;
         console.log(`${LOG} FIXED: Updated entitlement for user ${entitlement.user_id} (${entitlement.plan}→${plan})`);
-        await supabase.from("pipeline_alerts").insert({
-          alert_type: "billing_reconciled",
-          severity: "warning",
-          message: `Reconciliation fixed entitlement drift for user ${entitlement.user_id}`,
-          details: { user_id: entitlement.user_id, old_plan: entitlement.plan, new_plan: plan },
+        const fingerprint = `billing:reconciled:${entitlement.user_id}`;
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: fingerprint,
+          p_alert_type: "billing_reconciled",
+          p_severity: "warning",
+          p_message: "Reconciliation corrected entitlement drift",
+          p_details: { user_id: entitlement.user_id, old_plan: entitlement.plan, new_plan: plan },
         });
+        await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
       }
     }
 

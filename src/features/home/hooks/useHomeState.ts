@@ -21,7 +21,10 @@ const getCountryFlag = (code: string): string => {
   return String.fromCodePoint(...codePoints);
 };
 
-const SEASON = 2025;
+const currentUtc = new Date();
+const SEASON = currentUtc.getUTCMonth() >= 6
+  ? currentUtc.getUTCFullYear()
+  : currentUtc.getUTCFullYear() - 1;
 
 export function useHomeState() {
   const { toast } = useToast();
@@ -32,8 +35,11 @@ export function useHomeState() {
   const hasPaidAccess = hasAccess || isWhitelisted;
 
   const [selectedCountry, setSelectedCountry] = useState<number | null>(140);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [selectedLeague, setSelectedLeague] = useState<any>(null);
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -106,7 +112,7 @@ export function useHomeState() {
       queryClient.removeQueries({ queryKey: ['fixtures'] });
       queryClient.invalidateQueries({ queryKey: ['leagues', selectedCountry, SEASON] });
     }
-  }, [selectedCountry]);
+  }, [queryClient, selectedCountry, today]);
 
   const actualCountries = useMemo(() => {
     if (!allLeaguesData?.countries) return [];

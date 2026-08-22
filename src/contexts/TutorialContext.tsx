@@ -165,7 +165,7 @@ export const TutorialProvider = ({ children }: TutorialProviderProps) => {
         title: t('tutorial_complete_title'),
       },
     ];
-  }, [t, i18n.language]);
+  }, [t]);
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { status, action, index, type } = data;

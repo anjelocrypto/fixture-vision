@@ -16,7 +16,7 @@
   "refresh_status": "Refresh Status",
   "email": "Email",
   "password": "Password",
-  "password_min_length": "Must be at least 6 characters",
+  "password_min_length": "Must be at least 12 characters",
   "terms_required": "Terms required",
   "terms_accept_message": "Please accept the Terms of Service to continue",
   "i_agree_to": "I agree to the",

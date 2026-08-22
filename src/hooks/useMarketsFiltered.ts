@@ -79,7 +79,7 @@ export function useMarketLeagues(countryId?: number | null) {
   return useQuery({
     queryKey: ["market-leagues", countryId],
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from("prediction_markets")
         .select(`
           fixture_id,

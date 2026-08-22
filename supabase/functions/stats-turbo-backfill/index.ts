@@ -843,9 +843,9 @@ Deno.serve(async (req: Request) => {
     };
 
     // Schedule background job using EdgeRuntime.waitUntil
-    // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+    // @ts-expect-error EdgeRuntime is injected by Supabase in production.
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-      // @ts-ignore
+      // @ts-expect-error EdgeRuntime is injected by Supabase in production.
       EdgeRuntime.waitUntil(backgroundJob());
       console.log("[turbo] Background job scheduled via EdgeRuntime.waitUntil");
     } else {

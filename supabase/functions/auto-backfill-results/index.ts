@@ -446,6 +446,8 @@ Deno.serve(async (req: Request) => {
     });
 
     // ===== WATCHDOG: Detect consecutive zero-insert runs =====
+    let backfillStalled = false;
+    const backfillAlertFingerprint = "pipeline:auto-backfill-results:stalled";
     if (inserted === 0 && allMissing.length > 0) {
       // Check last N runs for consecutive zeros
       const { data: recentRuns } = await supabase
@@ -461,19 +463,24 @@ Deno.serve(async (req: Request) => {
       ).length;
 
       if (consecutiveZeros >= WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD - 1) {
+        backfillStalled = true;
         // This run is also zero, so total = threshold
         console.warn(`[auto-backfill] WATCHDOG: ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive zero-insert runs with ${allMissing.length} missing fixtures!`);
-        await supabase.from("pipeline_alerts").insert({
-          alert_type: "backfill_stalled",
-          severity: "warning",
-          message: `Auto-backfill inserted 0 results for ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive runs despite ${allMissing.length} missing fixtures`,
-          details: {
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: backfillAlertFingerprint,
+          p_alert_type: "backfill_stalled",
+          p_severity: "warning",
+          p_message: `Auto-backfill inserted no results for ${WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD} consecutive runs`,
+          p_details: {
             consecutive_zeros: WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD,
             missing_fixtures: allMissing.length,
             last_errors: errors.slice(0, 5),
           },
         });
       }
+    }
+    if (!backfillStalled) {
+      await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillAlertFingerprint });
     }
 
     console.log("[auto-backfill] ===== FUNCTION END =====");

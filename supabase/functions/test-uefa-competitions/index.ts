@@ -1,6 +1,8 @@
 // Test UEFA competitions availability in API-Football
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,6 +15,24 @@ serve(async (req) => {
   }
 
   try {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceRoleKey,
+    );
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabase,
+      serviceRoleKey,
+      "[test-uefa-competitions]",
+    );
+    if (!auth.authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     console.log("[test-uefa] Testing UEFA Champions League, Europa League, and Conference League");
 
     // UEFA Competition League IDs in API-Football:

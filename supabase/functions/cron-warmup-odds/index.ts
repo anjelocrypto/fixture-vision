@@ -22,8 +22,8 @@ serve(async (req) => {
   // Always returns HTTP 200 for pg_cron stability
   // ============================================================================
   
-  const jobName = 'cron-warmup-odds';
-  let lockAcquired = false;
+  const jobName = 'optimizer-refresh';
+  let lockToken: string | null = null;
   let supabase: any = null;
 
   try {
@@ -49,7 +49,7 @@ serve(async (req) => {
     }
 
     // 3. Try to acquire lock
-    const { data: lockResult, error: lockError } = await supabase.rpc('acquire_cron_lock', {
+    const { data: acquiredToken, error: lockError } = await supabase.rpc('acquire_cron_lease', {
       p_job_name: jobName,
       p_duration_minutes: 60
     });
@@ -62,7 +62,7 @@ serve(async (req) => {
       );
     }
 
-    if (!lockResult) {
+    if (!acquiredToken) {
       console.log('[cron-warmup-odds] Job already running, skipping');
       return new Response(
         JSON.stringify({ status: 'skipped', reason: 'Job already running' }),
@@ -70,7 +70,7 @@ serve(async (req) => {
       );
     }
 
-    lockAcquired = true;
+    lockToken = acquiredToken;
     console.log('[cron-warmup-odds] Lock acquired, starting job');
 
     // 4. Parse window_hours (default 48h for cron)
@@ -305,10 +305,17 @@ serve(async (req) => {
     );
   } finally {
     // ALWAYS release lock in finally block
-    if (lockAcquired && supabase) {
+    if (lockToken && supabase) {
       try {
-        await supabase.rpc('release_cron_lock', { p_job_name: jobName });
-        console.log('[cron-warmup-odds] Lock released');
+        const { data: released, error: releaseError } = await supabase.rpc('release_cron_lease', {
+          p_job_name: jobName,
+          p_lock_token: lockToken,
+        });
+        if (releaseError || released !== true) {
+          console.error('[cron-warmup-odds] Failed to release owned lease:', releaseError);
+        } else {
+          console.log('[cron-warmup-odds] Lock released');
+        }
       } catch (releaseErr) {
         console.error('[cron-warmup-odds] Failed to release lock:', releaseErr);
       }

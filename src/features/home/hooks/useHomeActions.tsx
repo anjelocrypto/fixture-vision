@@ -23,6 +23,7 @@ export function useHomeActions(state: any) {
     setFilterizerOffset, setFilterizerTotalQualified,
     setFilterizerHasMore, setLoadingMoreFilterizer,
     filterizerOffset, filterCriteria, filteredFixtures,
+    filterizerHasMore, loadingMoreFilterizer, setShowFilterizer,
     currentTicket, lastTicketParams,
     refreshAccess, toast, navigate, t, i18n,
   } = state;
@@ -111,7 +112,10 @@ export function useHomeActions(state: any) {
     } finally {
       setLoadingAnalysis(false);
     }
-  }, [hasAccess, isWhitelisted, isMobile]);
+  }, [
+    hasAccess, isWhitelisted, isMobile, navigate, setAnalysis,
+    setLoadingAnalysis, setRightSheetOpen, setValueAnalysis, toast,
+  ]);
 
   const generateAITicket = useCallback(async (params: any) => {
     setGeneratingTicket(true);
@@ -180,7 +184,7 @@ export function useHomeActions(state: any) {
       }
 
       if (data.code) {
-        let friendlyMessage = data.message || "Not enough valid selections.";
+        const friendlyMessage = data.message || "Not enough valid selections.";
         if (data.code === "NO_SOLUTION_IN_BAND" && data.best_nearby) {
           const nearMissTicket = {
             mode: "near-miss",
@@ -257,7 +261,11 @@ export function useHomeActions(state: any) {
       if (invokeTimeoutId) clearTimeout(invokeTimeoutId);
       setGeneratingTicket(false);
     }
-  }, [selectedCountry, selectedLeague, actualCountries]);
+  }, [
+    actualCountries, i18n.language, navigate, refreshAccess, selectedCountry,
+    selectedLeague, setCurrentTicket, setGeneratingTicket, setLastTicketParams,
+    setTicketCreatorOpen, setTicketDrawerOpen, toast,
+  ]);
 
   const shuffleTicket = useCallback(async (lockedLegIds: string[]) => {
     if (!lastTicketParams || !currentTicket) {
@@ -333,7 +341,10 @@ export function useHomeActions(state: any) {
     } finally {
       setGeneratingTicket(false);
     }
-  }, [currentTicket, lastTicketParams]);
+  }, [
+    currentTicket, lastTicketParams, setCurrentTicket, setGeneratingTicket,
+    toast,
+  ]);
 
   const handleApplyFilters = useCallback(async (filters: FilterCriteria) => {
     setFilterCriteria(filters);
@@ -366,10 +377,14 @@ export function useHomeActions(state: any) {
     } catch (error: any) {
       toast({ title: "Error", description: "Failed to apply filters.", variant: "destructive" });
     }
-  }, [selectedDate, selectedCountry, selectedLeague, actualCountries]);
+  }, [
+    actualCountries, selectedCountry, selectedDate, selectedLeague,
+    setFilterCriteria, setFilteredFixtures, setFilterizerHasMore,
+    setFilterizerOffset, setFilterizerTotalQualified, toast,
+  ]);
 
   const handleLoadMoreFilterizer = useCallback(async () => {
-    if (!filterCriteria || state.loadingMoreFilterizer || !state.filterizerHasMore) return;
+    if (!filterCriteria || loadingMoreFilterizer || !filterizerHasMore) return;
     setLoadingMoreFilterizer(true);
     const newOffset = filterizerOffset + 50;
 
@@ -400,7 +415,12 @@ export function useHomeActions(state: any) {
     } finally {
       setLoadingMoreFilterizer(false);
     }
-  }, [filterCriteria, filterizerOffset, selectedDate, selectedCountry, selectedLeague, actualCountries]);
+  }, [
+    actualCountries, filterCriteria, filterizerOffset, selectedCountry,
+    selectedDate, selectedLeague, setFilteredFixtures, setFilterizerHasMore,
+    setFilterizerOffset, setLoadingMoreFilterizer, filterizerHasMore,
+    loadingMoreFilterizer, toast,
+  ]);
 
   const handleClearFilters = useCallback(() => {
     setFilterCriteria(null);
@@ -408,8 +428,11 @@ export function useHomeActions(state: any) {
     setFilterizerOffset(0);
     setFilterizerTotalQualified(0);
     setFilterizerHasMore(false);
-    state.setShowFilterizer(false);
-  }, []);
+    setShowFilterizer(false);
+  }, [
+    setFilterCriteria, setFilteredFixtures, setFilterizerHasMore,
+    setFilterizerOffset, setFilterizerTotalQualified, setShowFilterizer,
+  ]);
 
   return {
     handleAnalyze,

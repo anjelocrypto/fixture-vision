@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { ALLOWED_LEAGUE_IDS, getCountryIdForLeague } from '../_shared/leagues.ts';
 import { apiHeaders, API_BASE } from '../_shared/api.ts';
 import { UPCOMING_WINDOW_HOURS } from '../_shared/config.ts';
+import { getFootballSeasonForLeague } from '../_shared/season.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,13 +18,16 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
-  const jobName = 'cron-fetch-fixtures';
+  const jobName = 'fixtures-sync';
+  let lockToken: string | null = null;
+  let lockClient: any = null;
 
   try {
     // 1. Initialize Supabase service role client (needed for key validation)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    lockClient = supabase;
 
     // 2. Validate cron key from DB
     const cronKey = req.headers.get('X-CRON-KEY');
@@ -37,7 +41,7 @@ serve(async (req) => {
       );
     }
     // 3. Try to acquire lock
-    const { data: lockAcquired, error: lockError } = await supabase.rpc('acquire_cron_lock', {
+    const { data: acquiredToken, error: lockError } = await supabase.rpc('acquire_cron_lease', {
       p_job_name: jobName,
       p_duration_minutes: 30
     });
@@ -50,7 +54,7 @@ serve(async (req) => {
       );
     }
 
-    if (!lockAcquired) {
+    if (!acquiredToken) {
       console.log('[cron-fetch-fixtures] Job already running, skipping');
       return new Response(
         JSON.stringify({ status: 'skipped', reason: 'Job already running' }),
@@ -58,6 +62,7 @@ serve(async (req) => {
       );
     }
 
+    lockToken = acquiredToken;
     console.log('[cron-fetch-fixtures] Lock acquired, starting job');
 
     // 4. ALWAYS use UPCOMING_WINDOW_HOURS from config (ignores any body override)
@@ -86,19 +91,26 @@ serve(async (req) => {
     let fixturesFailed = 0;
     const failureReasons: Record<string, number> = {};
 
-    const dates = [];
-    for (let i = 0; i <= 3; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() + i);
-      dates.push(d.toISOString().split('T')[0]);
+    const dates: string[] = [];
+    const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const finalInstant = new Date(Math.max(now.getTime(), windowEnd.getTime() - 1));
+    const finalDate = new Date(Date.UTC(
+      finalInstant.getUTCFullYear(),
+      finalInstant.getUTCMonth(),
+      finalInstant.getUTCDate(),
+    ));
+    while (cursor <= finalDate) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
     for (const leagueId of ALLOWED_LEAGUE_IDS) {
       leaguesProcessed++;
+      const season = getFootballSeasonForLeague(leagueId, now);
 
       for (const dateStr of dates) {
         try {
-          const url = `${API_BASE}/fixtures?league=${leagueId}&season=2025&date=${dateStr}`;
+          const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&date=${dateStr}`;
           const response = await fetch(url, { headers: apiHeaders() });
           totalApiCalls++;
 
@@ -210,9 +222,6 @@ serve(async (req) => {
       }),
     });
 
-    // 8. Release lock
-    await supabase.rpc('release_cron_lock', { p_job_name: jobName });
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -229,20 +238,19 @@ serve(async (req) => {
     );
   } catch (error: any) {
     console.error('[cron-fetch-fixtures] Unexpected error:', error);
-    
-    // Attempt to release lock on error
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      await supabase.rpc('release_cron_lock', { p_job_name: jobName });
-    } catch (releaseErr) {
-      console.error('[cron-fetch-fixtures] Failed to release lock on error:', releaseErr);
-    }
-
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    if (lockToken && lockClient) {
+      const { data: released, error: releaseError } = await lockClient.rpc('release_cron_lease', {
+        p_job_name: jobName,
+        p_lock_token: lockToken,
+      });
+      if (releaseError || released !== true) {
+        console.error('[cron-fetch-fixtures] Failed to release owned lease:', releaseError);
+      }
+    }
   }
 });

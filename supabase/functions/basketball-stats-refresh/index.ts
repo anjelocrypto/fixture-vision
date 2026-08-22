@@ -7,6 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBasketballSeason } from "../_shared/basketball_season.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,8 +105,9 @@ serve(async (req) => {
         if (!teamInfo) continue;
 
         const leagueKey = teamInfo.league_key;
-        const currentYear = new Date().getFullYear();
-        const season = leagueKey.startsWith("nba") ? `${currentYear}` : `${currentYear - 1}-${currentYear}`;
+        const isNba = leagueKey.startsWith("nba");
+        const seasonStartMonth = leagueKey === "nba_gleague" ? 10 : 9;
+        const season = getBasketballSeason(isNba ? "nba" : "basketball", seasonStartMonth);
 
         // Get all games for this team with stats (newest first)
         const { data: gameStats, error: statsError } = await supabase
@@ -113,9 +115,10 @@ serve(async (req) => {
           .select(`
             id, game_id, points, fgm, fga, fgp, tpm, tpa, rebounds_total, assists,
             is_home,
-            game:basketball_games!inner(id, home_score, away_score, date)
+            game:basketball_games!inner(id, home_score, away_score, date, season)
           `)
           .eq("team_id", teamId)
+          .eq("game.season", season)
           .order("created_at", { ascending: false })
           .limit(50);
 

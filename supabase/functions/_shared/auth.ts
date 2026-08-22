@@ -3,7 +3,6 @@
 // ============================================================================
 // CRITICAL: Do NOT use .single() on scalar-returning RPC functions!
 // - get_cron_internal_key returns TEXT (scalar), not a row
-// - is_user_whitelisted returns BOOLEAN (scalar), not a row
 // Using .single() on scalar RPCs causes auth to SILENTLY FAIL.
 // ============================================================================
 
@@ -20,7 +19,7 @@ export interface AuthResult {
  * Supports three auth methods:
  * 1. Service role bearer token
  * 2. X-CRON-KEY header matching app_settings value
- * 3. Admin user JWT with is_user_whitelisted = true
+ * 3. Admin user JWT with an explicit admin role
  * 
  * @param req - The incoming request
  * @param supabase - Service role Supabase client
@@ -39,7 +38,7 @@ export async function checkCronOrAdminAuth(
   const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
 
   // Method 1: Service role bearer token
-  if (authHeader === `Bearer ${serviceRoleKey}`) {
+  if (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
     console.log(`${logPrefix} Authorized via service role bearer`);
     return { authorized: true, method: "service_role" };
   }
@@ -56,7 +55,7 @@ export async function checkCronOrAdminAuth(
       const expectedKey = String(dbKey || "").trim();
       const providedKey = String(cronKeyHeader || "").trim();
       
-      if (providedKey && expectedKey && providedKey === expectedKey) {
+      if (providedKey && expectedKey && constantTimeEqual(providedKey, expectedKey)) {
         console.log(`${logPrefix} Authorized via X-CRON-KEY`);
         return { authorized: true, method: "cron_key" };
       } else {
@@ -65,7 +64,7 @@ export async function checkCronOrAdminAuth(
     }
   }
 
-  // Method 3: Admin user via JWT (NO .single()!)
+  // Method 3: Admin user via JWT and the database-backed role table.
   if (authHeader) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -76,12 +75,21 @@ export async function checkCronOrAdminAuth(
           global: { headers: { Authorization: authHeader } }
         });
         
-        const { data: isWhitelisted, error: wlError } = await userClient.rpc("is_user_whitelisted");
-        
-        if (wlError) {
-          console.error(`${logPrefix} is_user_whitelisted error:`, wlError);
-        } else if (isWhitelisted === true) {
-          console.log(`${logPrefix} Authorized via admin user whitelist`);
+        const { data: { user }, error: userError } = await userClient.auth.getUser();
+        if (userError || !user) {
+          console.error(`${logPrefix} Admin JWT validation failed:`, userError);
+          return { authorized: false, method: "none", error: "invalid_admin_jwt" };
+        }
+
+        const { data: hasAdminRole, error: roleError } = await userClient.rpc("has_role", {
+          _user_id: user.id,
+          _role: "admin",
+        });
+
+        if (roleError) {
+          console.error(`${logPrefix} has_role error:`, roleError);
+        } else if (hasAdminRole === true) {
+          console.log(`${logPrefix} Authorized via admin role`);
           return { authorized: true, method: "admin_user" };
         }
       } catch (e) {
@@ -92,4 +100,15 @@ export async function checkCronOrAdminAuth(
 
   console.error(`${logPrefix} Authorization failed - no valid auth method matched`);
   return { authorized: false, method: "none" };
+}
+
+function constantTimeEqual(provided: string, expected: string): boolean {
+  const maxLength = Math.max(provided.length, expected.length);
+  let mismatch = provided.length ^ expected.length;
+
+  for (let index = 0; index < maxLength; index += 1) {
+    mismatch |= (provided.charCodeAt(index) || 0) ^ (expected.charCodeAt(index) || 0);
+  }
+
+  return mismatch === 0;
 }

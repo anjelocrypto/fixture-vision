@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 /**
  * team-totals-refresh
@@ -221,7 +222,10 @@ serve(async (req) => {
       const homeTeamId = fixture.teams_home?.id;
       const awayTeamId = fixture.teams_away?.id;
       const leagueId = fixture.league_id;
-      const season = 2025;
+      const season = getFootballSeasonForLeague(
+        leagueId,
+        new Date(fixture.timestamp * 1000),
+      );
       const utcKickoff = new Date(fixture.timestamp * 1000).toISOString();
 
       if (!homeTeamId || !awayTeamId) {

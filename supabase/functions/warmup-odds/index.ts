@@ -11,8 +11,15 @@ import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "..
 import { UPCOMING_WINDOW_HOURS } from "../_shared/config.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 
-// Fire-and-forget trigger for long-running Edge Functions to avoid browser timeouts
-async function triggerEdgeFunction(name: string, body: unknown) {
+interface PipelineStepResult {
+  name: string;
+  status: number;
+  body: unknown;
+}
+
+// Await each stage so selections never run against an odds/stats refresh that
+// is merely scheduled but has not completed yet.
+async function callEdgeFunction(name: string, body: unknown): Promise<PipelineStepResult> {
   const baseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   
@@ -20,7 +27,7 @@ async function triggerEdgeFunction(name: string, body: unknown) {
     throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
 
-  // Get cron key from database (NOT from env var!)
+  // Get cron key from database (not from an environment literal).
   const supabase = createClient(baseUrl, serviceRoleKey);
   const { data: cronKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
   
@@ -31,8 +38,7 @@ async function triggerEdgeFunction(name: string, body: unknown) {
 
   const url = `${baseUrl}/functions/v1/${name}`;
   
-  // Intentionally do not await – let the platform execute independently
-  fetch(url, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${serviceRoleKey}`,
@@ -40,17 +46,20 @@ async function triggerEdgeFunction(name: string, body: unknown) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body ?? {}),
-  })
-    .then(async (res) => {
-      const text = await res.text().catch(() => "");
-      console.log(`[warmup-odds] trigger ${name} -> ${res.status}`);
-      if (!res.ok) {
-        console.error(`[warmup-odds] trigger error ${name}:`, text.substring(0, 200));
-      }
-    })
-    .catch((e) => {
-      console.error(`[warmup-odds] trigger failed ${name}:`, e?.message || e);
-    });
+    signal: AbortSignal.timeout(120_000),
+  });
+  const text = await response.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = { raw: text.slice(0, 500) };
+  }
+  console.log(`[warmup-odds] ${name} -> ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`${name} failed with HTTP ${response.status}`);
+  }
+  return { name, status: response.status, body: parsed };
 }
 
 serve(async (req) => {
@@ -59,6 +68,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return handlePreflight(origin, req);
   }
+
+  const jobName = "optimizer-refresh";
+  let lockToken: string | null = null;
+  let lockClient: any = null;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -69,6 +82,7 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    lockClient = supabase;
 
     // Use shared auth helper (NO .single() on scalar RPCs, case-insensitive headers)
     const authResult = await checkCronOrAdminAuth(req, supabase, supabaseServiceKey, "[warmup-odds]");
@@ -77,38 +91,57 @@ serve(async (req) => {
       return errorResponse("Unauthorized: missing/invalid X-CRON-KEY or user not whitelisted", origin, 401, req);
     }
 
-    const { window_hours = UPCOMING_WINDOW_HOURS, force = false } = await req.json().catch(() => ({}));
+    const requestBody = await req.json().catch(() => ({}));
+    const window_hours = Math.min(
+      Math.max(Number(requestBody?.window_hours) || UPCOMING_WINDOW_HOURS, 1),
+      168,
+    );
+    const force = requestBody?.force === true;
+
+    const { data: acquiredToken, error: leaseError } = await supabase.rpc("acquire_cron_lease", {
+      p_job_name: jobName,
+      p_duration_minutes: 120,
+    });
+    if (leaseError) {
+      return errorResponse("Failed to acquire optimizer lease", origin, 500, req);
+    }
+    if (!acquiredToken) {
+      return jsonResponse(
+        { success: false, busy: true, message: "Optimizer refresh already running" },
+        origin,
+        409,
+        req,
+      );
+    }
+    lockToken = acquiredToken;
     
     console.log(`[warmup-odds] Admin initiated ${window_hours}h warmup (force=${force})`);
 
-    // Execute pipeline in proper sequence - all fire-and-forget to avoid browser timeout
-    // Step 1: Refresh stats first (teams need stats for selections)
-    console.log(`[warmup-odds] Step 1: Triggering stats-refresh (${window_hours}h, force=${force})`);
-    await triggerEdgeFunction("stats-refresh", { 
+    // Execute the pipeline in strict dependency order.
+    console.log(`[warmup-odds] Step 1: Running stats-refresh (${window_hours}h, force=${force})`);
+    const stats = await callEdgeFunction("stats-refresh", {
       window_hours, 
       stats_ttl_hours: 24,
       force 
     });
 
-    // Step 2: Backfill odds (can run after stats start)
-    console.log(`[warmup-odds] Step 2: Triggering backfill-odds (${window_hours}h)`);
-    await triggerEdgeFunction("backfill-odds", { window_hours });
+    console.log(`[warmup-odds] Step 2: Running backfill-odds (${window_hours}h)`);
+    const odds = await callEdgeFunction("backfill-odds", { window_hours });
 
-    // Step 3: Generate optimized selections (needs both stats and odds)
-    console.log(`[warmup-odds] Step 3: Triggering optimize-selections-refresh (${window_hours}h)`);
-    await triggerEdgeFunction("optimize-selections-refresh", { window_hours });
+    console.log(`[warmup-odds] Step 3: Running optimize-selections-refresh (${window_hours}h)`);
+    const selections = await callEdgeFunction("optimize-selections-refresh", { window_hours });
 
-    // Respond immediately – all steps running in background
     return jsonResponse(
       {
         success: true,
-        started: true,
+        completed: true,
         window_hours,
         force,
-        message: `Warmup pipeline started for ${window_hours}h. Stats → Odds → Selections running in background. Monitor progress via logs or badges.`,
+        steps: [stats, odds, selections],
+        message: `Warmup pipeline completed for ${window_hours}h in dependency order.`,
       },
       origin,
-      202,
+      200,
       req
     );
 
@@ -123,5 +156,15 @@ serve(async (req) => {
       500,
       req
     );
+  } finally {
+    if (lockToken && lockClient) {
+      const { data: released, error: releaseError } = await lockClient.rpc("release_cron_lease", {
+        p_job_name: jobName,
+        p_lock_token: lockToken,
+      });
+      if (releaseError || released !== true) {
+        console.error("[warmup-odds] Failed to release owned lease", releaseError);
+      }
+    }
   }
 });

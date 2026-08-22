@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2, RefreshCw, Copy, Ticket, X, ChevronRight, Zap, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { useRegisterOverlay } from "@/hooks/useRegisterOverlay";
@@ -37,7 +37,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
   const totalOdds = legs.reduce((acc, leg) => acc * leg.odds, 1);
   const potentialReturn = stake * totalOdds;
 
-  const handleRefreshOdds = async () => {
+  const handleRefreshOdds = useCallback(async () => {
     setIsRefreshing(true);
     try {
       await refreshOdds();
@@ -47,7 +47,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [refreshOdds, t, toast]);
 
   const handleCopy = () => {
     const ticketText = legs
@@ -70,7 +70,7 @@ export function MyTicketDrawer({ open, onOpenChange }: MyTicketDrawerProps) {
     if (open && legs.length > 0) {
       handleRefreshOdds();
     }
-  }, [open]);
+  }, [handleRefreshOdds, legs.length, open]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

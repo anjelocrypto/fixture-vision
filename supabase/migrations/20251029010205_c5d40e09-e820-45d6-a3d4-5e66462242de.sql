@@ -13,11 +13,10 @@ CREATE POLICY "service read app_settings"
   ON public.app_settings FOR SELECT
   USING (auth.role() = 'service_role');
 
--- Insert the CRON_INTERNAL_KEY
+-- Generate the cron key inside Postgres. Never commit a literal credential.
 INSERT INTO public.app_settings (key, value)
-VALUES ('CRON_INTERNAL_KEY', 'crk_8F3xN2wGQeY5pK1rT7uV9b4M6aZ0sD2H')
-ON CONFLICT (key) DO UPDATE
-SET value = EXCLUDED.value, updated_at = now();
+VALUES ('CRON_INTERNAL_KEY', encode(gen_random_bytes(32), 'hex'))
+ON CONFLICT (key) DO NOTHING;
 
 -- 2) SECURITY DEFINER getter (bypasses RLS safely)
 CREATE OR REPLACE FUNCTION public.get_cron_internal_key()
@@ -59,7 +58,7 @@ SELECT cron.schedule(
   '0 */12 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/cron-fetch-fixtures',
+    url := 'https://RETIRED_PROJECT_REF.invalid/functions/v1/cron-fetch-fixtures',
     headers := jsonb_build_object(
       'Content-Type','application/json',
       'X-CRON-KEY', public.get_cron_internal_key()
@@ -75,7 +74,7 @@ SELECT cron.schedule(
   '30 */12 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://dutkpzrisvqgxadxbkxo.supabase.co/functions/v1/cron-warmup-odds',
+    url := 'https://RETIRED_PROJECT_REF.invalid/functions/v1/cron-warmup-odds',
     headers := jsonb_build_object(
       'Content-Type','application/json',
       'X-CRON-KEY', public.get_cron_internal_key()

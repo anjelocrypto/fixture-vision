@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { userHasProductAccess } from "../_shared/entitlement.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 /**
  * Who Concedes / Scores? Edge Function
@@ -84,25 +86,7 @@ serve(async (req) => {
     // 2) Premium entitlement check (no trial credits consumed)
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: entitlement } = await supabase
-      .from("user_entitlements")
-      .select("plan, current_period_end")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const hasPaidAccess =
-      entitlement &&
-      entitlement.plan !== "free" &&
-      entitlement.current_period_end &&
-      new Date(entitlement.current_period_end) > new Date();
-
-    let isAdmin = false;
-    if (!hasPaidAccess) {
-      const { data: wl } = await userClient.rpc("is_user_whitelisted");
-      isAdmin = wl === true;
-    }
-
-    if (!hasPaidAccess && !isAdmin) {
+    if (!(await userHasProductAccess(userClient))) {
       return jsonResponse({ error: "Premium subscription required", code: "PAYWALL" }, origin, 402);
     }
 
@@ -164,51 +148,28 @@ serve(async (req) => {
     fullLookbackDate.setMonth(fullLookbackDate.getMonth() - LOOKBACK_MONTHS);
     const fullLookbackDateStr = fullLookbackDate.toISOString().split("T")[0];
 
-    // Define CURRENT SEASON - if we're before August, use previous year as season start
-    // e.g., January 2026 → 2025-26 season started Aug 2025
-    const now = new Date();
-    const currentMonth = now.getUTCMonth(); // 0-11, Aug = 7
-    const seasonYear = currentMonth >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-    const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug 1
-    const currentSeasonDateStr = seasonStartDate.toISOString().split("T")[0];
-
-    // STEP 1: Get teams currently in the league based on THIS SEASON fixtures (2025-26)
+    const season = getFootballSeasonForLeague(leagueId);
     const { data: currentTeamsData, error: currentTeamsError } = await supabase
-      .from("fixtures")
-      .select("teams_home, teams_away")
+      .from("football_league_teams")
+      .select("team_id")
       .eq("league_id", leagueId)
-      .gte("date", currentSeasonDateStr)
-      .limit(1000);
+      .eq("season", season)
+      .eq("active", true)
+      .limit(100);
 
     if (currentTeamsError) {
       console.error("[who-concedes] Error fetching current teams:", currentTeamsError);
       return errorResponse("Failed to fetch current team data", origin, 500, req);
     }
 
-    // Build set of current season teams from fixtures
-    const currentSeasonTeams = new Set<number>();
-    for (const fixture of currentTeamsData || []) {
-      const homeTeamId = parseInt(String(fixture.teams_home?.id));
-      const awayTeamId = parseInt(String(fixture.teams_away?.id));
-      if (!isNaN(homeTeamId)) currentSeasonTeams.add(homeTeamId);
-      if (!isNaN(awayTeamId)) currentSeasonTeams.add(awayTeamId);
-    }
+    const currentSeasonTeams = new Set<number>(
+      (currentTeamsData ?? []).map((team) => Number(team.team_id)),
+    );
 
     console.log(`[who-concedes] Found ${currentSeasonTeams.size} teams in current season for league ${leagueId}`);
 
     if (currentSeasonTeams.size === 0) {
-      return jsonResponse({
-        league: {
-          id: leagueId,
-          name: leagueInfo.name,
-          country: leagueInfo.country,
-        },
-        rankings: [],
-        max_matches: maxMatches,
-        mode,
-        generated_at: new Date().toISOString(),
-        duration_ms: Date.now() - startTime,
-      }, origin);
+      return errorResponse("Authoritative roster unavailable for this league and season", origin, 503, req);
     }
 
     // STEP 2: Fetch all matches from last 18 months for stats calculation

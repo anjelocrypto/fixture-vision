@@ -142,6 +142,8 @@ Deno.serve(async (req: Request) => {
 
     // ===== WATCHDOG 1: Scorer health =====
     const alerts: string[] = [];
+    const scorerFingerprint = "pipeline:score-ticket-legs:stalled";
+    let scorerStalled = false;
     if (metrics.pending_with_ft_results > 0) {
       const { data: prevSnapshots } = await supabase
         .from("pipeline_run_logs")
@@ -155,21 +157,28 @@ Deno.serve(async (req: Request) => {
         (prevSnapshots[1] as any)?.details?.pending_with_ft_results > 0;
 
       if (prevAlsoPositive) {
+        scorerStalled = true;
         const msg = `Scorer stalled: pending_with_ft_results=${metrics.pending_with_ft_results} for 2+ consecutive checks`;
         console.error(`${LOG} ALERT: ${msg}`);
         alerts.push(msg);
-        await supabase.from("pipeline_alerts").insert({
-          alert_type: "scorer_stalled",
-          severity: "error",
-          message: msg,
-          details: { pending_with_ft: metrics.pending_with_ft_results, metrics },
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: scorerFingerprint,
+          p_alert_type: "scorer_stalled",
+          p_severity: "critical",
+          p_message: "Ticket outcome scoring is stalled",
+          p_details: { pending_with_ft: metrics.pending_with_ft_results, metrics },
         });
       } else {
         console.warn(`${LOG} pending_with_ft=${metrics.pending_with_ft_results} (first occurrence, watching)`);
       }
     }
+    if (!scorerStalled) {
+      await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: scorerFingerprint });
+    }
 
     // ===== WATCHDOG 2: Backfill stall =====
+    const backfillFingerprint = "pipeline:auto-backfill-results:stalled";
+    let backfillStalled = false;
     if (metrics.pending_missing_fixture_results > 50) {
       const { data: recentBackfills } = await supabase
         .from("pipeline_run_logs")
@@ -183,16 +192,21 @@ Deno.serve(async (req: Request) => {
         recentBackfills.every((r: any) => !r.details?.inserted || r.details.inserted === 0);
 
       if (allZeroInserts) {
+        backfillStalled = true;
         const msg = `Backfill stalled: ${metrics.pending_missing_fixture_results} missing fixtures but 3 consecutive zero-insert runs`;
         console.error(`${LOG} ALERT: ${msg}`);
         alerts.push(msg);
-        await supabase.from("pipeline_alerts").insert({
-          alert_type: "backfill_stalled",
-          severity: "warning",
-          message: msg,
-          details: { pending_missing: metrics.pending_missing_fixture_results, metrics },
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: backfillFingerprint,
+          p_alert_type: "backfill_stalled",
+          p_severity: "warning",
+          p_message: "Fixture-result backfill is stalled",
+          p_details: { pending_missing: metrics.pending_missing_fixture_results, metrics },
         });
       }
+    }
+    if (!backfillStalled) {
+      await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillFingerprint });
     }
 
     const health = (metrics.pending_with_ft_results === 0 && alerts.length === 0) ? "GREEN" :
