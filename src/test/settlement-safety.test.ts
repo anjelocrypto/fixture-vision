@@ -171,6 +171,6 @@ describe("policy version and presentation", () => {
     const copy = settlementHoldCopy("kickoff_drift");
     expect(copy.fallbackTitle).toBe("Settlement under review");
     expect(copy.fallbackReason).toBe("Fixture schedule changed");
-    expect(JSON.stringify(copy)).not.toMatch(/api-football|cron|service_role|key/i);
+    expect(JSON.stringify(copy)).not.toMatch(/api-football|cron|service_role|secret|token|fingerprint/i);
   });
 });
