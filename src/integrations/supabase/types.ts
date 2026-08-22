@@ -630,12 +630,65 @@ export type Database = {
           },
         ]
       }
+      fixture_schedule_changes: {
+        Row: {
+          detected_at: string
+          direction_swapped: boolean
+          fixture_id: number
+          id: number
+          kickoff_delta_seconds: number | null
+          new_away_team_id: number | null
+          new_home_team_id: number | null
+          new_kickoff_at: string | null
+          new_status: string | null
+          previous_away_team_id: number | null
+          previous_home_team_id: number | null
+          previous_kickoff_at: string | null
+          previous_status: string | null
+          source: string
+        }
+        Insert: {
+          detected_at?: string
+          direction_swapped?: boolean
+          fixture_id: number
+          id?: never
+          kickoff_delta_seconds?: number | null
+          new_away_team_id?: number | null
+          new_home_team_id?: number | null
+          new_kickoff_at?: string | null
+          new_status?: string | null
+          previous_away_team_id?: number | null
+          previous_home_team_id?: number | null
+          previous_kickoff_at?: string | null
+          previous_status?: string | null
+          source?: string
+        }
+        Update: {
+          detected_at?: string
+          direction_swapped?: boolean
+          fixture_id?: number
+          id?: never
+          kickoff_delta_seconds?: number | null
+          new_away_team_id?: number | null
+          new_home_team_id?: number | null
+          new_kickoff_at?: string | null
+          new_status?: string | null
+          previous_away_team_id?: number | null
+          previous_home_team_id?: number | null
+          previous_kickoff_at?: string | null
+          previous_status?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
       fixtures: {
         Row: {
           created_at: string | null
           date: string
           id: number
+          last_rescheduled_at: string | null
           league_id: number | null
+          original_kickoff_at: string | null
           status: string | null
           teams_away: Json
           teams_home: Json
@@ -646,7 +699,9 @@ export type Database = {
           created_at?: string | null
           date: string
           id: number
+          last_rescheduled_at?: string | null
           league_id?: number | null
+          original_kickoff_at?: string | null
           status?: string | null
           teams_away: Json
           teams_home: Json
@@ -657,7 +712,9 @@ export type Database = {
           created_at?: string | null
           date?: string
           id?: number
+          last_rescheduled_at?: string | null
           league_id?: number | null
+          original_kickoff_at?: string | null
           status?: string | null
           teams_away?: Json
           teams_home?: Json
@@ -2540,11 +2597,14 @@ export type Database = {
       ticket_leg_outcomes: {
         Row: {
           actual_value: number | null
+          away_team_id_snapshot: number | null
           created_at: string
           derived_from_selection: boolean
           fixture_id: number
+          home_team_id_snapshot: number | null
           id: string
           kickoff_at: string | null
+          kickoff_drift_seconds: number | null
           league_id: number | null
           line: number
           market: string
@@ -2559,6 +2619,9 @@ export type Database = {
           selection: string
           selection_key: string
           settled_at: string | null
+          settlement_held_at: string | null
+          settlement_hold_reason: string | null
+          settlement_policy_version: string | null
           side: string
           source: string
           ticket_id: string
@@ -2566,11 +2629,14 @@ export type Database = {
         }
         Insert: {
           actual_value?: number | null
+          away_team_id_snapshot?: number | null
           created_at?: string
           derived_from_selection?: boolean
           fixture_id: number
+          home_team_id_snapshot?: number | null
           id?: string
           kickoff_at?: string | null
+          kickoff_drift_seconds?: number | null
           league_id?: number | null
           line: number
           market: string
@@ -2585,6 +2651,9 @@ export type Database = {
           selection: string
           selection_key: string
           settled_at?: string | null
+          settlement_held_at?: string | null
+          settlement_hold_reason?: string | null
+          settlement_policy_version?: string | null
           side: string
           source?: string
           ticket_id: string
@@ -2592,11 +2661,14 @@ export type Database = {
         }
         Update: {
           actual_value?: number | null
+          away_team_id_snapshot?: number | null
           created_at?: string
           derived_from_selection?: boolean
           fixture_id?: number
+          home_team_id_snapshot?: number | null
           id?: string
           kickoff_at?: string | null
+          kickoff_drift_seconds?: number | null
           league_id?: number | null
           line?: number
           market?: string
@@ -2611,6 +2683,9 @@ export type Database = {
           selection?: string
           selection_key?: string
           settled_at?: string | null
+          settlement_held_at?: string | null
+          settlement_hold_reason?: string | null
+          settlement_policy_version?: string | null
           side?: string
           source?: string
           ticket_id?: string
@@ -3255,6 +3330,21 @@ export type Database = {
       }
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
+      evaluate_leg_hold: {
+        Args: {
+          p_fixture_kickoff: string
+          p_fx_away_id: number
+          p_fx_away_name: string
+          p_fx_home_id: number
+          p_fx_home_name: string
+          p_leg_away_id: number
+          p_leg_away_name: string
+          p_leg_home_id: number
+          p_leg_home_name: string
+          p_leg_kickoff: string
+        }
+        Returns: string
+      }
       fail_stripe_webhook_event: {
         Args: { p_error: string; p_event_id: string }
         Returns: undefined
@@ -3352,8 +3442,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      hold_unsafe_pending_legs: {
+        Args: { p_batch_limit?: number }
+        Returns: {
+          alerts_recorded: number
+          held_fixtures: number
+          held_legs: number
+        }[]
+      }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      normalize_team_name: { Args: { p_name: string }; Returns: string }
       persist_generated_ticket: {
         Args: {
           p_leg_outcomes: Json

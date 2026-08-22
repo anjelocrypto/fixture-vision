@@ -47,6 +47,8 @@ import {
   loadGreenPolicy,
 } from "../_shared/green_policy.ts";
 import { readJsonWithLimit, RequestBodyTooLargeError } from "../_shared/request.ts";
+import { SETTLEMENT_POLICY_VERSION } from "../_shared/settlement_safety.ts";
+
 import { 
   loadPerformanceWeights, 
   areWeightsLoaded,
@@ -1314,17 +1316,29 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   const persistenceFixtureIds = [...new Set(ticket.legs.map((leg: TicketLeg) => leg.fixtureId))];
   const { data: fixturesData, error: fixturesLookupError } = await supabase
     .from("fixtures")
-    .select("id, league_id, timestamp")
+    .select("id, league_id, timestamp, teams_home, teams_away")
     .in("id", persistenceFixtureIds);
   if (fixturesLookupError) throw fixturesLookupError;
 
-  const fixtureMap = new Map<number, { league_id: number | null; kickoff_at: string | null }>();
+  const toTeamId = (team: unknown): number | null => {
+    const raw = (team as { id?: unknown } | null)?.id;
+    const parsed = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const fixtureMap = new Map<
+    number,
+    { league_id: number | null; kickoff_at: string | null; home_team_id: number | null; away_team_id: number | null }
+  >();
   for (const fixture of fixturesData || []) {
     fixtureMap.set(fixture.id, {
       league_id: fixture.league_id,
       kickoff_at: fixture.timestamp ? new Date(fixture.timestamp * 1000).toISOString() : null,
+      home_team_id: toTeamId(fixture.teams_home),
+      away_team_id: toTeamId(fixture.teams_away),
     });
   }
+
 
   const pickedAt = new Date().toISOString();
   const legOutcomes = (ticket.legs as TicketLeg[]).map((leg) => {
@@ -1353,8 +1367,29 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       kickoff_at: fixtureInfo.kickoff_at || (leg.start ? new Date(leg.start).toISOString() : null),
       derived_from_selection: derivedFromSelection,
       model_prob: leg.modelProb ?? null,
+      // Directional identity snapshot: provider team IDs are the primary
+      // identity check at settlement time. Names remain in ticket JSON for
+      // display only.
+      home_team_id_snapshot: fixtureInfo.home_team_id,
+      away_team_id_snapshot: fixtureInfo.away_team_id,
+      settlement_policy_version: SETTLEMENT_POLICY_VERSION,
     };
   });
+
+  // Enrich the human-readable ticket JSON with provider identity as well,
+  // without removing the display names.
+  const ticketLegsWithIdentity = (ticket.legs as TicketLeg[]).map((leg) => {
+    const fixtureInfo = fixtureMap.get(leg.fixtureId);
+    return {
+      ...leg,
+      homeTeamId: fixtureInfo?.home_team_id ?? null,
+      awayTeamId: fixtureInfo?.away_team_id ?? null,
+      leagueId: fixtureInfo?.league_id ?? null,
+      pickKickoffUtc: fixtureInfo?.kickoff_at ?? null,
+      settlementPolicyVersion: SETTLEMENT_POLICY_VERSION,
+    };
+  });
+
 
   const optimizerCacheRows = (ticket.legs as TicketLeg[]).map((leg) => ({
     fixture_id: leg.fixtureId,
@@ -1376,7 +1411,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
         min_target: minOdds,
         max_target: maxOdds,
         used_live: usedLive && !fallbackToPrematch,
-        legs: ticket.legs,
+        legs: ticketLegsWithIdentity,
         ticket_mode: ticketMode,
         ticket_model_prob: ticketModelProb,
       },
