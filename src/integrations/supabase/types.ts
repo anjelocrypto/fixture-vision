@@ -519,6 +519,39 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_usage_reservations: {
+        Row: {
+          created_at: string
+          expires_at: string
+          feature_key: string
+          finalized_at: string | null
+          id: string
+          reserved_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          feature_key: string
+          finalized_at?: string | null
+          id?: string
+          reserved_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          feature_key?: string
+          finalized_at?: string | null
+          id?: string
+          reserved_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       fixture_results: {
         Row: {
           cards_away: number | null
@@ -2917,6 +2950,14 @@ export type Database = {
         Args: { p_event_id: string }
         Returns: undefined
       }
+      consume_rate_limit: {
+        Args: { p_feature: string; p_max_per_minute: number; p_user_id: string }
+        Returns: {
+          allowed: boolean
+          current_count: number
+          retry_after_seconds: number
+        }[]
+      }
       create_profile_with_username: {
         Args: { p_username: string }
         Returns: Json
@@ -2926,6 +2967,13 @@ export type Database = {
       fail_stripe_webhook_event: {
         Args: { p_error: string; p_event_id: string }
         Returns: undefined
+      }
+      finalize_feature_use: {
+        Args: { p_reservation_id: string }
+        Returns: {
+          consumed: boolean
+          remaining_uses: number
+        }[]
       }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
@@ -3006,6 +3054,19 @@ export type Database = {
       }
       prune_operational_logs: { Args: never; Returns: Json }
       release_cron_lock: { Args: { p_job_name: string }; Returns: undefined }
+      release_feature_use: {
+        Args: { p_reservation_id: string }
+        Returns: boolean
+      }
+      reserve_feature_use: {
+        Args: { p_feature_key: string }
+        Returns: {
+          allowed: boolean
+          reason: string
+          remaining_uses: number
+          reservation_id: string
+        }[]
+      }
       resolve_market: {
         Args: {
           _admin_user_id?: string
