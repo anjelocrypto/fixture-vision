@@ -1314,17 +1314,29 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   const persistenceFixtureIds = [...new Set(ticket.legs.map((leg: TicketLeg) => leg.fixtureId))];
   const { data: fixturesData, error: fixturesLookupError } = await supabase
     .from("fixtures")
-    .select("id, league_id, timestamp")
+    .select("id, league_id, timestamp, teams_home, teams_away")
     .in("id", persistenceFixtureIds);
   if (fixturesLookupError) throw fixturesLookupError;
 
-  const fixtureMap = new Map<number, { league_id: number | null; kickoff_at: string | null }>();
+  const toTeamId = (team: unknown): number | null => {
+    const raw = (team as { id?: unknown } | null)?.id;
+    const parsed = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const fixtureMap = new Map<
+    number,
+    { league_id: number | null; kickoff_at: string | null; home_team_id: number | null; away_team_id: number | null }
+  >();
   for (const fixture of fixturesData || []) {
     fixtureMap.set(fixture.id, {
       league_id: fixture.league_id,
       kickoff_at: fixture.timestamp ? new Date(fixture.timestamp * 1000).toISOString() : null,
+      home_team_id: toTeamId(fixture.teams_home),
+      away_team_id: toTeamId(fixture.teams_away),
     });
   }
+
 
   const pickedAt = new Date().toISOString();
   const legOutcomes = (ticket.legs as TicketLeg[]).map((leg) => {
