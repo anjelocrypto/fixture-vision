@@ -136,7 +136,7 @@ Deno.serve(async (req: Request) => {
     const uniqueFixtures7d = new Set(fixtures7d.data?.map((r: any) => r.fixture_id) || []).size;
 
     let selectionsStatus: "OK" | "WARNING" | "CRITICAL" = "OK";
-    let autoTriggered = false;
+    const autoTriggered = false;
     const sel48hWithOddsCount = sel48hOdds.count ?? 0;
     
     if (sel48hWithOddsCount < MIN_SELECTIONS_48H_WITH_ODDS) {

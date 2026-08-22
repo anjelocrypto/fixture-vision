@@ -200,7 +200,7 @@ serve(async (req) => {
     }
 
     // Fetch optimized_selections for enrichment (combined_snapshot, rules_version, etc.)
-    let selectionsMap = new Map();
+    const selectionsMap = new Map();
     if (fixtureIds.length > 0) {
       const { data: selections } = await supabase
         .from('optimized_selections')

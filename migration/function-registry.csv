@@ -31,6 +31,7 @@ debug-league-coverage,true,admin_jwt,hold,debug utility
 debug-team-stats,true,admin_jwt,hold,debug utility and provider calls
 demo-fixtures,false,public_rate_limited,deploy,fixed public demo allowlist
 export-users,true,admin_or_service,hold,migration-only PII export
+export-my-data,true,user_jwt,deploy,self-service personal data export
 extend-subscriptions,false,cron_or_admin,hold,expired one-off billing repair
 fetch-fixtures,false,cron_or_admin,deploy_no_schedule,provider worker
 fetch-leagues,true,user_jwt,deploy,user catalog endpoint
@@ -62,6 +63,7 @@ populate-winner-outcomes,false,cron_or_admin,deploy_no_schedule,derived-data wor
 rebuild-green-buckets,false,cron_or_admin,hold,manual rebuild
 reconcile-entitlements,false,cron_or_admin,deploy_no_schedule,billing reconciliation
 restore-purchase,true,user_jwt,deploy,billing recovery endpoint
+request-account-deletion,true,user_jwt,deploy,tracked privacy deletion request
 results-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
 safe-zone,false,entitled_user,deploy,premium user endpoint
 safe-zone-chat,true,entitled_user,deploy,premium AI endpoint
@@ -75,6 +77,7 @@ stats-refresh,false,cron_or_admin,deploy_no_schedule,provider worker
 stats-turbo-backfill,false,cron_or_admin,hold,manual high-cost backfill
 stripe-webhook,false,stripe_signature,deploy,billing webhook
 sync-injuries,false,cron_or_admin,deploy_no_schedule,provider worker
+sync-football-rosters,false,cron_or_admin,deploy_no_schedule,authoritative roster provider worker with explicit quota confirmation
 sync-player-importance,false,cron_or_admin,deploy_no_schedule,provider worker
 team-totals-refresh,false,cron_or_admin,deploy_no_schedule,derived-data worker
 test-h2h,true,admin_jwt,hold,test utility and provider calls

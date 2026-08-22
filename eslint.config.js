@@ -19,16 +19,18 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // Shadcn UI and context modules intentionally colocate components with
+      // variants/hooks. This affects development HMR only, not production.
+      "react-refresh/only-export-components": "off",
       "@typescript-eslint/no-unused-vars": "off",
       // The imported Lovable codebase has hundreds of intentionally untyped
       // Supabase/API payloads. Keep lint usable while those boundaries are
       // migrated to generated types incrementally.
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/ban-ts-comment": "warn",
-      "@typescript-eslint/no-empty-object-type": "warn",
-      "@typescript-eslint/no-require-imports": "warn",
-      "prefer-const": "warn",
+      "@typescript-eslint/ban-ts-comment": "error",
+      "@typescript-eslint/no-empty-object-type": "error",
+      "@typescript-eslint/no-require-imports": "error",
+      "prefer-const": "error",
     },
   },
 );

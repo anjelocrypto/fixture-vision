@@ -421,13 +421,17 @@ serve(async (req) => {
           );
 
           if (applied) {
-            // Alert on webhook-driven downgrade for monitoring
-            await supabase.from("pipeline_alerts").insert({
-              alert_type: "billing_downgrade",
-              severity: "info",
-              message: `User ${userId} downgraded to free via ${event.type} (period expired)`,
-              details: { user_id: userId, event_type: event.type, event_id: event.id },
+            // Keep a resolved operational record without leaving a healthy
+            // billing lifecycle event in the open-alert queue.
+            const fingerprint = `billing:downgrade:${userId}`;
+            await supabase.rpc("record_pipeline_alert", {
+              p_fingerprint: fingerprint,
+              p_alert_type: "billing_downgrade",
+              p_severity: "info",
+              p_message: `Subscription access ended after its paid period`,
+              p_details: { user_id: userId, event_type: event.type, event_id: event.id },
             });
+            await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
           }
         }
         break;

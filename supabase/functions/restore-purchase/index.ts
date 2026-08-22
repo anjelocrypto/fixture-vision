@@ -146,13 +146,15 @@ serve(async (req) => {
 
     console.log(`${LOG} ✅ Restored access for user ${user.id} (${plan}, until ${periodEnd})`);
 
-    // Alert for monitoring
-    await supabase.from("pipeline_alerts").insert({
-      alert_type: "purchase_restored",
-      severity: "info",
-      message: `User ${user.id} restored purchase (${plan})`,
-      details: { user_id: user.id, plan, subscription_id: sub.id, previous: existing },
+    const fingerprint = `billing:purchase-restored:${user.id}`;
+    await supabase.rpc("record_pipeline_alert", {
+      p_fingerprint: fingerprint,
+      p_alert_type: "purchase_restored",
+      p_severity: "info",
+      p_message: "A verified Stripe purchase restored account access",
+      p_details: { user_id: user.id, plan, subscription_id: sub.id, previous: existing },
     });
+    await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
 
     return new Response(
       JSON.stringify({ restored: true, plan, current_period_end: periodEnd }),

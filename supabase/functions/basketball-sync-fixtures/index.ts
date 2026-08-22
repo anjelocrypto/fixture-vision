@@ -8,6 +8,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBasketballSeason, type BasketballProvider } from "../_shared/basketball_season.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,15 +20,16 @@ const BASKETBALL_BASE = "https://v1.basketball.api-sports.io";
 
 // Supported leagues configuration
 const SUPPORTED_LEAGUES = {
-  nba: { id: 12, api: "nba", season: "2024" },
-  nba_gleague: { id: 20, api: "nba", season: "2024" },
-  euroleague: { id: 120, api: "basketball", season: "2024-2025" },
-  eurocup: { id: 121, api: "basketball", season: "2024-2025" },
-  spain_acb: { id: 117, api: "basketball", season: "2024-2025" },
-  germany_bbl: { id: 43, api: "basketball", season: "2024-2025" },
-  italy_lba: { id: 82, api: "basketball", season: "2024-2025" },
-  france_prob: { id: 40, api: "basketball", season: "2024-2025" },
-};
+  nba: { id: 12, api: "nba", seasonStartMonth: 9 },
+  nba_gleague: { id: 20, api: "nba", seasonStartMonth: 10 },
+  euroleague: { id: 120, api: "basketball", seasonStartMonth: 9 },
+  eurocup: { id: 121, api: "basketball", seasonStartMonth: 9 },
+  spain_acb: { id: 117, api: "basketball", seasonStartMonth: 9 },
+  germany_bbl: { id: 43, api: "basketball", seasonStartMonth: 9 },
+  italy_lba: { id: 82, api: "basketball", seasonStartMonth: 9 },
+  france_prob: { id: 40, api: "basketball", seasonStartMonth: 9 },
+} as const;
+type SupportedLeagueKey = keyof typeof SUPPORTED_LEAGUES;
 
 interface UpsertedTeam {
   id: number;
@@ -88,8 +90,21 @@ serve(async (req) => {
 
     // Parse request body - PRO PLAN: Can process all leagues frequently
     const body = await req.json().catch(() => ({}));
-    const windowHours = body.window_hours || 72; // Extend to 72h for better coverage
-    const targetLeagues = body.leagues || Object.keys(SUPPORTED_LEAGUES);
+    const windowHours = Math.min(Math.max(Number(body.window_hours) || 72, 1), 168);
+    const requestedLeagues: unknown[] = Array.isArray(body.leagues)
+      ? body.leagues
+      : Object.keys(SUPPORTED_LEAGUES);
+    const targetLeagues: SupportedLeagueKey[] = requestedLeagues
+      .filter((league: unknown): league is SupportedLeagueKey =>
+        typeof league === "string" && league in SUPPORTED_LEAGUES
+      )
+      .slice(0, Object.keys(SUPPORTED_LEAGUES).length);
+    if (targetLeagues.length === 0) {
+      return new Response(JSON.stringify({ error: "No supported leagues requested" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     console.log(`[basketball-sync-fixtures] Window: ${windowHours}h, Leagues: ${targetLeagues.join(", ")}`);
 
@@ -146,6 +161,10 @@ serve(async (req) => {
     for (const leagueKey of targetLeagues) {
       const config = SUPPORTED_LEAGUES[leagueKey as keyof typeof SUPPORTED_LEAGUES];
       if (!config) continue;
+      const season = getBasketballSeason(
+        config.api as BasketballProvider,
+        config.seasonStartMonth,
+      );
 
       console.log(`[basketball-sync-fixtures] Processing ${leagueKey}...`);
 
@@ -190,7 +209,7 @@ serve(async (req) => {
               
               // NBA API returns numeric status: 1=scheduled, 2=in progress, 3=finished
               // Basketball API returns string status: NS, FT, etc.
-              let rawStatus = game.status?.short;
+              const rawStatus = game.status?.short;
               let status: string;
               
               if (isNBA) {
@@ -254,7 +273,7 @@ serve(async (req) => {
                 .upsert({
                   api_game_id: gameId,
                   league_key: leagueKey,
-                  season: config.season,
+                  season,
                   date: gameDate ? new Date(gameDate).toISOString() : new Date().toISOString(),
                   status_short: status,
                   home_team_id: homeTeamId,
@@ -294,6 +313,10 @@ serve(async (req) => {
       details: {
         window_hours: windowHours,
         leagues: targetLeagues,
+        seasons: Object.fromEntries(targetLeagues.map((leagueKey) => {
+          const config = SUPPORTED_LEAGUES[leagueKey];
+          return [leagueKey, getBasketballSeason(config.api, config.seasonStartMonth)];
+        })),
         games_upserted: gamesUpserted,
         teams_upserted: teamsUpserted,
         api_calls: apiCalls,

@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Search, Globe, ChevronRight, Trophy, MapPin, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 interface Country {
   id: number;
@@ -51,18 +51,18 @@ export function LeftRail({
   const [searchQuery, setSearchQuery] = useState("");
   const selectedCountryData = countries.find((c) => c.id === selectedCountry);
 
-  const getCountryName = (countryName: string) => {
+  const getCountryName = useCallback((countryName: string) => {
     const translationKey = `filters:countries.${countryName}`;
     const translated = t(translationKey);
     return translated !== translationKey ? translated : countryName;
-  };
+  }, [t]);
 
-  const getLeagueName = (leagueName: string) => {
+  const getLeagueName = useCallback((leagueName: string) => {
     const cleanName = leagueName.replace(/^league_names\./, '');
     const translationKey = `filters:league_names.${cleanName}`;
     const translated = t(translationKey);
     return translated !== translationKey ? translated : cleanName;
-  };
+  }, [t]);
 
   const filteredCountries = useMemo(() => {
     if (!searchQuery.trim()) return countries;
@@ -70,13 +70,13 @@ export function LeftRail({
     return countries.filter((country) => 
       getCountryName(country.name).toLowerCase().includes(query)
     );
-  }, [countries, searchQuery]);
+  }, [countries, searchQuery, getCountryName]);
 
   const selectedCountryMatchesSearch = useMemo(() => {
     if (!searchQuery.trim() || !selectedCountryData) return true;
     const query = searchQuery.toLowerCase();
     return getCountryName(selectedCountryData.name).toLowerCase().includes(query);
-  }, [searchQuery, selectedCountryData]);
+  }, [searchQuery, selectedCountryData, getCountryName]);
 
   const filteredLeagues = useMemo(() => {
     if (!searchQuery.trim()) return leagues;
@@ -85,7 +85,7 @@ export function LeftRail({
     return leagues.filter((league) => 
       getLeagueName(league.name).toLowerCase().includes(query)
     );
-  }, [leagues, searchQuery, selectedCountryMatchesSearch]);
+  }, [leagues, searchQuery, selectedCountryMatchesSearch, getLeagueName]);
 
   return (
     <div className="w-full sm:w-[280px] border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col h-full">

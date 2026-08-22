@@ -102,6 +102,9 @@ verify_jwt = false
 [functions.sync-player-importance]
 verify_jwt = false
 
+[functions.sync-football-rosters]
+verify_jwt = false
+
 [functions.stats-health-check]
 verify_jwt = false
 
@@ -250,6 +253,12 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.export-users]
+verify_jwt = true
+
+[functions.export-my-data]
+verify_jwt = true
+
+[functions.request-account-deletion]
 verify_jwt = true
 
 [functions.reconcile-entitlements]

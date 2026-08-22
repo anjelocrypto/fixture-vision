@@ -204,4 +204,53 @@ CREATE TABLE public.pipeline_alerts (
   resolved_by text
 );
 
+CREATE TABLE public.prediction_markets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by uuid NOT NULL REFERENCES auth.users(id)
+);
+
+CREATE TABLE public.admin_market_audit_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_user_id uuid NOT NULL REFERENCES auth.users(id)
+);
+
+CREATE TABLE public.profiles (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE public.user_roles (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE public.user_tickets (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  ticket jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE public.analytics_events (
+  id bigserial PRIMARY KEY,
+  user_id uuid
+);
+
+CREATE TABLE public.market_coins (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE public.market_positions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE public.market_leaderboard_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+INSERT INTO public.pipeline_alerts (alert_type, severity, message, details)
+VALUES
+  ('legacy_duplicate', 'warning', 'same historical incident', '{"source":"fixture"}'),
+  ('legacy_duplicate', 'warning', 'same historical incident', '{"source":"fixture"}'),
+  ('backfill_stalled', 'warning', 'Backfill stalled with 20 missing', '{"missing":20}'),
+  ('backfill_stalled', 'warning', 'Backfill stalled with 30 missing', '{"missing":30}');
+
 INSERT INTO auth.users (id) VALUES ('00000000-0000-0000-0000-000000000001');

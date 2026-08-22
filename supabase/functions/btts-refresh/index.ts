@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 /**
  * BTTS Refresh Edge Function
@@ -45,7 +46,7 @@ serve(async (req) => {
   const startTime = Date.now();
   let teamsProcessed = 0;
   let leaguesProcessed = 0;
-  let errors: string[] = [];
+  const errors: string[] = [];
 
   try {
     // Authenticate: accept cron key or service role
@@ -75,15 +76,7 @@ serve(async (req) => {
     lookbackDate.setMonth(lookbackDate.getMonth() - LOOKBACK_MONTHS);
     const lookbackDateStr = lookbackDate.toISOString().split("T")[0];
 
-    const now = new Date();
-    // Fix: If we're before August, the current season started LAST year
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth(); // 0-indexed, so Jan=0, Aug=7
-    const seasonYear = month >= 7 ? year : year - 1;
-    const seasonStartDate = new Date(Date.UTC(seasonYear, 7, 1)); // Aug = 7
-    const currentSeasonDateStr = seasonStartDate.toISOString().split("T")[0];
-    
-    console.log(`[btts-refresh] Season year: ${seasonYear}, season start: ${currentSeasonDateStr}, lookback: ${lookbackDateStr}`);
+    console.log(`[btts-refresh] Lookback: ${lookbackDateStr}`);
 
     // Process each league
     const allMetrics: any[] = [];
@@ -92,26 +85,27 @@ serve(async (req) => {
       try {
         console.log(`[btts-refresh] Processing league ${leagueId} (${SUPPORTED_LEAGUES[leagueId].name})`);
 
-        // Get teams in current season
-        const { data: currentFixtures } = await supabase
-          .from("fixtures")
-          .select("teams_home, teams_away")
+        const season = getFootballSeasonForLeague(leagueId);
+        const { data: roster, error: rosterError } = await supabase
+          .from("football_league_teams")
+          .select("team_id, team_name")
           .eq("league_id", leagueId)
-          .gte("date", currentSeasonDateStr)
-          .limit(1000);
+          .eq("season", season)
+          .eq("active", true)
+          .limit(100);
+
+        if (rosterError) {
+          errors.push(`League ${leagueId}: roster query failed: ${rosterError.message}`);
+          continue;
+        }
 
         const currentSeasonTeams = new Map<number, string>();
-        for (const f of currentFixtures || []) {
-          const homeId = parseInt(String(f.teams_home?.id));
-          const awayId = parseInt(String(f.teams_away?.id));
-          const homeName = f.teams_home?.name || `Team ${homeId}`;
-          const awayName = f.teams_away?.name || `Team ${awayId}`;
-          if (!isNaN(homeId)) currentSeasonTeams.set(homeId, homeName);
-          if (!isNaN(awayId)) currentSeasonTeams.set(awayId, awayName);
+        for (const team of roster ?? []) {
+          currentSeasonTeams.set(Number(team.team_id), team.team_name);
         }
 
         if (currentSeasonTeams.size === 0) {
-          console.log(`[btts-refresh] No current season teams for league ${leagueId}`);
+          errors.push(`League ${leagueId}: authoritative roster missing for season ${season}`);
           continue;
         }
 

@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
 
     // Fetch all settled legs in last 5 months
     // Deterministic ordering to prevent page skips/duplicates
-    let allLegs: any[] = [];
+    const allLegs: any[] = [];
     let from = 0;
     const pageSize = 1000;
     let hasMore = true;

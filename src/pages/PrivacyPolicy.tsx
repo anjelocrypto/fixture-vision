@@ -21,7 +21,7 @@ const PrivacyPolicy = () => {
           <article className="prose prose-slate dark:prose-invert max-w-none">
             <header className="mb-8">
               <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
-              <p className="text-muted-foreground">Last updated: October 31, 2025</p>
+              <p className="text-muted-foreground">Last updated: August 22, 2026</p>
             </header>
 
             <section id="overview">
@@ -109,6 +109,7 @@ const PrivacyPolicy = () => {
             <section id="your-rights">
               <h2 className="text-2xl font-semibold mt-8 mb-4">9. Your rights</h2>
               <p>Depending on your location, you may have rights to access, correct, delete, or port your data, and to object to or restrict certain processing. To exercise rights, contact support@ticketai.bet. We will verify requests and respond within applicable timelines.</p>
+              <p>You can download a portable copy of your account data or submit an account-deletion request from Account → Privacy &amp; data. Certain billing or legal records may be retained where required by law.</p>
             </section>
 
             <section id="children">

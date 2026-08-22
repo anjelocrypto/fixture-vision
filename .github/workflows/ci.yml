@@ -12,10 +12,26 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       VITE_SUPABASE_URL: http://127.0.0.1:54321
       VITE_SUPABASE_PUBLISHABLE_KEY: test-publishable-key
       VITE_SUPABASE_PROJECT_ID: local-test
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
 
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +68,6 @@ jobs:
 
       - name: Supabase configuration and migration safety
         run: node scripts/verify-supabase-safety.mjs
+
+      - name: Phase 3 migration and billing safety
+        run: scripts/verify-live-phase3-migrations.sh

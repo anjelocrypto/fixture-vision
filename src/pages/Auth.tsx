@@ -13,6 +13,7 @@ import { Loader2, Mail, Check, X, AtSign } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useTranslation } from "react-i18next";
 import { useUsername } from "@/hooks/useUsername";
+import { signupLegalAttestation } from "@/lib/legal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +84,7 @@ export default function Auth() {
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
+          data: signupLegalAttestation(),
         },
       });
 
@@ -249,7 +251,6 @@ export default function Auth() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={loading}
-                        minLength={10}
                       />
                     </div>
                     <Button type="submit" className="w-full" disabled={loading}>
@@ -316,7 +317,7 @@ export default function Auth() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={loading}
-                        minLength={10}
+                        minLength={12}
                       />
                       <p className="text-xs text-muted-foreground">
                         {t('common:password_min_length')}

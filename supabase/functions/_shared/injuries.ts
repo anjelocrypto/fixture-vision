@@ -54,7 +54,7 @@ export async function fetchLeagueInjuries(
   console.log(`[injuries] API-Football returned ${injuries.length} injuries for league ${leagueId}`);
   
   // Normalize to our schema
-  let processedCount = 0;
+  const processedCount = 0;
   const normalized: PlayerInjury[] = injuries
     .filter((injury: any) => {
       // Filter for relevant injury/suspension statuses

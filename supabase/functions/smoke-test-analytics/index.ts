@@ -14,7 +14,7 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getFootballSeasonStartForLeagueUtc } from "../_shared/season.ts";
+import { getFootballSeasonForLeague } from "../_shared/season.ts";
 
 interface LeagueExpectation {
   league_id: number;
@@ -114,21 +114,18 @@ Deno.serve(async (req: Request) => {
       console.log(`[smoke-test] Testing ${expectation.league_name} (${expectation.league_id})...`);
 
       const leagueErrors: string[] = [];
-      const seasonStart = new Date(getFootballSeasonStartForLeagueUtc(expectation.league_id));
-      const seasonStartTimestamp = Math.floor(seasonStart.getTime() / 1000);
-      const { data: fixtures, error: fixturesError } = await supabase
-        .from("fixtures")
-        .select("teams_home, teams_away")
+      const season = getFootballSeasonForLeague(expectation.league_id);
+      const { data: roster, error: rosterError } = await supabase
+        .from("football_league_teams")
+        .select("team_id")
         .eq("league_id", expectation.league_id)
-        .gte("timestamp", seasonStartTimestamp)
-        .limit(1000);
-      if (fixturesError) leagueErrors.push(`fixtures_query:${fixturesError.code ?? "error"}`);
+        .eq("season", season)
+        .eq("active", true)
+        .limit(100);
+      if (rosterError) leagueErrors.push(`roster_query:${rosterError.code ?? "error"}`);
 
-      const teamIds = new Set<number>();
-      for (const fixture of fixtures ?? []) {
-        if (fixture.teams_home?.id) teamIds.add(Number(fixture.teams_home.id));
-        if (fixture.teams_away?.id) teamIds.add(Number(fixture.teams_away.id));
-      }
+      const teamIds = new Set<number>((roster ?? []).map((team) => Number(team.team_id)));
+      if (teamIds.size === 0) leagueErrors.push("authoritative_roster_missing");
 
       let freshStatsCount = 0;
       if (teamIds.size > 0) {
@@ -170,7 +167,7 @@ Deno.serve(async (req: Request) => {
           p_alert_type: "analytics_core_health",
           p_severity: "critical",
           p_message: `Analytics core health failed for league ${expectation.league_id}`,
-          p_details: { roster_count: teamIds.size, expected_range: [expectedMin, expectedMax], coverage_pct: coveragePct, errors: leagueErrors },
+          p_details: { season, roster_source: "api-football", roster_count: teamIds.size, expected_range: [expectedMin, expectedMax], coverage_pct: coveragePct, errors: leagueErrors },
         });
       } else {
         await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });

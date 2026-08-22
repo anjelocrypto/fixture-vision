@@ -10,7 +10,7 @@ import { useAccess } from "@/hooks/useAccess";
 import { useUsername } from "@/hooks/useUsername";
 import {
   ArrowLeft, CreditCard, RefreshCw, Sparkles, Check, ChevronDown, ChevronUp,
-  XCircle, AtSign, Loader2, X, AlertCircle, User, Crown, Zap, Shield
+  XCircle, AtSign, Loader2, X, AlertCircle, User, Crown, Zap, Shield, Download, Trash2
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -71,6 +71,9 @@ const Account = () => {
   const [user, setUser] = useState<any>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [privacyLoading, setPrivacyLoading] = useState<"export" | "delete" | null>(null);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
+  const [deletionRequested, setDeletionRequested] = useState(false);
 
   const {
     username: newUsername, isValid: newUsernameValid, isAvailable: newUsernameAvailable,
@@ -185,6 +188,57 @@ const Account = () => {
       setNewUsername("");
     } else {
       toast({ title: "Failed to update username", description: result.error, variant: "destructive" });
+    }
+  };
+
+  const handleExportMyData = async () => {
+    setPrivacyLoading("export");
+    try {
+      const { data, error } = await supabase.functions.invoke("export-my-data", { body: {} });
+      if (error || !data) throw error ?? new Error("Export returned no data");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ticket-ai-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Data export ready", description: "Your Ticket AI data was downloaded as JSON." });
+    } catch (error: any) {
+      toast({
+        title: "Export failed",
+        description: error?.message ?? "We could not create a complete export.",
+        variant: "destructive",
+      });
+    } finally {
+      setPrivacyLoading(null);
+    }
+  };
+
+  const handleDeletionRequest = async () => {
+    if (deletionConfirmation !== "DELETE MY ACCOUNT") return;
+    setPrivacyLoading("delete");
+    try {
+      const { data, error } = await supabase.functions.invoke("request-account-deletion", {
+        body: { confirmation: deletionConfirmation },
+      });
+      if (error || !data?.request_id) throw error ?? new Error("Deletion request was not recorded");
+      setDeletionRequested(true);
+      setDeletionConfirmation("");
+      toast({
+        title: "Deletion request recorded",
+        description: "Cancel active billing if needed. Support will verify and complete the request.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Request failed",
+        description: error?.message ?? "We could not record the deletion request.",
+        variant: "destructive",
+      });
+    } finally {
+      setPrivacyLoading(null);
     }
   };
 
@@ -461,6 +515,75 @@ const Account = () => {
                     </Button>
                   </div>
                 )}
+              </div>
+            </motion.section>
+
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.15 }}
+              className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden"
+            >
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-muted/30">
+                <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center">
+                  <Shield className="h-4 w-4 text-primary" />
+                </div>
+                <h2 className="font-semibold text-base">Privacy &amp; data</h2>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Download a portable copy of your account data or submit a verified deletion request.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={handleExportMyData}
+                  disabled={privacyLoading !== null}
+                >
+                  {privacyLoading === "export" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Download my data
+                </Button>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-destructive hover:text-destructive"
+                      disabled={privacyLoading !== null || deletionRequested}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {deletionRequested ? "Deletion request pending" : "Request account deletion"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Request permanent account deletion?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Download your data first. Active Stripe subscriptions must be canceled before deletion can be completed. Type DELETE MY ACCOUNT below to record the request.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Input
+                      value={deletionConfirmation}
+                      onChange={(event) => setDeletionConfirmation(event.target.value)}
+                      placeholder="DELETE MY ACCOUNT"
+                      autoComplete="off"
+                    />
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={() => setDeletionConfirmation("")}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeletionRequest}
+                        disabled={deletionConfirmation !== "DELETE MY ACCOUNT" || privacyLoading === "delete"}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {privacyLoading === "delete" ? "Submitting…" : "Submit deletion request"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </motion.section>
 

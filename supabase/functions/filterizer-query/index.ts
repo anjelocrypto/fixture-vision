@@ -270,10 +270,8 @@ serve(async (req) => {
       .lte("utc_kickoff", endDate.toISOString());
     if (!allLeagues) {
       if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-        // @ts-ignore
         baseScoped = (baseScoped as any).in("league_id", scopeLeagueIds);
       } else if (countryCode) {
-        // @ts-ignore
         baseScoped = (baseScoped as any).eq("country_code", countryCode);
       }
     }
@@ -293,10 +291,8 @@ serve(async (req) => {
       .lte("line", line + 0.01);
     if (!allLeagues) {
       if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-        // @ts-ignore
         marketScope = (marketScope as any).in("league_id", scopeLeagueIds);
       } else if (countryCode) {
-        // @ts-ignore
         marketScope = (marketScope as any).eq("country_code", countryCode);
       }
     }
@@ -318,10 +314,8 @@ serve(async (req) => {
       .lte("odds", effectiveMaxOdds);
     if (!allLeagues) {
       if (scopeLeagueIds && scopeLeagueIds.length > 0) {
-        // @ts-ignore
         oddsScope = (oddsScope as any).in("league_id", scopeLeagueIds);
       } else if (countryCode) {
-        // @ts-ignore
         oddsScope = (oddsScope as any).eq("country_code", countryCode);
       }
     }

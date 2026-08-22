@@ -38,7 +38,7 @@ export default function ResetPassword() {
       return;
     }
 
-    if (newPassword.length < 10) {
+    if (newPassword.length < 12) {
       toast({
         title: t('common:error'),
         description: t('common:password_min_length'),
@@ -135,7 +135,7 @@ export default function ResetPassword() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   disabled={loading}
-                  minLength={10}
+                  minLength={12}
                 />
               </div>
               <div className="space-y-2">
@@ -147,7 +147,7 @@ export default function ResetPassword() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={loading}
-                  minLength={10}
+                  minLength={12}
                 />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>

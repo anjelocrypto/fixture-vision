@@ -214,7 +214,7 @@ serve(async (req) => {
 
       console.log(`[hockey-sync-fixtures] → Fetching ${leagueLabel} (id=${leagueId})`);
 
-      let apiData: any[] = [];
+      const apiData: any[] = [];
 
       for (const dateStr of dates) {
         // CRITICAL: include &season= — API returns 0 games without it

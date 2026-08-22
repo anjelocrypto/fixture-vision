@@ -131,7 +131,8 @@ Deno.serve(async (req) => {
   let force = false;
   
   // Track state for finally block
-  let lockAcquired = false;
+  let lockToken: string | null = null;
+  let statsClaimToken: string | null = null;
   let supabase: any = null;
   let windowStart: Date | null = null;
   let windowEnd: Date | null = null;
@@ -223,7 +224,7 @@ Deno.serve(async (req) => {
     }
 
     // Acquire lock
-    const { data: gotLock, error: lockError } = await supabase.rpc("acquire_cron_lock", {
+    const { data: acquiredToken, error: lockError } = await supabase.rpc("acquire_cron_lease", {
       p_job_name: "stats-refresh",
       p_duration_minutes: 5, // Shorter lock since runs are faster now
     });
@@ -233,7 +234,7 @@ Deno.serve(async (req) => {
       return errorResponse("Failed to acquire lock", origin, 500, req);
     }
 
-    if (!gotLock) {
+    if (!acquiredToken) {
       console.log("[stats-refresh] ⏳ Lock held by another run, exiting");
       return jsonResponse({
         ok: true,
@@ -244,7 +245,7 @@ Deno.serve(async (req) => {
       }, origin, 200, req);
     }
 
-    lockAcquired = true;
+    lockToken = acquiredToken;
     const lockAcquiredAt = Date.now();
     console.log(`[stats-refresh] 🔒 Lock acquired at ${lockAcquiredAt - startedAt}ms`);
 
@@ -359,11 +360,25 @@ Deno.serve(async (req) => {
     }
     const p3Count = teamsToProcess.length - p1Count - p2Count;
 
-    // =========================================================================
-    // SAFE MACHINE MODE v2: Enforce strict team cap
-    // =========================================================================
+    // Persist all candidates before claiming a bounded batch. This prevents a
+    // repeatedly failing early candidate from starving every team behind it.
     const totalCandidates = teamsToProcess.length;
-    teamsToProcess = teamsToProcess.slice(0, MAX_TEAMS_PER_RUN);
+    const queueCandidates = teamsToProcess.map((teamId, index) => ({
+      team_id: teamId,
+      priority: index < p1Count ? 10 : index < p1Count + p2Count ? 20 : 30,
+    }));
+    const { error: enqueueError } = await supabase.rpc("enqueue_team_stats_refresh", {
+      p_candidates: queueCandidates,
+    });
+    if (enqueueError) throw new Error(`stats queue enqueue failed: ${enqueueError.message}`);
+
+    const { data: claimedTeams, error: claimError } = await supabase.rpc(
+      "claim_team_stats_refresh",
+      { p_batch_limit: MAX_TEAMS_PER_RUN },
+    );
+    if (claimError) throw new Error(`stats queue claim failed: ${claimError.message}`);
+    teamsToProcess = (claimedTeams ?? []).map((claim: any) => Number(claim.team_id));
+    statsClaimToken = claimedTeams?.[0]?.claim_token ?? null;
     teamsToProcessCount = teamsToProcess.length;
     
     console.log(`[stats-refresh] ═══════════════════════════════════════════════════`);
@@ -435,10 +450,23 @@ Deno.serve(async (req) => {
           teamTimings.push({ teamId, durationMs: teamTotalMs, attempts, success: false });
           notes.push(`team_${teamId}: upsert_error`);
           console.error(`[stats-refresh] ❌ Team ${teamId}: upsert FAILED (${upsertError.message})`);
+          await supabase.rpc("fail_team_stats_refresh", {
+            p_team_id: teamId,
+            p_claim_token: statsClaimToken,
+            p_error: upsertError.message,
+          });
         } else {
           upserted++;
           teamTimings.push({ teamId, durationMs: teamTotalMs, attempts, success: true });
           console.log(`[stats-refresh] ✅ Team ${teamId}: DONE in ${teamTotalMs}ms (compute=${durationMs}ms, upsert=${upsertDuration}ms)`);
+          const { data: completed, error: completeError } = await supabase.rpc(
+            "complete_team_stats_refresh",
+            { p_team_id: teamId, p_claim_token: statsClaimToken },
+          );
+          if (completeError || completed !== true) {
+            notes.push(`team_${teamId}: queue_completion_failed`);
+            console.error(`[stats-refresh] Queue completion failed for team ${teamId}`, completeError);
+          }
         }
 
       } catch (error: any) {
@@ -448,6 +476,13 @@ Deno.serve(async (req) => {
         const errMsg = error?.message || String(error);
         notes.push(`team_${teamId}: ${errMsg.slice(0, 50)}`);
         console.error(`[stats-refresh] ❌ Team ${teamId}: FAILED after ${teamTotalMs}ms: ${errMsg.slice(0, 100)}`);
+        if (statsClaimToken) {
+          await supabase.rpc("fail_team_stats_refresh", {
+            p_team_id: teamId,
+            p_claim_token: statsClaimToken,
+            p_error: errMsg,
+          });
+        }
       }
     }
 
@@ -602,11 +637,28 @@ Deno.serve(async (req) => {
       console.warn("[stats-refresh] ⚠️ Cannot log run: missing supabase/windowStart/windowEnd");
     }
 
+    if (statsClaimToken && supabase) {
+      const { error: releaseClaimsError } = await supabase.rpc(
+        "release_team_stats_refresh_claims",
+        { p_claim_token: statsClaimToken },
+      );
+      if (releaseClaimsError) {
+        console.error("[stats-refresh] ⚠️ Failed to release unfinished queue claims:", releaseClaimsError);
+      }
+    }
+
     // Release lock if acquired
-    if (lockAcquired && supabase) {
+    if (lockToken && supabase) {
       try {
-        await supabase.rpc("release_cron_lock", { p_job_name: "stats-refresh" });
-        console.log("[stats-refresh] 🔓 Lock released");
+        const { data: released, error: releaseError } = await supabase.rpc("release_cron_lease", {
+          p_job_name: "stats-refresh",
+          p_lock_token: lockToken,
+        });
+        if (releaseError || released !== true) {
+          console.error("[stats-refresh] ⚠️ Failed to release owned lease:", releaseError);
+        } else {
+          console.log("[stats-refresh] 🔓 Lock released");
+        }
       } catch (releaseErr: any) {
         console.error("[stats-refresh] ⚠️ Failed to release lock:", releaseErr.message);
       }

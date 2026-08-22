@@ -156,7 +156,7 @@ Deno.serve(async (req: Request) => {
     
     console.log(`[backfill-fixture-results] Targeting ${targetLeagues.length} leagues`);
 
-    let allApiFixtures: any[] = [];
+    const allApiFixtures: any[] = [];
     let apiCallCount = 0;
 
     // Fetch finished fixtures from API for each league/season combo
@@ -246,7 +246,7 @@ Deno.serve(async (req: Request) => {
     const results: FixtureResultRow[] = [];
     const fixturesForUpsert: any[] = [];
     let inserted = 0;
-    let skipped = 0;
+    const skipped = 0;
     let errors = 0;
 
     console.log(`[backfill-fixture-results] Processing ${fixtures.length} fixtures...`);

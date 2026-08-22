@@ -17,7 +17,7 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
-  const jobName = "fetch-fixtures-admin";
+  const jobName = "fixtures-sync";
   let lockToken: string | null = null;
   let lockClient: any = null;
 

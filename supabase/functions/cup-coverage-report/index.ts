@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     // Get a few teams that play in known bad cups (EFL Trophy, etc.)
     const badCupIds = problematic?.filter(c => c.skip_corners).map(c => c.league_id) || [];
     
-    let exampleImprovements: any[] = [];
+    const exampleImprovements: any[] = [];
     
     if (badCupIds.length > 0) {
       // Find fixtures from bad cups

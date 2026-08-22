@@ -11,17 +11,26 @@ BEGIN
   SELECT string_agg(required_table, ', ' ORDER BY required_table)
   INTO v_missing
   FROM unnest(ARRAY[
+    'admin_market_audit_log',
+    'analytics_events',
     'cron_job_locks',
     'fixture_results',
     'generated_tickets',
     'green_buckets',
+    'market_coins',
+    'market_leaderboard_snapshots',
+    'market_positions',
     'optimized_selections',
     'optimizer_cache',
     'pipeline_alerts',
+    'prediction_markets',
+    'profiles',
     'ticket_leg_outcomes',
     'ticket_outcomes',
     'user_entitlements',
     'user_rate_limits',
+    'user_roles',
+    'user_tickets',
     'user_trial_credits',
     'webhook_events'
   ]) AS required_table
@@ -35,12 +44,19 @@ BEGIN
     VALUES
       ('cron_job_locks', 'job_name'),
       ('cron_job_locks', 'locked_until'),
+      ('admin_market_audit_log', 'admin_user_id'),
+      ('analytics_events', 'user_id'),
       ('fixture_results', 'fixture_id'),
       ('fixture_results', 'status'),
       ('generated_tickets', 'legs'),
+      ('market_coins', 'user_id'),
+      ('market_leaderboard_snapshots', 'user_id'),
+      ('market_positions', 'user_id'),
       ('optimized_selections', 'fixture_id'),
       ('optimized_selections', 'is_live'),
       ('pipeline_alerts', 'resolved_at'),
+      ('prediction_markets', 'created_by'),
+      ('profiles', 'user_id'),
       ('ticket_leg_outcomes', 'id'),
       ('ticket_leg_outcomes', 'kickoff_at'),
       ('ticket_leg_outcomes', 'result_status'),
@@ -53,6 +69,8 @@ BEGIN
       ('user_entitlements', 'stripe_customer_id'),
       ('user_entitlements', 'stripe_subscription_id'),
       ('user_rate_limits', 'window_start'),
+      ('user_roles', 'user_id'),
+      ('user_tickets', 'user_id'),
       ('user_trial_credits', 'remaining_uses'),
       ('webhook_events', 'event_id'),
       ('webhook_events', 'created_at')
@@ -74,6 +92,44 @@ BEGIN
   IF to_regprocedure('public.is_user_whitelisted()') IS NULL
      OR to_regprocedure('public.ensure_trial_row()') IS NULL THEN
     RAISE EXCEPTION 'Feature-access prerequisite functions are missing';
+  END IF;
+END;
+$$;
+
+DO $$
+DECLARE
+  v_existing text;
+BEGIN
+  SELECT string_agg(object_name, ', ' ORDER BY object_name)
+  INTO v_existing
+  FROM unnest(ARRAY[
+    'public.feature_usage_reservations',
+    'public.green_bucket_policy_versions',
+    'public.green_bucket_policy_entries',
+    'public.football_league_teams',
+    'public.team_stats_refresh_queue',
+    'public.privacy_requests'
+  ]) object_name
+  WHERE to_regclass(object_name) IS NOT NULL;
+
+  IF v_existing IS NOT NULL THEN
+    RAISE EXCEPTION 'Phase 3 target tables already exist; stop for lineage review: %', v_existing;
+  END IF;
+
+  SELECT string_agg(signature, ', ' ORDER BY signature)
+  INTO v_existing
+  FROM unnest(ARRAY[
+    'public.claim_stripe_webhook_event(text,text,timestamp with time zone)',
+    'public.reserve_feature_use(text)',
+    'public.consume_rate_limit(uuid,text,integer)',
+    'public.persist_generated_ticket(uuid,jsonb,jsonb,jsonb,jsonb)',
+    'public.acquire_cron_lease(text,integer)',
+    'public.record_pipeline_alert(text,text,text,text,jsonb)'
+  ]) signature
+  WHERE to_regprocedure(signature) IS NOT NULL;
+
+  IF v_existing IS NOT NULL THEN
+    RAISE EXCEPTION 'Phase 3 target functions already exist; stop for lineage review: %', v_existing;
   END IF;
 END;
 $$;

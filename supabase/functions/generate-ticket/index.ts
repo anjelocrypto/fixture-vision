@@ -344,10 +344,11 @@ async function processFixtureToPool(
 
   const combined = analysisData.combined;
 
-  let { data: oddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
+  const { data: initialOddsData, error: oddsError } = await supabase.functions.invoke("fetch-odds", {
     headers: { Authorization: `Bearer ${token}` },
     body: { fixtureId, live: useLiveOdds },
   });
+  let oddsData = initialOddsData;
 
   if (oddsError || !oddsData || !oddsData.selections || oddsData.selections.length === 0) {
     // CRITICAL: if useLiveOdds=false, never try live endpoint - go straight to cache
@@ -507,7 +508,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   
   // Load dynamic weights for max_win_rate mode
   let useDynamicWeights = false;
-  let maxWinRateStats = { 
+  const maxWinRateStats = {
     total_candidates: 0, 
     rejected_by_avoid: 0, 
     rejected_by_league_weight: 0, 
@@ -519,7 +520,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
   };
   
   // === EDGE FILTER STATS ===
-  let edgeFilterStats = {
+  const edgeFilterStats = {
     total_checked: 0,
     dropped_negative_edge: 0,
     dropped_marginal_edge: 0, // 0 < edge < 3%
@@ -638,7 +639,8 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       if (intersected.length > 0) query = query.in("league_id", intersected);
     }
     
-    let { data: selections, error: selectionsError } = await query.limit(500);
+    const { data: initialSelections, error: selectionsError } = await query.limit(500);
+    let selections = initialSelections;
     
     // FALLBACK: If no selections in strict window, try extended 7-day window
     if (!selectionsError && (!selections || selections.length === 0)) {
@@ -723,7 +725,7 @@ async function handleAITicketCreator(body: z.infer<typeof AITicketSchema>, supab
       }));
       
       const validationResults = await validateFixturesBatch(supabase, fixturesToValidate);
-      let statsIntegrityDropped = 0;
+      const statsIntegrityDropped = 0;
 
       const rawCount = selections.length;
       const byMarket: Record<string, number> = {};
@@ -1463,7 +1465,7 @@ async function handleBetOptimizer(body: z.infer<typeof BetOptimizerSchema>, supa
 
   console.log(`[bet-optimizer] Mode: ${mode}, Date: ${date}`);
 
-  let fixturesQuery = supabase
+  const fixturesQuery = supabase
     .from("fixtures")
     .select("*")
     .eq("date", date);

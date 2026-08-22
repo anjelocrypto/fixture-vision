@@ -171,12 +171,15 @@ serve(async (req) => {
           } else {
             fixed++;
             console.log(`${LOG} FIXED: Created entitlement for user ${matchedUserId} (${plan})`);
-            await supabase.from("pipeline_alerts").insert({
-              alert_type: "billing_reconciled",
-              severity: "warning",
-              message: `Reconciliation created a missing entitlement`,
-              details: { user_id: matchedUserId, plan, subscription_id: sub.id },
+            const fingerprint = `billing:reconciled:${matchedUserId}`;
+            await supabase.rpc("record_pipeline_alert", {
+              p_fingerprint: fingerprint,
+              p_alert_type: "billing_reconciled",
+              p_severity: "warning",
+              p_message: "Reconciliation created a missing entitlement",
+              p_details: { user_id: matchedUserId, plan, subscription_id: sub.id },
             });
+            await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
           }
         } catch (e) {
           errors.push(`Error looking up customer ${customerId}: ${e instanceof Error ? e.message : String(e)}`);
@@ -214,12 +217,15 @@ serve(async (req) => {
       } else {
         fixed++;
         console.log(`${LOG} FIXED: Updated entitlement for user ${entitlement.user_id} (${entitlement.plan}→${plan})`);
-        await supabase.from("pipeline_alerts").insert({
-          alert_type: "billing_reconciled",
-          severity: "warning",
-          message: `Reconciliation fixed entitlement drift for user ${entitlement.user_id}`,
-          details: { user_id: entitlement.user_id, old_plan: entitlement.plan, new_plan: plan },
+        const fingerprint = `billing:reconciled:${entitlement.user_id}`;
+        await supabase.rpc("record_pipeline_alert", {
+          p_fingerprint: fingerprint,
+          p_alert_type: "billing_reconciled",
+          p_severity: "warning",
+          p_message: "Reconciliation corrected entitlement drift",
+          p_details: { user_id: entitlement.user_id, old_plan: entitlement.plan, new_plan: plan },
         });
+        await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: fingerprint });
       }
     }
 

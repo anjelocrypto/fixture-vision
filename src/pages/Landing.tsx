@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { signupLegalAttestation } from "@/lib/legal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motion, useScroll, useTransform, useSpring, useInView } from "framer-motion";
-import heroBackground from "@/assets/hero-background.png";
+import heroBackground from "@/assets/hero-background.webp";
 import ticketLogo from "@/assets/ticket-logo.png";
 import {
   AlertDialog,
@@ -176,6 +177,7 @@ export default function Landing() {
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
+          data: signupLegalAttestation(),
         },
       });
 
@@ -438,7 +440,7 @@ export default function Landing() {
                             onChange={(e) => setPassword(e.target.value)}
                             required
                             disabled={loading}
-                            minLength={10}
+                            minLength={isSignUp ? 12 : undefined}
                             className="bg-background/50 border-border/30 rounded-xl h-12 pl-11 text-sm"
                           />
                         </div>

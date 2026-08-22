@@ -12,6 +12,7 @@ DECLARE
   v_remaining integer;
   v_reservation uuid;
   v_consumed boolean;
+  v_delete_request uuid;
 BEGIN
   PERFORM set_config('request.jwt.claim.role', 'authenticated', false);
 
@@ -39,6 +40,26 @@ BEGIN
     RAISE EXCEPTION 'released reservation consumed a credit';
   END IF;
 
+  UPDATE public.user_trial_credits SET remaining_uses = 1 WHERE user_id = auth.uid();
+  SELECT reservation_id INTO v_reservation
+  FROM public.reserve_feature_use('bet_optimizer');
+  SELECT allowed, reason, remaining_uses
+  INTO v_allowed, v_reason, v_remaining
+  FROM public.try_use_feature('bet_optimizer');
+  IF v_allowed OR v_reason <> 'no_credits' OR v_remaining <> 0 THEN
+    RAISE EXCEPTION 'legacy credit path ignored an active reservation';
+  END IF;
+  IF NOT public.release_feature_use(v_reservation) THEN
+    RAISE EXCEPTION 'interop reservation release failed';
+  END IF;
+  UPDATE public.user_trial_credits SET remaining_uses = 4 WHERE user_id = auth.uid();
+
+  v_delete_request := public.request_account_deletion('DELETE MY ACCOUNT');
+  IF v_delete_request IS NULL
+     OR public.request_account_deletion('DELETE MY ACCOUNT') <> v_delete_request THEN
+    RAISE EXCEPTION 'privacy deletion request was not idempotent';
+  END IF;
+
   PERFORM set_config('request.jwt.claim.role', 'service_role', false);
 END;
 $$;
@@ -57,6 +78,9 @@ DECLARE
   v_claimed_token uuid;
   v_ticket_status text;
   v_alert_id bigint;
+  v_legacy_leg_id uuid;
+  v_queue_token uuid;
+  v_queue_team bigint;
 BEGIN
   SELECT allowed, current_count, retry_after_seconds
   INTO v_allowed, v_count, v_retry
@@ -77,6 +101,23 @@ BEGIN
   IF public.acquire_cron_lease('test-job', 5) IS NOT NULL THEN RAISE EXCEPTION 'active lease was stolen'; END IF;
   IF public.release_cron_lease('test-job', v_wrong_token) THEN RAISE EXCEPTION 'wrong owner released lease'; END IF;
   IF NOT public.release_cron_lease('test-job', v_token) THEN RAISE EXCEPTION 'owner could not release lease'; END IF;
+
+  IF NOT public.acquire_cron_lock('cron-fetch-fixtures', 5) THEN
+    RAISE EXCEPTION 'legacy lock acquisition failed';
+  END IF;
+  IF public.acquire_cron_lease('fixtures-sync', 5) IS NOT NULL THEN
+    RAISE EXCEPTION 'lease bypassed a legacy alias lock';
+  END IF;
+  PERFORM public.release_cron_lock('cron-fetch-fixtures');
+  v_token := public.acquire_cron_lease('fixtures-sync', 5);
+  IF v_token IS NULL THEN RAISE EXCEPTION 'lease failed after legacy release'; END IF;
+  PERFORM public.release_cron_lock('cron-fetch-fixtures');
+  IF public.acquire_cron_lease('fixtures-sync', 5) IS NOT NULL THEN
+    RAISE EXCEPTION 'legacy release deleted a token lease';
+  END IF;
+  IF NOT public.release_cron_lease('fixtures-sync', v_token) THEN
+    RAISE EXCEPTION 'token lease release failed after interop check';
+  END IF;
 
   v_policy := public.activate_green_bucket_policy(
     '[{"league_id":39,"market":"goals","side":"over","line_norm":1.5,"odds_band":"1.40-1.50","sample_size":50,"wins":35,"losses":15,"hit_rate_pct":70,"roi_pct":1}]',
@@ -143,6 +184,19 @@ BEGIN
     cards_home, cards_away, status
   ) VALUES (1001, 2, 1, 4, 3, 2, 1, 'FT');
 
+  SELECT leg_id INTO v_legacy_leg_id
+  FROM public.get_scorable_pending_legs(10)
+  LIMIT 1;
+  IF v_legacy_leg_id IS NULL
+     OR (SELECT score_claim_token FROM public.ticket_leg_outcomes WHERE id = v_legacy_leg_id) IS NULL THEN
+    RAISE EXCEPTION 'legacy scorer path did not create a durable claim';
+  END IF;
+  SELECT score_claim_token INTO v_claimed_token
+  FROM public.ticket_leg_outcomes WHERE id = v_legacy_leg_id;
+  IF NOT public.release_ticket_leg_score_claim(v_legacy_leg_id, v_claimed_token) THEN
+    RAISE EXCEPTION 'legacy scorer compatibility claim could not be released';
+  END IF;
+
   SELECT claim_token, leg_id
   INTO v_claimed_token, v_leg_id
   FROM public.claim_scorable_ticket_legs(10)
@@ -173,6 +227,107 @@ BEGIN
   IF public.resolve_pipeline_alert('test:fingerprint') <> 1 THEN
     RAISE EXCEPTION 'alert recovery did not resolve the alert';
   END IF;
+
+  IF (SELECT count(*) FROM public.pipeline_alerts
+      WHERE alert_type = 'legacy_duplicate' AND resolved_at IS NULL) <> 1
+     OR (SELECT sum(occurrence_count) FROM public.pipeline_alerts
+         WHERE alert_type = 'legacy_duplicate' AND resolved_at IS NULL) <> 2 THEN
+    RAISE EXCEPTION 'legacy alert backlog was not collapsed safely';
+  END IF;
+  IF (SELECT count(*) FROM public.pipeline_alerts
+      WHERE alert_type = 'backfill_stalled' AND resolved_at IS NULL) <> 1
+     OR (SELECT sum(occurrence_count) FROM public.pipeline_alerts
+         WHERE alert_type = 'backfill_stalled' AND resolved_at IS NULL) <> 2 THEN
+    RAISE EXCEPTION 'semantic legacy alert backlog was not collapsed safely';
+  END IF;
+
+  IF public.replace_football_league_roster(
+    39, 2026,
+    '[{"team_id":1,"team_name":"Alpha"},{"team_id":2,"team_name":"Beta"}]'::jsonb
+  ) <> 2 THEN
+    RAISE EXCEPTION 'authoritative roster initial replacement failed';
+  END IF;
+  BEGIN
+    PERFORM public.replace_football_league_roster(
+      39, 2026,
+      '[{"team_id":2,"team_name":"Beta"},{"team_id":2,"team_name":"Duplicate"}]'::jsonb
+    );
+    RAISE EXCEPTION 'duplicate roster team was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'duplicate roster team was accepted' THEN RAISE; END IF;
+  END;
+  v_replaced := public.replace_football_league_roster(
+    39, 2026,
+    '[{"team_id":2,"team_name":"Beta Updated"}]'::jsonb
+  );
+  IF v_replaced <> 1
+     OR (SELECT active FROM public.football_league_teams
+         WHERE league_id = 39 AND season = 2026 AND team_id = 1) THEN
+    RAISE EXCEPTION 'authoritative roster replacement did not retire missing team';
+  END IF;
+
+  IF public.enqueue_team_stats_refresh(
+    '[{"team_id":101,"priority":50},{"team_id":101,"priority":10},{"team_id":102,"priority":20}]'::jsonb
+  ) <> 2 THEN
+    RAISE EXCEPTION 'stats queue enqueue failed';
+  END IF;
+  SELECT claim_token, team_id INTO v_queue_token, v_queue_team
+  FROM public.claim_team_stats_refresh(1) LIMIT 1;
+  IF v_queue_token IS NULL OR v_queue_team <> 101 THEN
+    RAISE EXCEPTION 'stats queue priority claim failed';
+  END IF;
+  IF public.complete_team_stats_refresh(v_queue_team, v_wrong_token) THEN
+    RAISE EXCEPTION 'wrong stats claim owner completed work';
+  END IF;
+  IF NOT public.complete_team_stats_refresh(v_queue_team, v_queue_token) THEN
+    RAISE EXCEPTION 'stats claim owner could not complete work';
+  END IF;
+END;
+$$;
+
+-- Account deletion is two-step: service-only application purge, supported
+-- Auth deletion, then completion of the retained privacy-request evidence.
+DO $$
+DECLARE
+  v_user_id uuid := '00000000-0000-0000-0000-000000000002';
+  v_request_id uuid;
+  v_counts jsonb;
+  v_completed boolean;
+BEGIN
+  INSERT INTO auth.users (id) VALUES (v_user_id);
+  INSERT INTO public.user_entitlements (
+    user_id, plan, status, current_period_end, source
+  ) VALUES (v_user_id, 'free', 'canceled', now(), 'test');
+  INSERT INTO public.user_trial_credits (user_id, remaining_uses)
+  VALUES (v_user_id, 5);
+  INSERT INTO public.prediction_markets (created_by) VALUES (v_user_id);
+  INSERT INTO public.admin_market_audit_log (admin_user_id) VALUES (v_user_id);
+
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', false);
+  PERFORM set_config('request.jwt.claim.sub', v_user_id::text, false);
+  v_request_id := public.request_account_deletion('DELETE MY ACCOUNT');
+
+  PERFORM set_config('request.jwt.claim.role', 'service_role', false);
+  v_counts := public.purge_user_application_data_for_deletion(
+    v_user_id, 'PURGE USER APPLICATION DATA'
+  );
+  IF COALESCE((v_counts ->> 'user_entitlements')::integer, -1) <> 1
+     OR COALESCE((v_counts ->> 'user_trial_credits')::integer, -1) <> 1 THEN
+    RAISE EXCEPTION 'account application-data purge was incomplete';
+  END IF;
+
+  DELETE FROM auth.users WHERE id = v_user_id;
+  IF EXISTS (SELECT 1 FROM public.prediction_markets WHERE created_by IS NOT NULL)
+     OR EXISTS (SELECT 1 FROM public.admin_market_audit_log WHERE admin_user_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'shared market audit references blocked account anonymization';
+  END IF;
+  v_completed := public.complete_account_deletion_request(v_request_id, 'test completion');
+  IF NOT v_completed
+     OR (SELECT status FROM public.privacy_requests WHERE id = v_request_id) <> 'completed' THEN
+    RAISE EXCEPTION 'account deletion request completion failed';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 END;
 $$;
 

@@ -11,6 +11,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import {
+  getBasketballSeason,
+  getBasketballSeasonDateRange,
+  type BasketballProvider,
+} from "../_shared/basketball_season.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,38 +46,16 @@ const REQUIRED_SAMPLE_SIZE = 5;
 
 // ============================================================================
 
-const LEAGUE_CONFIG: Record<string, { api: string; leagueId?: number; season: string; seasonStartMonth: number }> = {
-  nba: { api: "nba", season: "2024", seasonStartMonth: 9 }, // October = month 9 (0-indexed)
-  nba_gleague: { api: "nba", leagueId: 20, season: "2024", seasonStartMonth: 10 },
-  euroleague: { api: "basketball", leagueId: 120, season: "2024-2025", seasonStartMonth: 9 },
-  eurocup: { api: "basketball", leagueId: 121, season: "2024-2025", seasonStartMonth: 9 },
-  spain_acb: { api: "basketball", leagueId: 117, season: "2024-2025", seasonStartMonth: 9 },
-  germany_bbl: { api: "basketball", leagueId: 43, season: "2024-2025", seasonStartMonth: 9 },
-  italy_lba: { api: "basketball", leagueId: 82, season: "2024-2025", seasonStartMonth: 9 },
-  france_prob: { api: "basketball", leagueId: 40, season: "2024-2025", seasonStartMonth: 9 },
+const LEAGUE_CONFIG: Record<string, { api: BasketballProvider; leagueId?: number; seasonStartMonth: number }> = {
+  nba: { api: "nba", seasonStartMonth: 9 }, // October = month 9 (0-indexed)
+  nba_gleague: { api: "nba", leagueId: 20, seasonStartMonth: 10 },
+  euroleague: { api: "basketball", leagueId: 120, seasonStartMonth: 9 },
+  eurocup: { api: "basketball", leagueId: 121, seasonStartMonth: 9 },
+  spain_acb: { api: "basketball", leagueId: 117, seasonStartMonth: 9 },
+  germany_bbl: { api: "basketball", leagueId: 43, seasonStartMonth: 9 },
+  italy_lba: { api: "basketball", leagueId: 82, seasonStartMonth: 9 },
+  france_prob: { api: "basketball", leagueId: 40, seasonStartMonth: 9 },
 };
-
-/**
- * Compute dynamic season date range.
- * NBA season typically starts in October (month 9).
- * If current month < season start month, we're in the second half of the previous year's season.
- */
-function getSeasonDateRange(seasonStartMonth: number): { from: string; to: string } {
-  const now = new Date();
-  const currentYear = now.getUTCFullYear();
-  const currentMonth = now.getUTCMonth();
-  
-  // If we're before the season start month (e.g., Jan-Sep), use previous year as season start
-  const seasonYear = currentMonth >= seasonStartMonth ? currentYear : currentYear - 1;
-  
-  const from = new Date(Date.UTC(seasonYear, seasonStartMonth, 1));
-  const to = new Date(now.getTime()); // today
-  
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  };
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -113,7 +96,7 @@ serve(async (req) => {
     }
 
     const league_key = body.league_key || "nba";
-    let max_api_calls = body.max_api_calls || DEFAULT_MAX_API_CALLS;
+    let max_api_calls = Math.max(Math.trunc(Number(body.max_api_calls) || DEFAULT_MAX_API_CALLS), 1);
 
     // GUARDRAIL: Enforce hard upper bound
     if (max_api_calls > MAX_ALLOWED_CALLS) {
@@ -130,9 +113,17 @@ serve(async (req) => {
     }
 
     // Dynamic date range computation
-    const dynamicRange = getSeasonDateRange(config.seasonStartMonth);
+    const dynamicRange = getBasketballSeasonDateRange(config.seasonStartMonth);
     const from = body.from || dynamicRange.from;
     const to = body.to || dynamicRange.to;
+    const season = getBasketballSeason(config.api, config.seasonStartMonth);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+      return new Response(JSON.stringify({ error: "Invalid UTC date range" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     console.log(`[basketball-backfill] League: ${league_key}, Dynamic range: ${from} to ${to}, Max API: ${max_api_calls}, Hard cap: ${MAX_ALLOWED_CALLS}`);
 
@@ -283,7 +274,7 @@ serve(async (req) => {
             const gameId = game.id;
             
             // Status parsing
-            let rawStatus = game.status?.short;
+            const rawStatus = game.status?.short;
             let status: string;
             
             if (isNBA) {
@@ -334,7 +325,7 @@ serve(async (req) => {
               .upsert({
                 api_game_id: gameId,
                 league_key: league_key,
-                season: config.season,
+                season,
                 date: gameDate ? new Date(gameDate).toISOString() : new Date().toISOString(),
                 status_short: status,
                 home_team_id: homeTeamId,

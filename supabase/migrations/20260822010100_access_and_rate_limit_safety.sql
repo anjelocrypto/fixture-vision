@@ -140,6 +140,13 @@ BEGIN
     RAISE EXCEPTION 'authentication required';
   END IF;
 
+  -- Every credit path locks user_trial_credits before touching a reservation.
+  -- A single lock order prevents reserve/finalize and legacy/finalize deadlocks.
+  SELECT utc.remaining_uses INTO v_remaining
+  FROM public.user_trial_credits utc
+  WHERE utc.user_id = v_uid
+  FOR UPDATE;
+
   SELECT * INTO v_reservation
   FROM public.feature_usage_reservations
   WHERE id = p_reservation_id AND user_id = v_uid
@@ -150,8 +157,6 @@ BEGIN
   END IF;
 
   IF v_reservation.status = 'consumed' THEN
-    SELECT utc.remaining_uses INTO v_remaining
-    FROM public.user_trial_credits utc WHERE utc.user_id = v_uid;
     RETURN QUERY SELECT true, v_remaining;
     RETURN;
   END IF;

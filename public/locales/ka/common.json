@@ -16,7 +16,7 @@
   "refresh_status": "სტატუსის განახლება",
   "email": "ელფოსტა",
   "password": "პაროლი",
-  "password_min_length": "მინიმუმ 10 სიმბოლო",
+  "password_min_length": "მინიმუმ 12 სიმბოლო",
   "terms_required": "საჭიროა პირობების დადასტურება",
   "terms_accept_message": "გთხოვთ დაეთანხმოთ მომსახურების პირობებს",
   "i_agree_to": "ვეთანხმები",

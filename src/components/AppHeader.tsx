@@ -55,7 +55,7 @@ export function AppHeader() {
       }
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadFromServer, loadFromStorage]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
