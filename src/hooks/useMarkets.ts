@@ -43,12 +43,8 @@ export interface UserCoins {
 }
 
 export interface LeaderboardEntry {
-  user_id: string;
   display_name: string;
   balance: number;
-  total_wagered: number;
-  total_won: number;
-  total_fees_paid: number;
   positions_count: number;
   wins_count: number;
   losses_count: number;
@@ -56,6 +52,7 @@ export interface LeaderboardEntry {
   roi: number;
   rank: number;
 }
+
 
 // Fetch open markets
 export function useMarkets(status: "open" | "closed" | "resolved" | "all" = "open") {
@@ -139,22 +136,22 @@ export function useMyCoins() {
   });
 }
 
-// Fetch leaderboard
+// Fetch leaderboard (safe RPC: no user UUIDs, server-bounded limit)
 export function useLeaderboard(limit = 50) {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit) || 1, 1), 100);
   return useQuery({
-    queryKey: ["leaderboard", limit],
+    queryKey: ["leaderboard", safeLimit],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("v_market_leaderboard")
-        .select("*")
-        .order("rank", { ascending: true })
-        .limit(limit);
+      const { data, error } = await supabase.rpc("get_market_leaderboard", {
+        p_limit: safeLimit,
+      });
 
       if (error) throw error;
-      return data as LeaderboardEntry[];
+      return (data ?? []) as LeaderboardEntry[];
     },
   });
 }
+
 
 // Place bet mutation
 export function usePlaceBet() {
