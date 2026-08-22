@@ -146,3 +146,31 @@ BEGIN
   RETURNING id INTO v_id;
   RETURN v_id;
 END $$;
+
+-- Production-identical scorer helpers (copied verbatim from production
+-- pg_get_functiondef output) so scoring paths can be exercised here.
+CREATE OR REPLACE FUNCTION public.release_ticket_leg_score_claim(p_leg_id uuid, p_claim_token uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+BEGIN
+  IF auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'service role required';
+  END IF;
+  UPDATE public.ticket_leg_outcomes
+  SET score_claim_token = NULL, score_claimed_at = NULL
+  WHERE id = p_leg_id AND result_status = 'PENDING' AND score_claim_token = p_claim_token;
+  RETURN FOUND;
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.finalize_scored_ticket_leg(
+  p_leg_id uuid, p_claim_token uuid, p_result_status text, p_actual_value numeric, p_scored_version text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+BEGIN
+  IF auth.role() <> 'service_role' OR p_result_status NOT IN ('WIN','LOSS','PUSH','VOID') THEN
+    RAISE EXCEPTION 'invalid score finalization request';
+  END IF;
+  UPDATE public.ticket_leg_outcomes
+  SET result_status = p_result_status, actual_value = p_actual_value, settled_at = now(),
+      scored_version = p_scored_version, score_claim_token = NULL, score_claimed_at = NULL
+  WHERE id = p_leg_id AND result_status = 'PENDING' AND score_claim_token = p_claim_token;
+  RETURN FOUND;
+END; $function$;

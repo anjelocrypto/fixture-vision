@@ -137,9 +137,7 @@ SELECT public.assert(public.evaluate_leg_hold(
 
 -- T4: claim excludes held legs, keeps eligible ones, and never bumps attempts
 --     on held legs.
-SET ROLE service_role;
 CREATE TEMP TABLE claim1 AS SELECT * FROM public.claim_scorable_ticket_legs(50);
-RESET ROLE;
 
 SELECT public.assert((SELECT count(*) FROM claim1) = 2, 'T4 exactly the two safe legs are claimable');
 SELECT public.assert((SELECT bool_and(leg_id IN ('aaaaaaaa-0000-0000-0000-000000000002',
@@ -158,29 +156,23 @@ SELECT public.assert((SELECT count(*) = 2 FROM public.ticket_leg_outcomes
   'T4 held legs remain PENDING (no new status)');
 
 -- T5: claims release cleanly and re-claim is idempotent for held legs
-SET ROLE service_role;
 SELECT public.release_ticket_leg_score_claim(leg_id, claim_token) FROM claim1;
 CREATE TEMP TABLE claim2 AS SELECT * FROM public.claim_scorable_ticket_legs(50);
-RESET ROLE;
 SELECT public.assert((SELECT count(*) FROM claim2) = 2, 'T5 released legs are re-claimable');
 SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes
                       WHERE id IN ('aaaaaaaa-0000-0000-0000-000000000001',
                                    'aaaaaaaa-0000-0000-0000-000000000003')
                         AND (score_claim_token IS NOT NULL OR score_attempts > 0)),
   'T5 repeated scorer runs never touch held legs');
-SET ROLE service_role;
 SELECT public.release_ticket_leg_score_claim(leg_id, claim_token) FROM claim2;
-RESET ROLE;
 SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes WHERE score_claim_token IS NOT NULL),
   'T5 scorer locks always release');
 
 -- T6: ordinary FT scoring still works end to end for an eligible leg
-SET ROLE service_role;
 CREATE TEMP TABLE claim3 AS SELECT * FROM public.claim_scorable_ticket_legs(1);
 SELECT public.finalize_scored_ticket_leg(
   (SELECT leg_id FROM claim3), (SELECT claim_token FROM claim3), 'WIN', 2, 'test')
 FROM claim3;
-RESET ROLE;
 SELECT public.assert((SELECT count(*) = 1 FROM public.ticket_leg_outcomes
                       WHERE result_status = 'WIN' AND score_claim_token IS NULL),
   'T6 ordinary FT scoring still settles an eligible leg');
@@ -199,9 +191,7 @@ BEGIN
 END $$;
 
 -- T8: hold classifier flags exactly the unsafe legs and dedupes alerts
-SET ROLE service_role;
 CREATE TEMP TABLE hold1 AS SELECT * FROM public.hold_unsafe_pending_legs(100);
-RESET ROLE;
 SELECT public.assert((SELECT held_legs = 2 AND held_fixtures = 2 FROM hold1),
   'T8 classifier holds exactly the two unsafe legs');
 SELECT public.assert((SELECT settlement_hold_reason = 'kickoff_drift'
@@ -218,24 +208,19 @@ SELECT public.assert((SELECT count(*) = 2 FROM public.ticket_leg_outcomes
 SELECT public.assert((SELECT count(*) = 2 FROM public.pipeline_alerts WHERE alert_type = 'settlement_hold'),
   'T8 one alert per fixture/reason');
 
-SET ROLE service_role;
 SELECT * FROM public.hold_unsafe_pending_legs(100);
 SELECT * FROM public.hold_unsafe_pending_legs(100);
-RESET ROLE;
 SELECT public.assert((SELECT count(*) = 2 FROM public.pipeline_alerts WHERE alert_type = 'settlement_hold'),
   'T8 repeated classifier runs deduplicate alerts');
 
 -- T9: held legs can never be claimed afterwards
-SET ROLE service_role;
 CREATE TEMP TABLE claim4 AS SELECT * FROM public.claim_scorable_ticket_legs(1000);
-RESET ROLE;
 SELECT public.assert((SELECT count(*) = 0 FROM claim4
                       WHERE leg_id IN ('aaaaaaaa-0000-0000-0000-000000000001',
                                        'aaaaaaaa-0000-0000-0000-000000000003')),
   'T9 claim batches cannot bypass holds');
 
 -- T10: new tickets persist identity snapshots
-SET ROLE service_role;
 SELECT public.persist_generated_ticket(
   '99999999-9999-9999-9999-999999999999'::uuid,
   jsonb_build_object('total_odds', 1.3, 'min_target', 1.2, 'max_target', 1.4,
@@ -248,7 +233,6 @@ SELECT public.persist_generated_ticket(
     'kickoff_at','2026-02-10T19:45:00Z','home_team_id_snapshot',11,'away_team_id_snapshot',22)),
   jsonb_build_object('total_odds', 1.3)
 ) AS new_ticket_id \gset
-RESET ROLE;
 SELECT public.assert((SELECT home_team_id_snapshot = 11 AND away_team_id_snapshot = 22
                         AND settlement_policy_version = 'reschedule-integrity-v1'
                         AND kickoff_at = timestamptz '2026-02-10 19:45+00'
