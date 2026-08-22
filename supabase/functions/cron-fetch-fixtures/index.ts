@@ -4,6 +4,15 @@ import { ALLOWED_LEAGUE_IDS, getCountryIdForLeague } from '../_shared/leagues.ts
 import { apiHeaders, API_BASE } from '../_shared/api.ts';
 import { UPCOMING_WINDOW_HOURS } from '../_shared/config.ts';
 import { getFootballSeasonForLeague } from '../_shared/season.ts';
+import { checkCronOrAdminAuth } from '../_shared/auth.ts';
+import { readJsonWithLimit } from '../_shared/request.ts';
+import {
+  boundedRotatingSelection,
+  clampProviderCallLimit,
+  fetchWithProviderBudget,
+  ProviderCallBudget,
+  ProviderControlError,
+} from '../_shared/provider_budget.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +20,7 @@ const corsHeaders = {
 };
 
 const FETCH_TTL_HOURS = 2;
+const MAX_PROVIDER_CALLS_PER_RUN = 12;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -29,17 +39,32 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     lockClient = supabase;
 
-    // 2. Validate cron key from DB
-    const cronKey = req.headers.get('X-CRON-KEY');
-    const { data: expectedKey, error: keyError } = await supabase.rpc('get_cron_internal_key');
-    
-    if (keyError || !expectedKey || !cronKey || cronKey !== expectedKey) {
-      console.error('[cron-fetch-fixtures] Unauthorized: Invalid or missing X-CRON-KEY');
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabase,
+      supabaseServiceKey,
+      '[cron-fetch-fixtures]',
+    );
+    if (!auth.authorized) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const body = (await readJsonWithLimit(req, 16_384).catch(() => null) ?? {}) as Record<string, unknown>;
+    if (auth.method !== 'cron_key' && body.confirm_provider_calls !== true) {
+      return new Response(
+        JSON.stringify({ error: 'Manual provider calls require confirm_provider_calls=true' }),
+        { status: 412, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const requestedLeagues = Array.isArray(body.league_ids)
+      ? [...new Set(body.league_ids.map(Number).filter((id) => ALLOWED_LEAGUE_IDS.includes(id)))]
+      : ALLOWED_LEAGUE_IDS;
+    const providerBudget = new ProviderCallBudget(
+      clampProviderCallLimit(body.max_provider_calls, MAX_PROVIDER_CALLS_PER_RUN),
+    );
     // 3. Try to acquire lock
     const { data: acquiredToken, error: lockError } = await supabase.rpc('acquire_cron_lease', {
       p_job_name: jobName,
@@ -104,15 +129,20 @@ serve(async (req) => {
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
-    for (const leagueId of ALLOWED_LEAGUE_IDS) {
-      leaguesProcessed++;
-      const season = getFootballSeasonForLeague(leagueId, now);
+    const fullPlan = requestedLeagues.flatMap((leagueId) =>
+      dates.map((date) => ({ leagueId, date }))
+    );
+    const rotationBucket = Math.floor(now.getTime() / (10 * 60 * 1000));
+    const runPlan = boundedRotatingSelection(fullPlan, providerBudget.limit, rotationBucket);
+    const processedLeagues = new Set<number>();
 
-      for (const dateStr of dates) {
-        try {
+    for (const { leagueId, date: dateStr } of runPlan) {
+      processedLeagues.add(leagueId);
+      const season = getFootballSeasonForLeague(leagueId, now);
+      try {
           const url = `${API_BASE}/fixtures?league=${leagueId}&season=${season}&date=${dateStr}`;
-          const response = await fetch(url, { headers: apiHeaders() });
-          totalApiCalls++;
+          const response = await fetchWithProviderBudget(url, { headers: apiHeaders() }, providerBudget);
+          totalApiCalls = providerBudget.used;
 
           if (!response.ok) {
             console.error(`[cron-fetch-fixtures] API error ${response.status} for league ${leagueId} on ${dateStr}`);
@@ -187,13 +217,19 @@ serve(async (req) => {
             }
           }
 
-          // Rate limit: 30 RPM
-          await new Promise(resolve => setTimeout(resolve, 2100));
+          await new Promise(resolve => setTimeout(resolve, 1200));
         } catch (err: any) {
+          totalApiCalls = providerBudget.used;
+          if (err instanceof ProviderControlError) {
+            failureReasons[err.reason] = (failureReasons[err.reason] || 0) + 1;
+            console.warn(`[cron-fetch-fixtures] Provider stop: ${err.reason}`);
+            break;
+          }
+          failureReasons.network_error = (failureReasons.network_error || 0) + 1;
           console.error(`[cron-fetch-fixtures] Error fetching league ${leagueId} on ${dateStr}:`, err.message);
         }
-      }
     }
+    leaguesProcessed = processedLeagues.size;
 
     const finishTime = Date.now();
     const durationMs = finishTime - startTime;
@@ -219,12 +255,15 @@ serve(async (req) => {
         inserted: fixturesInserted,
         updated: fixturesUpdated,
         failure_reasons: failureReasons,
+        provider: providerBudget.snapshot(),
+        plan_items_total: fullPlan.length,
+        plan_items_selected: runPlan.length,
       }),
     });
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: providerBudget.failures === 0 && !providerBudget.stoppedReason,
         window_hours,
         api_calls: totalApiCalls,
         leagues: leaguesProcessed,
@@ -232,9 +271,14 @@ serve(async (req) => {
         updated: fixturesUpdated,
         skipped: fixturesSkipped,
         failed: fixturesFailed,
+        provider: providerBudget.snapshot(),
+        work_remaining: fullPlan.length > runPlan.length,
         duration_ms: durationMs,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        status: providerBudget.failures === 0 && !providerBudget.stoppedReason ? 200 : 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
     );
   } catch (error: any) {
     console.error('[cron-fetch-fixtures] Unexpected error:', error);

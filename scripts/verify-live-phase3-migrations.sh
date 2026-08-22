@@ -29,6 +29,7 @@ migration_files=(
   supabase/migrations/20260822160808_65598210-0ecc-408a-a8e1-d48685ea5c54.sql
   supabase/migrations/20260822160850_19836f05-01fe-4790-a25b-309c24a6c99a.sql
   supabase/migrations/20260822160933_c02a473d-551a-4ec8-ab79-ae9ff571c9d1.sql
+  supabase/migrations/20260822174500_gate_d_remediation.sql
 )
 
 for migration_file in "${migration_files[@]}"; do

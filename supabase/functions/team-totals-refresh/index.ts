@@ -3,6 +3,15 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { apiHeaders, API_BASE } from "../_shared/api.ts";
 import { getFootballSeasonForLeague } from "../_shared/season.ts";
+import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import { readJsonWithLimit } from "../_shared/request.ts";
+import {
+  boundedRotatingSelection,
+  clampProviderCallLimit,
+  fetchWithProviderBudget,
+  ProviderCallBudget,
+  ProviderControlError,
+} from "../_shared/provider_budget.ts";
 
 /**
  * team-totals-refresh
@@ -25,6 +34,7 @@ const TEAM_TOTALS_WINDOW_HOURS = 48; // Focus on 48h window per architectural co
 const RATE_DELAY_MS = 1000; // ~50 rpm with margin
 const MAX_PROCESSING_TIME_MS = 50000; // 50 seconds (safe for Edge timeout)
 const MAX_FIXTURES_PER_RUN = 30; // Conservative batch size
+const MAX_PROVIDER_CALLS_PER_RUN = 12;
 
 interface SeasonStats {
   scoring_rate: number;
@@ -43,13 +53,14 @@ async function delay(ms: number) {
 async function fetchSeasonStats(
   teamId: number,
   leagueId: number,
-  season: number
+  season: number,
+  budget: ProviderCallBudget,
 ): Promise<SeasonStats | null> {
   const url = `${API_BASE}/teams/statistics?team=${teamId}&league=${leagueId}&season=${season}`;
   const headers = apiHeaders();
 
   try {
-    const response = await fetch(url, { headers });
+    const response = await fetchWithProviderBudget(url, { headers }, budget);
     const json = await response.json();
 
     if (!response.ok || json.errors?.length > 0) {
@@ -71,6 +82,7 @@ async function fetchSeasonStats(
       conceding_rate: goalsAgainst / fixturesPlayed,
     };
   } catch (err) {
+    if (err instanceof ProviderControlError) throw err;
     console.error(`[team-totals-refresh] Fetch error for team ${teamId}:`, err);
     return null;
   }
@@ -79,13 +91,14 @@ async function fetchSeasonStats(
 async function fetchLast5LeagueFixtures(
   teamId: number,
   leagueId: number,
-  season: number
+  season: number,
+  budget: ProviderCallBudget,
 ): Promise<Last5Result> {
   const url = `${API_BASE}/fixtures?team=${teamId}&league=${leagueId}&season=${season}&last=5&status=FT`;
   const headers = apiHeaders();
 
   try {
-    const response = await fetch(url, { headers });
+    const response = await fetchWithProviderBudget(url, { headers }, budget);
     const json = await response.json();
 
     if (!response.ok || json.errors?.length > 0) {
@@ -110,6 +123,7 @@ async function fetchLast5LeagueFixtures(
 
     return { conceded_2plus_count, sample_size };
   } catch (err) {
+    if (err instanceof ProviderControlError) throw err;
     console.error(`[team-totals-refresh] Fetch error for last 5 (team ${teamId}):`, err);
     return { conceded_2plus_count: 0, sample_size: 0 };
   }
@@ -126,55 +140,27 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-    // Auth check: cron key or admin JWT
-    const cronKeyHeader = req.headers.get("x-cron-key");
-    const authHeader = req.headers.get("authorization");
-
-    let isAuthorized = false;
-    let trigger = "unknown";
-
-    // Check X-CRON-KEY first (via RPC to get stored key)
-    if (cronKeyHeader) {
-      const { data: dbKey, error: keyError } = await supabase.rpc("get_cron_internal_key");
-      if (!keyError && dbKey && cronKeyHeader === dbKey) {
-        isAuthorized = true;
-        trigger = "cron";
-        console.log("[team-totals-refresh] Authorized via cron key");
-      }
-    }
-
-    // If not authorized via cron key, check admin JWT
-    if (!isAuthorized && authHeader && supabaseAnonKey) {
-      try {
-        const userClient = createClient(SUPABASE_URL, supabaseAnonKey, {
-          global: { headers: { Authorization: authHeader } }
-        });
-        const { data: isWhitelisted } = await userClient.rpc("is_user_whitelisted");
-        if (isWhitelisted) {
-          isAuthorized = true;
-          trigger = "admin";
-          console.log("[team-totals-refresh] Authorized via admin JWT");
-        }
-      } catch (authErr) {
-        console.error("[team-totals-refresh] Auth error:", authErr);
-      }
-    }
-
-    if (!isAuthorized) {
+    const auth = await checkCronOrAdminAuth(
+      req,
+      supabase,
+      SUPABASE_SERVICE_ROLE_KEY,
+      "[team-totals-refresh]",
+    );
+    if (!auth.authorized) {
       return errorResponse("Unauthorized", origin, 401, req);
     }
+    const trigger = auth.method === "cron_key" ? "cron" : "admin";
 
-    // Parse optional window_hours from body (default to TEAM_TOTALS_WINDOW_HOURS)
+    const body = (await readJsonWithLimit(req, 16_384).catch(() => null) ?? {}) as Record<string, unknown>;
+    if (auth.method !== "cron_key" && body.confirm_provider_calls !== true) {
+      return errorResponse("Manual provider calls require confirm_provider_calls=true", origin, 412, req);
+    }
+    const providerBudget = new ProviderCallBudget(
+      clampProviderCallLimit(body.max_provider_calls, MAX_PROVIDER_CALLS_PER_RUN),
+    );
     let windowHours = TEAM_TOTALS_WINDOW_HOURS;
-    try {
-      const body = await req.json().catch(() => ({}));
-      if (body.window_hours && typeof body.window_hours === "number") {
-        windowHours = Math.min(Math.max(body.window_hours, 1), 720);
-      }
-    } catch {
-      // Use defaults
+    if (body.window_hours && typeof body.window_hours === "number") {
+      windowHours = Math.min(Math.max(body.window_hours, 1), 720);
     }
 
     console.log(`[team-totals-refresh] Starting: window=${windowHours}h, trigger=${trigger}`);
@@ -209,7 +195,14 @@ serve(async (req) => {
     // Cache for season stats to avoid duplicate API calls
     const statsCache = new Map<string, SeasonStats | null>();
 
-    for (const fixture of fixtures || []) {
+    const selectedFixtures = boundedRotatingSelection(
+      fixtures || [],
+      Math.min(MAX_FIXTURES_PER_RUN, Math.ceil(providerBudget.limit / 2)),
+      Math.floor(Date.now() / (6 * 60 * 60 * 1000)),
+    );
+
+    for (const fixture of selectedFixtures) {
+      try {
       // Check if approaching timeout
       const elapsed = Date.now() - startTime;
       if (elapsed > MAX_PROCESSING_TIME_MS) {
@@ -239,13 +232,13 @@ serve(async (req) => {
 
       if (!statsCache.has(homeCacheKey)) {
         await delay(RATE_DELAY_MS);
-        const homeStats = await fetchSeasonStats(homeTeamId, leagueId, season);
+        const homeStats = await fetchSeasonStats(homeTeamId, leagueId, season, providerBudget);
         statsCache.set(homeCacheKey, homeStats);
       }
 
       if (!statsCache.has(awayCacheKey)) {
         await delay(RATE_DELAY_MS);
-        const awayStats = await fetchSeasonStats(awayTeamId, leagueId, season);
+        const awayStats = await fetchSeasonStats(awayTeamId, leagueId, season, providerBudget);
         statsCache.set(awayCacheKey, awayStats);
       }
 
@@ -260,7 +253,7 @@ serve(async (req) => {
       // Evaluate Home O1.5
       if (homeStats.scoring_rate >= 2.0) {
         await delay(RATE_DELAY_MS);
-        const awayLast5 = await fetchLast5LeagueFixtures(awayTeamId, leagueId, season);
+        const awayLast5 = await fetchLast5LeagueFixtures(awayTeamId, leagueId, season, providerBudget);
 
         const homePasses =
           awayStats.conceding_rate >= 2.0 &&
@@ -305,7 +298,7 @@ serve(async (req) => {
       // Evaluate Away O1.5
       if (awayStats.scoring_rate >= 2.0) {
         await delay(RATE_DELAY_MS);
-        const homeLast5 = await fetchLast5LeagueFixtures(homeTeamId, leagueId, season);
+        const homeLast5 = await fetchLast5LeagueFixtures(homeTeamId, leagueId, season, providerBudget);
 
         const awayPasses =
           homeStats.conceding_rate >= 2.0 &&
@@ -346,6 +339,14 @@ serve(async (req) => {
           errors++;
         }
       }
+      } catch (err) {
+        errors++;
+        if (err instanceof ProviderControlError) {
+          console.warn(`[team-totals-refresh] Provider stop: ${err.reason}`);
+          break;
+        }
+        console.error(`[team-totals-refresh] Fixture ${fixture.id} failed:`, err);
+      }
     }
 
     const duration = Date.now() - startTime;
@@ -369,6 +370,8 @@ serve(async (req) => {
           home_pass: homePass,
           away_pass: awayPass,
           total_fixtures: totalFixtures,
+          selected_fixtures: selectedFixtures.length,
+          provider: providerBudget.snapshot(),
         },
         notes: `Team Totals O1.5 refresh: ${homePass} home + ${awayPass} away passed`,
       });
@@ -382,7 +385,7 @@ serve(async (req) => {
 
     return jsonResponse(
       {
-        success: true,
+        success: errors === 0 && providerBudget.failures === 0,
         trigger,
         window_hours: windowHours,
         scanned_fixtures: scannedFixtures,
@@ -392,10 +395,11 @@ serve(async (req) => {
         home_pass: homePass,
         away_pass: awayPass,
         errors,
+        provider: providerBudget.snapshot(),
         duration_ms: duration,
       },
       origin,
-      200,
+      errors === 0 && providerBudget.failures === 0 ? 200 : 502,
       req
     );
   } catch (err) {

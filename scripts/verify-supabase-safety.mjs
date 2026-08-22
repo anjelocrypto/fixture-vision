@@ -89,6 +89,9 @@ for (const file of credentialScanFiles) {
   for (const [label, pattern] of credentialPatterns) {
     if (pattern.test(source)) throw new Error(`${label} found in ${file}`);
   }
+  if (/Object\.fromEntries\(\s*req\.headers\.entries\(\)\s*\)/.test(source)) {
+    throw new Error(`raw request-header logging found in ${file}`);
+  }
 }
 
 const guard = readFileSync(

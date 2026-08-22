@@ -10,6 +10,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
+import {
+  derivePipelineHealth,
+  shouldResolveBackfillAlert,
+  shouldResolveScorerAlert,
+} from "../_shared/gate_d_health.ts";
 
 const LOG = "[health-snapshot]";
 
@@ -48,30 +53,39 @@ Deno.serve(async (req: Request) => {
 
     // ===== Collect all metrics in parallel =====
     // Use { count: "exact", head: true } properly — the count comes from the response metadata
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
     const sixHoursAgo = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
     const [
       older6hResult,
-      statusData,
+      winsResult,
+      lossesResult,
+      voidResult,
+      pendingResult,
       cardsResult,
       blacklistResult,
-      pendingMissingResult,
-      pendingWithFtResult,
+      pipelineMetricsResult,
     ] = await Promise.all([
       // pending_older_than_6h — head count
       supabase.from("ticket_leg_outcomes")
         .select("id", { count: "exact", head: true })
         .eq("result_status", "PENDING")
-        .lt("kickoff_at", sixHoursAgo)
-        .gt("kickoff_at", thirtyDaysAgo),
+        .lt("kickoff_at", sixHoursAgo),
 
-      // status breakdown (full rows needed for counting)
+      // Status counts use aggregate metadata so the 1,000-row REST response
+      // limit can never truncate the health snapshot.
       supabase.from("ticket_leg_outcomes")
-        .select("result_status")
-        .gt("kickoff_at", thirtyDaysAgo),
+        .select("id", { count: "exact", head: true })
+        .eq("result_status", "WIN"),
+      supabase.from("ticket_leg_outcomes")
+        .select("id", { count: "exact", head: true })
+        .eq("result_status", "LOSS"),
+      supabase.from("ticket_leg_outcomes")
+        .select("id", { count: "exact", head: true })
+        .eq("result_status", "VOID"),
+      supabase.from("ticket_leg_outcomes")
+        .select("id", { count: "exact", head: true })
+        .eq("result_status", "PENDING"),
 
       // cards leakage 24h — head count
       supabase.from("ticket_leg_outcomes")
@@ -85,42 +99,50 @@ Deno.serve(async (req: Request) => {
         .in("league_id", [172, 71, 143, 235, 271, 129, 136, 48])
         .gt("created_at", twentyFourHoursAgo),
 
-      // pending_missing_fixture_results — lightweight count via head
-      // Count PENDING legs whose fixture has no fixture_results row
-      // We use get_pending_ticket_fixture_ids with a small limit just for count approximation
-      // Actually, use a direct count: pending legs with kickoff > 2h ago, no matching fixture_results
-      supabase.from("ticket_leg_outcomes")
-        .select("fixture_id", { count: "exact", head: true })
-        .eq("result_status", "PENDING")
-        .lt("kickoff_at", twoHoursAgo)
-        .gt("kickoff_at", thirtyDaysAgo),
-
-      // pending_with_ft_results — join with fixture_results via inner join
-      supabase.from("ticket_leg_outcomes")
-        .select("id, fixture_results!inner(fixture_id)", { count: "exact", head: true })
-        .eq("result_status", "PENDING")
-        .eq("fixture_results.status", "FT")
-        .lt("kickoff_at", twoHoursAgo)
-        .gt("kickoff_at", thirtyDaysAgo),
+      supabase.rpc("get_ticket_pipeline_health_metrics"),
     ]);
 
-    // Count statuses
-    const statusCounts = { WIN: 0, LOSS: 0, VOID: 0, PENDING: 0, PUSH: 0 };
-    if (statusData.data) {
-      for (const row of statusData.data) {
-        const s = (row as any).result_status as string;
-        if (s in statusCounts) statusCounts[s as keyof typeof statusCounts]++;
-      }
+    const metricResults = [
+      older6hResult,
+      winsResult,
+      lossesResult,
+      voidResult,
+      pendingResult,
+      cardsResult,
+      blacklistResult,
+      pipelineMetricsResult,
+    ];
+    const metricErrors = metricResults
+      .map((result) => result.error?.message)
+      .filter((message): message is string => Boolean(message));
+    if (metricErrors.length > 0) {
+      await supabase.from("pipeline_run_logs").insert({
+        job_name: "pipeline-health-snapshot",
+        run_started: new Date().toISOString(),
+        run_finished: new Date().toISOString(),
+        success: false,
+        mode: "snapshot",
+        processed: 0,
+        failed: metricErrors.length,
+        leagues_covered: [],
+        details: { health: "UNKNOWN", metric_errors: metricErrors },
+        error_message: metricErrors.join(" | ").slice(0, 1000),
+      });
+      return errorResponse("Health metrics unavailable", origin, 503, req);
     }
 
     const metrics: HealthMetrics = {
-      pending_missing_fixture_results: (pendingMissingResult.count ?? 0) - (pendingWithFtResult.count ?? 0),
-      pending_with_ft_results: pendingWithFtResult.count ?? 0,
+      pending_missing_fixture_results: Number(
+        pipelineMetricsResult.data?.pending_missing_fixture_results ?? 0,
+      ),
+      pending_with_ft_results: Number(
+        pipelineMetricsResult.data?.pending_with_ft_results ?? 0,
+      ),
       pending_older_than_6h: older6hResult.count ?? 0,
-      total_win: statusCounts.WIN,
-      total_loss: statusCounts.LOSS,
-      total_void: statusCounts.VOID,
-      total_pending: statusCounts.PENDING,
+      total_win: winsResult.count ?? 0,
+      total_loss: lossesResult.count ?? 0,
+      total_void: voidResult.count ?? 0,
+      total_pending: pendingResult.count ?? 0,
       cards_leakage_24h: cardsResult.count ?? 0,
       blacklist_leakage_24h: blacklistResult.count ?? 0,
     };
@@ -172,7 +194,7 @@ Deno.serve(async (req: Request) => {
         console.warn(`${LOG} pending_with_ft=${metrics.pending_with_ft_results} (first occurrence, watching)`);
       }
     }
-    if (!scorerStalled) {
+    if (!scorerStalled && shouldResolveScorerAlert(metrics)) {
       await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: scorerFingerprint });
     }
 
@@ -205,12 +227,11 @@ Deno.serve(async (req: Request) => {
         });
       }
     }
-    if (!backfillStalled) {
+    if (!backfillStalled && shouldResolveBackfillAlert(metrics)) {
       await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillFingerprint });
     }
 
-    const health = (metrics.pending_with_ft_results === 0 && alerts.length === 0) ? "GREEN" :
-      (alerts.length > 0 ? "RED" : "YELLOW");
+    const health = derivePipelineHealth(metrics, alerts);
 
     console.log(`${LOG} Health: ${health}`);
 

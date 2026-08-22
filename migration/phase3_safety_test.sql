@@ -81,6 +81,8 @@ DECLARE
   v_legacy_leg_id uuid;
   v_queue_token uuid;
   v_queue_team bigint;
+  v_unsupported_leg_id uuid;
+  v_health jsonb;
 BEGIN
   SELECT allowed, current_count, retry_after_seconds
   INTO v_allowed, v_count, v_retry
@@ -212,6 +214,40 @@ BEGIN
   END IF;
   v_ticket_status := public.refresh_ticket_outcome(v_ticket_id);
   IF v_ticket_status <> 'WON' THEN RAISE EXCEPTION 'ticket outcome refresh failed'; END IF;
+
+  INSERT INTO public.fixture_results (
+    fixture_id, goals_home, goals_away, corners_home, corners_away,
+    cards_home, cards_away, status
+  ) VALUES (1002, 1, 0, 4, 2, NULL, NULL, 'FT');
+  INSERT INTO public.ticket_leg_outcomes (
+    ticket_id, user_id, fixture_id, league_id, market, side, line, odds,
+    selection_key, selection, kickoff_at
+  ) VALUES (
+    v_ticket_id, '00000000-0000-0000-0000-000000000001', 1002, 39,
+    'cards', 'over', 2.5, 1.45, 'cards:over:2.5', 'Over 2.5 Cards',
+    now() - interval '3 hours'
+  ) RETURNING id INTO v_unsupported_leg_id;
+  INSERT INTO public.ticket_leg_outcomes (
+    ticket_id, user_id, fixture_id, league_id, market, side, line, odds,
+    selection_key, selection, kickoff_at
+  ) VALUES (
+    v_ticket_id, '00000000-0000-0000-0000-000000000001', 1003, 39,
+    'goals', 'over', 1.5, 1.45, 'goals:over:1.5', 'Over 1.5 Goals',
+    now() - interval '3 hours'
+  );
+
+  IF EXISTS (SELECT 1 FROM public.claim_scorable_ticket_legs(10)) THEN
+    RAISE EXCEPTION 'unsupported or missing-result leg was claimed';
+  END IF;
+  IF (SELECT score_attempts FROM public.ticket_leg_outcomes
+      WHERE id = v_unsupported_leg_id) <> 0 THEN
+    RAISE EXCEPTION 'unsupported leg score_attempts was incremented';
+  END IF;
+  v_health := public.get_ticket_pipeline_health_metrics();
+  IF (v_health ->> 'pending_with_ft_results')::integer <> 0
+     OR (v_health ->> 'pending_missing_fixture_results')::integer <> 1 THEN
+    RAISE EXCEPTION 'pipeline health metrics do not match scorer eligibility: %', v_health;
+  END IF;
 
   v_alert_id := public.record_pipeline_alert(
     'test:fingerprint', 'test_alert', 'warning', 'test', '{"attempt":1}'::jsonb

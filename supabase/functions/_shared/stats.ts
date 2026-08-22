@@ -38,8 +38,9 @@
 //    - NOTE: Some competitions (e.g., youth cups, EFL Trophy) have NO statistics
 //      We use league_stats_coverage table to skip broken competitions per metric
 
-import { API_BASE, apiHeaders } from "./api.ts";
 import { fetchAPIFootball } from "./api_football.ts";
+import { ProviderCallBudget, ProviderControlError } from "./provider_budget.ts";
+import { getFootballSeasonForLeague } from "./season.ts";
 import { loadLeagueCoverage, shouldSkipFixtureForMetric } from "./league_coverage.ts";
 
 export type Last5Result = {
@@ -57,7 +58,10 @@ export type Last5Result = {
 };
 
 // Fetch last 20 FT fixtures for a team WITH goals data (to avoid extra API calls)
-export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{
+export async function fetchTeamLast20FixtureIds(
+  teamId: number,
+  options: { season?: number; leagueId?: number; budget?: ProviderCallBudget } = {},
+): Promise<Array<{
   id: number; 
   league_id: number;
   goals_for: number;  // Goals scored by this team
@@ -65,22 +69,20 @@ export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{
 }>> {
   console.log(`[stats] 🔍 Fetching last 20 fixture IDs for team ${teamId}`);
   
-  // Football seasons start in August (month 7)
-  const now = new Date();
-  const month = now.getUTCMonth();
-  const year = now.getUTCFullYear();
-  const season = (month >= 7) ? year : year - 1;
+  const season = options.season ?? getFootballSeasonForLeague(options.leagueId ?? 39);
   
   console.log(`[stats] 📅 Season: ${season}, Last: 20, Status Filter: FT`);
   
   // Use centralized rate-limited API client
   const result = await fetchAPIFootball(`/fixtures?team=${teamId}&season=${season}&last=20&status=FT`, {
-    logPrefix: '[stats]'
+    logPrefix: '[stats]',
+    maxRetries: 0,
+    budget: options.budget,
   });
   
   if (!result.ok) {
     console.error(`[stats] ❌ Failed to fetch fixtures for team ${teamId}: HTTP ${result.status}`);
-    return [];
+    throw new Error(`fixtures_provider_error:${result.status}`);
   }
   
   const fixtures = result.data || [];
@@ -127,7 +129,8 @@ export async function fetchTeamLast20FixtureIds(teamId: number): Promise<Array<{
 // null = stat missing from API, 0 = API explicitly returned 0
 async function fetchFixtureTeamStats(
   fixtureId: number, 
-  teamId: number
+  teamId: number,
+  budget?: ProviderCallBudget,
 ): Promise<{ 
   corners: number | null; 
   cards: number | null; 
@@ -138,12 +141,14 @@ async function fetchFixtureTeamStats(
   // Now only fetch statistics endpoint (saves 1 API call per fixture = 5 calls per team!)
   
   const statsResult = await fetchAPIFootball(`/fixtures/statistics?fixture=${fixtureId}`, {
-    logPrefix: '[stats]'
+    logPrefix: '[stats]',
+    maxRetries: 0,
+    budget,
   });
   
   if (!statsResult.ok) {
     console.warn(`[stats] ⚠️ Failed to fetch statistics for fixture ${fixtureId}: ${statsResult.status}`);
-    return { corners: null, offsides: null, fouls: null, cards: null };
+    throw new Error(`fixture_statistics_provider_error:${statsResult.status}`);
   }
   
   // Find the statistics for this specific team
@@ -208,7 +213,11 @@ async function fetchFixtureTeamStats(
   return { corners, offsides, fouls, cards };
 }
 
-export async function computeLastFiveAverages(teamId: number, supabase?: any): Promise<Last5Result> {
+export async function computeLastFiveAverages(
+  teamId: number,
+  supabase?: any,
+  options: { season?: number; leagueId?: number; budget?: ProviderCallBudget } = {},
+): Promise<Last5Result> {
   console.log(`[stats] 🔍 Computing last 5 averages for team ${teamId} using matrix-v3 logic`);
   
   // Load league coverage data (cached)
@@ -216,7 +225,7 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
   console.log(`[stats] 📊 Loaded coverage data for ${coverageMap.size} leagues`);
   
   // Fetch last 20 fixtures (with league IDs) to have a pool to select from
-  const allFixtures = await fetchTeamLast20FixtureIds(teamId);
+  const allFixtures = await fetchTeamLast20FixtureIds(teamId, options);
   console.log(`[stats] 📥 Got ${allFixtures.length} FT fixtures from API to analyze`);
   
   // P0 FIX: Validate that team has actual finished fixtures with results in database
@@ -277,7 +286,7 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
     try {
       // OPTIMIZATION: Goals come from fx (initial fixtures response) - no extra API call!
       // Only fetch statistics for corners/cards/fouls/offsides
-      const s = await fetchFixtureTeamStats(fx.id, teamId);
+      const s = await fetchFixtureTeamStats(fx.id, teamId, options.budget);
       
       // Get raw values (goals from fx, others from statistics endpoint)
       const goals = fx.goals_for;  // Already extracted from initial fixtures response
@@ -390,7 +399,9 @@ export async function computeLastFiveAverages(teamId: number, supabase?: any): P
       }
       
     } catch (error) {
+      if (error instanceof ProviderControlError) throw error;
       console.error(`[stats] ❌ Error fetching stats for fixture ${fx.id}:`, error);
+      throw error;
     }
   }
   

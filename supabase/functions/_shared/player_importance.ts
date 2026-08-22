@@ -8,6 +8,12 @@
 // - Threshold for injury impact: importance >= 0.6 (key players only)
 
 import { API_BASE, apiHeaders } from "./api.ts";
+import {
+  boundedRotatingSelection,
+  fetchWithProviderBudget,
+  ProviderCallBudget,
+  ProviderControlError,
+} from "./provider_budget.ts";
 
 export interface PlayerImportanceData {
   player_id: number;
@@ -30,12 +36,15 @@ export interface PlayerImportanceData {
 export async function fetchTeamPlayerStats(
   teamId: number,
   leagueId: number,
-  season: number
+  season: number,
+  budget?: ProviderCallBudget,
 ): Promise<PlayerImportanceData[]> {
   console.log(`[player-importance] Fetching players for team ${teamId}, league ${leagueId}, season ${season}`);
   
   const url = `${API_BASE}/players?team=${teamId}&season=${season}&league=${leagueId}`;
-  const res = await fetch(url, { headers: apiHeaders() });
+  const res = budget
+    ? await fetchWithProviderBudget(url, { headers: apiHeaders() }, budget)
+    : await fetch(url, { headers: apiHeaders() });
   
   if (!res.ok) {
     console.error(`[player-importance] Failed to fetch players: HTTP ${res.status}`);
@@ -122,7 +131,9 @@ export async function fetchTeamPlayerStats(
 export async function syncLeaguePlayerImportance(
   leagueId: number,
   season: number,
-  supabaseClient: any
+  supabaseClient: any,
+  budget?: ProviderCallBudget,
+  rotationBucket = 0,
 ): Promise<{ teams_processed: number; players_synced: number }> {
   console.log(`[player-importance] 🏁 Starting sync for league ${leagueId}, season ${season}`);
   
@@ -158,10 +169,14 @@ export async function syncLeaguePlayerImportance(
   let teamsProcessed = 0;
   let playersSynced = 0;
   
-  for (const teamId of teamIds) {
+  const selectedTeamIds = budget
+    ? boundedRotatingSelection([...teamIds], budget.remaining, rotationBucket)
+    : [...teamIds];
+
+  for (const teamId of selectedTeamIds) {
     try {
       console.log(`[player-importance] Fetching players for team ${teamId}...`);
-      const playerData = await fetchTeamPlayerStats(teamId, leagueId, season);
+      const playerData = await fetchTeamPlayerStats(teamId, leagueId, season, budget);
       
       if (playerData.length === 0) {
         console.log(`[player-importance] ⚠️ No players found for team ${teamId}, skipping upsert`);
@@ -206,6 +221,7 @@ export async function syncLeaguePlayerImportance(
       await new Promise(resolve => setTimeout(resolve, 1200));
       
     } catch (error) {
+      if (error instanceof ProviderControlError) throw error;
       console.error(`[player-importance] ❌ Error processing team ${teamId}:`, error);
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[player-importance] Error details: ${errorMsg}`);
