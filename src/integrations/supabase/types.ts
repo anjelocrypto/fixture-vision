@@ -2070,7 +2070,7 @@ export type Database = {
           category: string
           closes_at: string
           created_at: string
-          created_by: string
+          created_by: string | null
           description: string | null
           fixture_id: number | null
           id: string
@@ -2090,7 +2090,7 @@ export type Database = {
           category?: string
           closes_at: string
           created_at?: string
-          created_by: string
+          created_by?: string | null
           description?: string | null
           fixture_id?: number | null
           id?: string
@@ -2110,7 +2110,7 @@ export type Database = {
           category?: string
           closes_at?: string
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           description?: string | null
           fixture_id?: number | null
           id?: string
@@ -2173,6 +2173,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      privacy_requests: {
+        Row: {
+          completed_at: string | null
+          details: Json
+          handled_by: string | null
+          id: string
+          request_type: string
+          requested_at: string
+          resolution_notes: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          details?: Json
+          handled_by?: string | null
+          id?: string
+          request_type: string
+          requested_at?: string
+          resolution_notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          details?: Json
+          handled_by?: string | null
+          id?: string
+          request_type?: string
+          requested_at?: string
+          resolution_notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -3189,6 +3225,10 @@ export type Database = {
         }[]
       }
       close_expired_markets: { Args: never; Returns: Json }
+      complete_account_deletion_request: {
+        Args: { p_request_id: string; p_resolution_notes?: string }
+        Returns: boolean
+      }
       complete_stripe_webhook_event: {
         Args: { p_event_id: string }
         Returns: undefined
@@ -3332,6 +3372,10 @@ export type Database = {
         Args: { p_batch_limit?: number; p_retention_days?: number }
         Returns: number
       }
+      purge_user_application_data_for_deletion: {
+        Args: { p_confirmation: string; p_user_id: string }
+        Returns: Json
+      }
       record_pipeline_alert: {
         Args: {
           p_alert_type: string
@@ -3372,6 +3416,10 @@ export type Database = {
           p_window_start: string
         }
         Returns: number
+      }
+      request_account_deletion: {
+        Args: { p_confirmation: string }
+        Returns: string
       }
       reserve_feature_use: {
         Args: { p_feature_key: string }
