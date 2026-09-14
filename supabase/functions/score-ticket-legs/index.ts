@@ -98,6 +98,7 @@ serve(async (req) => {
 
     if (!scorableLegs || scorableLegs.length === 0) {
       logs.push("[score] No scorable legs found (all pending legs either have no FT results or are locked)");
+      await recordRun({ success: true, batch_size: batchSize, details: { reason: "no_scorable_legs" } });
       return new Response(
         JSON.stringify({
           success: true,
