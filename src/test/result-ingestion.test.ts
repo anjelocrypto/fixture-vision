@@ -351,7 +351,8 @@ describe("source-level guarantees", () => {
     expect(autoBackfillSrc).toContain("ingest_fixture_result_tx");
     expect(autoBackfillSrc).not.toContain('.from("fixture_results")');
     expect(autoBackfillSrc).toContain("requireConfirmation");
-    expect(autoBackfillSrc).not.toContain("score-ticket-legs");
+    expect(autoBackfillSrc).not.toContain("functions.invoke");
+    expect(autoBackfillSrc).toContain("scorer_chained: false");
   });
 
   it("retired endpoints are default-deny with zero writes", () => {
