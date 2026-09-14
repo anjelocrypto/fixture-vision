@@ -25,7 +25,7 @@ post_phase3_migrations=(
   supabase/migrations/20260822234440_82e15228-eb7e-4cda-afd6-a63692b0d615.sql
   supabase/migrations/20260822234539_870bac5d-0322-4444-b9a8-fa6da4d00115.sql
   supabase/migrations/20260914220921_7a853358-0292-4ede-a5ad-7a4908309517.sql
-  supabase/migrations/20260914233000_rc3_followup.sql
+  supabase/migrations/20260914223437_34442ed3-f533-4b98-bfb1-2dbcf51fd226.sql
 )
 
 # Guard: every migration newer than the Phase 3 batch must be listed above.
