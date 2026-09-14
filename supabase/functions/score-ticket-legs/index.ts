@@ -234,12 +234,24 @@ serve(async (req) => {
 
     logs.push(`[score] Updated ${updatedTickets} tickets`);
 
+    await recordRun({
+      success: true,
+      batch_size: batchSize,
+      scanned_legs: scorableLegs.length,
+      scored_legs: scoredLegs,
+      skipped_legs: skippedLegs,
+      held_legs: heldOrRejected,
+      updated_tickets: updatedTickets,
+      details: { duration_ms: Date.now() - startTime },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
         scanned_legs: scorableLegs.length,
         scored_legs: scoredLegs,
         skipped_legs: skippedLegs,
+        held_or_rejected_legs: heldOrRejected,
         updated_tickets: updatedTickets,
         duration_ms: Date.now() - startTime,
         logs,
@@ -248,6 +260,11 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("[score] Error:", error);
+    await recordRun({
+      success: false,
+      error_message: error instanceof Error ? error.message : "Unknown error",
+      details: { duration_ms: Date.now() - startTime },
+    });
     return new Response(
       JSON.stringify({
         success: false,
