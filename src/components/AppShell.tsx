@@ -3,6 +3,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { MyTicketDrawer } from "@/components/MyTicketDrawer";
 import { useAndroidBackButton } from "@/hooks/useAndroidBackButton";
 import { supabase } from "@/integrations/supabase/client";
+import { useTicketDrawer } from "@/stores/useTicketDrawer";
 
 /**
  * App-level shell that provides:
@@ -12,7 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<boolean>(false);
-  const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
+  const ticketDrawerOpen = useTicketDrawer((s) => s.open);
+  const setTicketDrawerOpen = useTicketDrawer((s) => s.setOpen);
 
   // Android back button handler
   useAndroidBackButton();

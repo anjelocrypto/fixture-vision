@@ -9,7 +9,7 @@ import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { LastFetchBadge } from "./LastFetchBadge";
 import { useTicket } from "@/stores/useTicket";
-import { MyTicketDrawer } from "./MyTicketDrawer";
+import { useTicketDrawer } from "@/stores/useTicketDrawer";
 import { useAccess } from "@/hooks/useAccess";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useTranslation } from "react-i18next";
@@ -30,7 +30,7 @@ export function AppHeader() {
   const { toast } = useToast();
   const { t } = useTranslation(['common']);
   const [session, setSession] = useState<Session | null>(null);
-  const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
+  const setTicketDrawerOpen = useTicketDrawer((s) => s.setOpen);
   const { legs, loadFromStorage, loadFromServer } = useTicket();
   const { hasAccess, entitlement, isAdmin } = useAccess();
   const { startTutorial } = useTutorial();
@@ -250,7 +250,7 @@ export function AppHeader() {
       </div>
 
       {/* My Ticket Drawer */}
-      <MyTicketDrawer open={ticketDrawerOpen} onOpenChange={setTicketDrawerOpen} />
+      {/* The drawer itself is mounted once in AppShell. */}
     </header>
   );
 }

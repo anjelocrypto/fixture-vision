@@ -69,6 +69,17 @@ serve(async (req) => {
 
   logs.push(`[score] Authorized via ${auth.method}`);
 
+  // Durable scorer run log — one row per invocation, success or failure.
+  const recordRun = async (fields: Record<string, unknown>) => {
+    const { error } = await supabase.from("scorer_run_logs").insert({
+      run_started: new Date(startTime).toISOString(),
+      run_finished: new Date().toISOString(),
+      auth_method: auth.method,
+      ...fields,
+    });
+    if (error) console.error("[score] scorer_run_logs insert failed:", error.message);
+  };
+
   try {
     // Parse optional batch_size param
     const url = new URL(req.url);
@@ -87,6 +98,7 @@ serve(async (req) => {
 
     if (!scorableLegs || scorableLegs.length === 0) {
       logs.push("[score] No scorable legs found (all pending legs either have no FT results or are locked)");
+      await recordRun({ success: true, batch_size: batchSize, details: { reason: "no_scorable_legs" } });
       return new Response(
         JSON.stringify({
           success: true,
@@ -105,6 +117,7 @@ serve(async (req) => {
     // Step 2: Score each leg (results are already in the row from RPC)
     let scoredLegs = 0;
     let skippedLegs = 0;
+    let heldOrRejected = 0;
     const ticketsToUpdate = new Set<string>();
 
     for (const leg of scorableLegs as ScorableLeg[]) {
@@ -186,7 +199,13 @@ serve(async (req) => {
       );
 
       if (updateError || finalized !== true) {
-        logs.push(`[score] Error updating leg ${leg.leg_id}: ${updateError?.message ?? "claim no longer owned"}`);
+        // finalize re-locks the leg and fixture and re-runs the canonical
+        // settlement evaluator; a false return means the leg was held or the
+        // claim was lost — never a settlement.
+        heldOrRejected++;
+        logs.push(
+          `[score] Not settled ${leg.leg_id}: ${updateError?.message ?? "held or claim no longer owned"}`,
+        );
         continue;
       }
 
@@ -215,12 +234,24 @@ serve(async (req) => {
 
     logs.push(`[score] Updated ${updatedTickets} tickets`);
 
+    await recordRun({
+      success: true,
+      batch_size: batchSize,
+      scanned_legs: scorableLegs.length,
+      scored_legs: scoredLegs,
+      skipped_legs: skippedLegs,
+      held_legs: heldOrRejected,
+      updated_tickets: updatedTickets,
+      details: { duration_ms: Date.now() - startTime },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
         scanned_legs: scorableLegs.length,
         scored_legs: scoredLegs,
         skipped_legs: skippedLegs,
+        held_or_rejected_legs: heldOrRejected,
         updated_tickets: updatedTickets,
         duration_ms: Date.now() - startTime,
         logs,
@@ -229,6 +260,11 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("[score] Error:", error);
+    await recordRun({
+      success: false,
+      error_message: error instanceof Error ? error.message : "Unknown error",
+      details: { duration_ms: Date.now() - startTime },
+    });
     return new Response(
       JSON.stringify({
         success: false,

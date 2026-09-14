@@ -1,16 +1,20 @@
 /**
- * AUTO-BACKFILL-RESULTS (Gate D remediation — hardened)
+ * AUTO-BACKFILL-RESULTS (Gate D RC3 — consolidated strict path)
  *
  * Modes:
  *  - targeted : exactly one explicit fixture_id. Goals-only = max 1 provider call,
- *               with statistics = max 2. Mutates only that fixture's fixture_results
- *               row, its fixtures.status (when the provider justifies it) and this
- *               function's own audit logs.
- *  - bulk     : legacy queue drain, now bounded by an explicit ProviderCallBudget.
+ *               with statistics = max 2.
+ *  - bulk     : bounded queue drain. Every fixture goes through the SAME strict
+ *               parser and the SAME atomic service-role writer as targeted mode.
  *
  * Invariants:
  *  - Every provider request requires confirm_provider_calls=true.
- *  - maxRetries = 0. Immediate stop on 429 / 5xx / timeout / network / budget exhaustion.
+ *  - maxRetries = 0, explicit per-request timeout, immediate circuit on
+ *    timeout / network / 401 / 403 / 429 / 5xx / malformed JSON / bad schema.
+ *  - The fixture must exist locally before a provider call is spent.
+ *  - Provider fixture id must equal the requested id; invalid/incomplete/empty
+ *    payloads write nothing at all.
+ *  - Identity, status and results are persisted in one database transaction.
  *  - No score-ticket-legs chaining (scoring is separately authorized).
  *  - No secrets or secret prefixes are ever logged.
  */
@@ -22,15 +26,13 @@ import {
   authorizeIngestionRequest,
   buildTargetedBudget,
   ProviderSession,
-  ProviderStopError,
   requireConfirmation,
   runTargetedFixtureIngestion,
   validateBoundedInt,
   validateFixtureId,
   ValidationError,
-  buildFixtureResultRow,
-  isTerminalStatus,
-  type FixtureResultRow,
+  type TargetedOutcome,
+  type TargetedWriter,
 } from "../_shared/result_ingestion.ts";
 
 const SUPPORTED_LEAGUES = [39, 40, 78, 140, 135, 61, 2, 3, 848, 45, 48, 66, 81, 137, 143];
@@ -41,30 +43,55 @@ const MAX_LOOKBACK_DAYS = 365;
 const MAX_BULK_PROVIDER_CALLS = 100;
 const WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD = 3;
 
+// deno-lint-ignore no-explicit-any
+function makeWriter(supabase: any): TargetedWriter {
+  return {
+    loadLocalFixture: async (fixtureId: number) => {
+      const { data, error } = await supabase
+        .from("fixtures").select("id, status").eq("id", fixtureId).maybeSingle();
+      if (error) throw new Error(`local_fixture_lookup_failed: ${error.message}`);
+      return data ? { id: data.id as number, status: (data.status as string | null) ?? null } : null;
+    },
+    ingestAtomically: async (payload) => {
+      const { error } = await supabase.rpc("ingest_fixture_result_tx", {
+        p_fixture_id: payload.fixture_id,
+        p_league_id: payload.league_id,
+        p_status: payload.status,
+        p_kickoff_at: payload.kickoff_at,
+        p_home_team_id: payload.home_team_id,
+        p_away_team_id: payload.away_team_id,
+        p_goals_home: payload.goals_home,
+        p_goals_away: payload.goals_away,
+        p_stats: payload.stats,
+      });
+      if (error) throw new Error(`ingest_transaction_failed: ${error.message}`);
+    },
+  };
+}
+
 async function finalizePipelineLog(
+  // deno-lint-ignore no-explicit-any
   supabase: any,
   id: number | null,
   success: boolean,
   processed: number,
   failed: number,
   leagues: number[],
+  // deno-lint-ignore no-explicit-any
   details: any,
   errorMessage?: string,
 ): Promise<void> {
   if (!id) return;
-  try {
-    await supabase.from("pipeline_run_logs").update({
-      run_finished: new Date().toISOString(),
-      success,
-      processed,
-      failed,
-      leagues_covered: leagues,
-      details,
-      error_message: errorMessage || null,
-    }).eq("id", id);
-  } catch (e) {
-    console.error("[auto-backfill] Failed to update pipeline log:", e);
-  }
+  const { error } = await supabase.from("pipeline_run_logs").update({
+    run_finished: new Date().toISOString(),
+    success,
+    processed,
+    failed,
+    leagues_covered: leagues,
+    details,
+    error_message: errorMessage || null,
+  }).eq("id", id);
+  if (error) console.error("[auto-backfill] Failed to update pipeline log:", error.message);
 }
 
 Deno.serve(async (req: Request) => {
@@ -114,6 +141,8 @@ Deno.serve(async (req: Request) => {
     body = {};
   }
 
+  const writer = makeWriter(supabase);
+
   try {
     // Every mode of this function touches the provider — fail closed first.
     requireConfirmation(body);
@@ -127,9 +156,6 @@ Deno.serve(async (req: Request) => {
       const includeStatistics = body.include_statistics === true;
       const budget = buildTargetedBudget(includeStatistics, body.max_provider_calls);
 
-      const { data: localFixture } = await supabase
-        .from("fixtures").select("id, status").eq("id", fixtureId).maybeSingle();
-
       const session = new ProviderSession({
         budget,
         fetchImpl: (url, init) => fetch(url, init as RequestInit),
@@ -141,40 +167,39 @@ Deno.serve(async (req: Request) => {
         apiBase: API_BASE,
         session,
         includeStatistics,
-        localStatus: localFixture?.status ?? null,
-        writer: {
-          upsertFixtureResult: async (row) => {
-            const { error } = await supabase.from("fixture_results")
-              .upsert([row], { onConflict: "fixture_id" });
-            if (error) throw new Error(`upsert_failed: ${error.message}`);
-          },
-          updateFixtureStatus: async (id, status) => {
-            await supabase.from("fixtures").update({ status }).eq("id", id);
-          },
-        },
+        writer,
       });
 
-      await supabase.from("pipeline_run_logs").insert({
+      const { error: logError } = await supabase.from("pipeline_run_logs").insert({
         job_name: "auto-backfill-results",
         run_started: new Date(startTime).toISOString(),
         run_finished: new Date().toISOString(),
-        success: outcome.stop_reason === null,
+        success: outcome.success,
         mode: "targeted",
         processed: 1,
-        failed: outcome.result_written ? 0 : 1,
+        failed: outcome.success ? 0 : 1,
         leagues_covered: [],
         details: { ...outcome, ...session.snapshot(), include_statistics: includeStatistics },
-        error_message: outcome.stop_reason ?? null,
+        error_message: outcome.success ? null : (outcome.reason ?? outcome.state),
       });
+      if (logError) console.error("[auto-backfill] pipeline log insert failed:", logError.message);
+
+      const httpStatus = outcome.success
+        ? 200
+        : outcome.state === "provider_error"
+        ? 502
+        : outcome.state === "non_terminal_no_change"
+        ? 200
+        : 422;
 
       return jsonResponse({
-        success: outcome.stop_reason === null,
+        success: outcome.success,
         mode: "targeted",
         scorer_chained: false,
         duration_ms: Date.now() - startTime,
         ...outcome,
         provider: session.snapshot(),
-      }, origin, outcome.stop_reason ? 502 : 200, req);
+      }, origin, httpStatus, req);
     }
 
     // ========================= BULK MODE ===================================
@@ -196,7 +221,7 @@ Deno.serve(async (req: Request) => {
       headers: apiHeaders(),
     });
 
-    const { data: logData } = await supabase.from("pipeline_run_logs").insert({
+    const { data: logData, error: logStartError } = await supabase.from("pipeline_run_logs").insert({
       job_name: "auto-backfill-results",
       run_started: new Date().toISOString(),
       success: false,
@@ -206,6 +231,9 @@ Deno.serve(async (req: Request) => {
       leagues_covered: [],
       details: { status: "started", batch_size: batchSize, lookback_days: lookbackDays },
     }).select("id").single();
+    if (logStartError) {
+      return errorResponse(`Pipeline log insert failed: ${logStartError.message}`, origin, 500, req);
+    }
     const pipelineLogId: number | null = logData?.id ?? null;
 
     const { data: missingFixtures, error: rpcError } = await supabase.rpc("get_fixtures_missing_results", {
@@ -227,31 +255,32 @@ Deno.serve(async (req: Request) => {
       if (ticketRpcError) {
         console.warn("[auto-backfill] get_pending_ticket_fixture_ids error (non-fatal)");
       } else if (ticketFixtures?.length) {
+        // deno-lint-ignore no-explicit-any
         const pass1Ids = new Set((missingFixtures || []).map((f: any) => f.fixture_id));
+        // deno-lint-ignore no-explicit-any
         ticketMissingFixtures = ticketFixtures.filter((f: any) => !pass1Ids.has(f.fixture_id));
       }
     }
 
     const allMissing = [
+      // deno-lint-ignore no-explicit-any
       ...(missingFixtures || []).map((f: any) => ({
-        fixture_id: f.fixture_id,
-        fixture_league_id: f.fixture_league_id,
-        fixture_status: f.fixture_status as string | null,
+        fixture_id: f.fixture_id as number,
+        fixture_league_id: f.fixture_league_id as number | null,
         source: "pass1_supported_leagues",
       })),
+      // deno-lint-ignore no-explicit-any
       ...ticketMissingFixtures.map((f: any) => ({
-        fixture_id: f.fixture_id,
-        fixture_league_id: f.league_id,
-        fixture_status: null as string | null,
+        fixture_id: f.fixture_id as number,
+        fixture_league_id: (f.league_id as number | null) ?? null,
         source: "pass2_ticket_legs",
       })),
     ];
 
     let processed = 0;
     let failed = 0;
+    let inserted = 0;
     let stopReason: string | null = null;
-    const results: FixtureResultRow[] = [];
-    const statusUpdates: { id: number; status: string }[] = [];
     const errors: { fixture_id: number; error: string }[] = [];
     const leagueSet = new Set<number>();
 
@@ -262,62 +291,37 @@ Deno.serve(async (req: Request) => {
       }
       processed++;
       if (fixture.fixture_league_id) leagueSet.add(fixture.fixture_league_id);
-      try {
-        const data = await session.get(`${API_BASE}/fixtures?id=${fixture.fixture_id}`);
-        const apiFixture = Array.isArray(data) && data.length ? data[0] : null;
-        if (!apiFixture?.fixture) {
-          errors.push({ fixture_id: fixture.fixture_id, error: "no_provider_data" });
-          failed++;
-          continue;
-        }
-        const apiStatus: string = apiFixture.fixture?.status?.short ?? "NS";
-        if (fixture.fixture_status !== apiStatus) {
-          statusUpdates.push({ id: fixture.fixture_id, status: apiStatus });
-        }
-        if (!isTerminalStatus(apiStatus)) {
-          errors.push({ fixture_id: fixture.fixture_id, error: `non_terminal_${apiStatus}` });
-          continue;
-        }
-        let statsData: any = null;
-        if (includeStatistics) {
-          statsData = await session.get(`${API_BASE}/fixtures/statistics?fixture=${fixture.fixture_id}`);
-        }
-        results.push(buildFixtureResultRow(apiFixture, statsData));
-      } catch (err) {
-        if (err instanceof ProviderStopError) {
-          stopReason = err.kind;
-          console.warn(`[auto-backfill] Provider circuit breaker: ${err.kind}`);
-          break;
-        }
-        const errMsg = err instanceof Error ? err.message : String(err);
-        errors.push({ fixture_id: fixture.fixture_id, error: errMsg });
-        failed++;
-      }
-    }
 
-    let inserted = 0;
-    if (results.length > 0) {
-      const deduped = Array.from(new Map(results.map((r) => [r.fixture_id, r])).values());
-      const { error: upsertError } = await supabase.from("fixture_results")
-        .upsert(deduped, { onConflict: "fixture_id" });
-      if (upsertError) {
-        await finalizePipelineLog(supabase, pipelineLogId, false, processed, failed, [...leagueSet], { upsert_error: upsertError.message }, upsertError.message);
-        return errorResponse(`Upsert failed: ${upsertError.message}`, origin, 500, req);
-      }
-      inserted = deduped.length;
-    }
+      // Identical strict path as targeted mode: same parser, same atomic writer.
+      const outcome: TargetedOutcome = await runTargetedFixtureIngestion({
+        fixtureId: fixture.fixture_id,
+        apiBase: API_BASE,
+        session,
+        includeStatistics,
+        writer,
+      });
 
-    let statusUpdateCount = 0;
-    for (const update of statusUpdates) {
-      const { error } = await supabase.from("fixtures").update({ status: update.status }).eq("id", update.id);
-      if (!error) statusUpdateCount++;
+      if (outcome.success) {
+        inserted++;
+        continue;
+      }
+      if (outcome.state === "provider_error") {
+        stopReason = outcome.stop_reason ?? "provider_error";
+        console.warn(`[auto-backfill] Provider circuit breaker: ${stopReason}`);
+        break;
+      }
+      if (outcome.state === "non_terminal_no_change") {
+        errors.push({ fixture_id: fixture.fixture_id, error: `non_terminal_${outcome.provider_status}` });
+        continue;
+      }
+      failed++;
+      errors.push({ fixture_id: fixture.fixture_id, error: outcome.reason ?? outcome.state });
     }
 
     const finalDuration = Date.now() - startTime;
     await finalizePipelineLog(supabase, pipelineLogId, stopReason === null, processed, failed, [...leagueSet], {
       missing_found: allMissing.length,
       inserted,
-      status_updates: statusUpdateCount,
       duration_ms: finalDuration,
       errors: errors.slice(0, 10),
       provider: session.snapshot(),
@@ -337,11 +341,12 @@ Deno.serve(async (req: Request) => {
         .order("run_started", { ascending: false })
         .limit(WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD);
       const consecutiveZeros = (recentRuns || []).filter(
+        // deno-lint-ignore no-explicit-any
         (r: any) => r.details && (r.details.inserted === 0 || r.details.inserted === null),
       ).length;
       if (consecutiveZeros >= WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD - 1) {
         backfillStalled = true;
-        await supabase.rpc("record_pipeline_alert", {
+        const { error } = await supabase.rpc("record_pipeline_alert", {
           p_fingerprint: backfillAlertFingerprint,
           p_alert_type: "backfill_stalled",
           p_severity: "warning",
@@ -352,10 +357,12 @@ Deno.serve(async (req: Request) => {
             last_errors: errors.slice(0, 5),
           },
         });
+        if (error) console.error("[auto-backfill] record_pipeline_alert failed:", error.message);
       }
     }
     if (!backfillStalled) {
-      await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillAlertFingerprint });
+      const { error } = await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillAlertFingerprint });
+      if (error) console.error("[auto-backfill] resolve_pipeline_alert failed:", error.message);
     }
 
     console.log("[auto-backfill] ===== FUNCTION END =====");
@@ -366,7 +373,6 @@ Deno.serve(async (req: Request) => {
       processed,
       inserted,
       failed,
-      status_updates: statusUpdateCount,
       leagues_covered: [...leagueSet],
       stop_reason: stopReason,
       scorer_chained: false,

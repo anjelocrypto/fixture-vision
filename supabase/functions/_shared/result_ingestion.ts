@@ -1,10 +1,25 @@
 // ============================================================================
-// Shared, dependency-free result-ingestion core (Gate D remediation)
+// Shared, dependency-free result-ingestion core (Gate D RC3)
 // ----------------------------------------------------------------------------
 // Pure TypeScript: no npm:/https: imports so it is unit-testable outside Deno.
 // Every provider-touching path in the result-ingestion family MUST route
-// through this module: explicit confirmation, hard call budget, zero retries
-// and an immediate circuit breaker on 429/5xx/timeout/network failure.
+// through this module.
+//
+// RC3 contract:
+//  - explicit confirmation + hard provider call budget, maxRetries = 0
+//  - per-request AbortController timeout
+//  - immediate circuit on timeout, network failure, 401, 403, 429, 5xx,
+//    malformed JSON and invalid provider schema; other 4xx are explicit errors
+//    and are never treated as empty successful data
+//  - the requested fixture must exist locally BEFORE any provider call
+//  - the provider fixture id must exactly equal the requested fixture id
+//  - strict validation of terminal status, league id, team ids, kickoff and
+//    finite non-negative integer goals; nothing is ever defaulted to zero and a
+//    missing provider kickoff is never replaced with "now"
+//  - any mismatch / incomplete / empty / malformed payload performs zero writes
+//  - identity, status and results are persisted in ONE service-role transaction
+//  - `success` is false for provider errors, invalid data and failed writes;
+//    non-terminal fixtures are reported as an explicit no-change state
 // ============================================================================
 
 import { ProviderCallBudget, ProviderControlError } from "./provider_budget.ts";
@@ -12,7 +27,13 @@ import { ProviderCallBudget, ProviderControlError } from "./provider_budget.ts";
 export const TERMINAL_STATUSES = ["FT", "AET", "PEN", "AWD", "WO"] as const;
 export const NON_PLAYABLE_STATUSES = ["PST", "CANC", "ABD", "TBD", "SUSP", "INT"] as const;
 
-export type FetchLike = (input: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
+/** Default per-request provider timeout. */
+export const PROVIDER_TIMEOUT_MS = 10_000;
+
+export type FetchLike = (
+  input: string,
+  init?: { headers?: Record<string, string>; signal?: AbortSignal },
+) => Promise<Response>;
 
 export class ValidationError extends Error {
   readonly code: string;
@@ -27,6 +48,10 @@ export type ProviderStopKind =
   | "provider_rate_limited"
   | "provider_server_error"
   | "provider_network_error"
+  | "provider_timeout"
+  | "provider_unauthorized"
+  | "provider_client_error"
+  | "provider_malformed_json"
   | "provider_call_budget_exhausted";
 
 export class ProviderStopError extends Error {
@@ -90,6 +115,23 @@ export function buildTargetedBudget(includeStatistics: boolean, requested?: unkn
 }
 
 // ---------------------------------------------------------------------------
+// Constant-time secret comparison
+// ---------------------------------------------------------------------------
+
+export function constantTimeEquals(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = a ?? "";
+  const right = b ?? "";
+  if (left.length === 0 || right.length === 0) return false;
+  // Compare over a fixed width so length differences do not short-circuit.
+  const width = Math.max(left.length, right.length);
+  let diff = left.length ^ right.length;
+  for (let i = 0; i < width; i++) {
+    diff |= (left.charCodeAt(i) || 0) ^ (right.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
+// ---------------------------------------------------------------------------
 // Authorization (default deny, never logs secrets or secret prefixes)
 // ---------------------------------------------------------------------------
 
@@ -109,7 +151,7 @@ export async function authorizeIngestionRequest(
   const authHeader = deps.authHeader?.trim() || "";
   const cronKeyHeader = deps.cronKeyHeader?.trim() || "";
 
-  if (deps.serviceRoleKey && authHeader && authHeader === `Bearer ${deps.serviceRoleKey}`) {
+  if (deps.serviceRoleKey && authHeader && constantTimeEquals(authHeader, `Bearer ${deps.serviceRoleKey}`)) {
     return { authorized: true, method: "service_role" };
   }
 
@@ -120,8 +162,7 @@ export async function authorizeIngestionRequest(
     } catch {
       expected = null;
     }
-    const expectedKey = String(expected ?? "").trim();
-    if (expectedKey.length > 0 && cronKeyHeader === expectedKey) {
+    if (constantTimeEquals(cronKeyHeader, String(expected ?? "").trim())) {
       return { authorized: true, method: "cron_key" };
     }
   }
@@ -148,58 +189,72 @@ export class ProviderSession {
   readonly budget: ProviderCallBudget;
   private readonly fetchImpl: FetchLike;
   private readonly headers: Record<string, string>;
+  private readonly timeoutMs: number;
   attempts = 0;
   stopped: ProviderStopKind | null = null;
 
-  constructor(opts: { budget: ProviderCallBudget; fetchImpl: FetchLike; headers?: Record<string, string> }) {
+  constructor(opts: {
+    budget: ProviderCallBudget;
+    fetchImpl: FetchLike;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+  }) {
     this.budget = opts.budget;
     this.fetchImpl = opts.fetchImpl;
     this.headers = opts.headers ?? {};
+    this.timeoutMs = opts.timeoutMs ?? PROVIDER_TIMEOUT_MS;
   }
 
   get callsUsed(): number {
     return this.budget.used;
   }
 
-  /** Single attempt. maxRetries = 0 by contract. */
+  private stop(kind: ProviderStopKind, status: number | null = null): never {
+    this.stopped = kind;
+    throw new ProviderStopError(kind, status);
+  }
+
+  /** Single attempt, hard timeout, zero retries by contract. */
+  // deno-lint-ignore no-explicit-any
   async get(url: string): Promise<any> {
     if (this.stopped) throw new ProviderStopError(this.stopped);
     try {
       this.budget.reserve();
     } catch (error) {
-      if (error instanceof ProviderControlError) {
-        this.stopped = "provider_call_budget_exhausted";
-        throw new ProviderStopError(this.stopped);
-      }
+      if (error instanceof ProviderControlError) this.stop("provider_call_budget_exhausted");
       throw error;
     }
 
     this.attempts++;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let response: Response;
     try {
-      response = await this.fetchImpl(url, { headers: this.headers });
-    } catch {
-      this.stopped = "provider_network_error";
-      throw new ProviderStopError(this.stopped);
+      response = await this.fetchImpl(url, { headers: this.headers, signal: controller.signal });
+    } catch (error) {
+      const aborted = controller.signal.aborted ||
+        (error as { name?: string } | null)?.name === "AbortError" ||
+        (error as { name?: string } | null)?.name === "TimeoutError";
+      this.stop(aborted ? "provider_timeout" : "provider_network_error");
+    } finally {
+      clearTimeout(timer);
     }
 
-    if (response.status === 429) {
-      this.stopped = "provider_rate_limited";
-      throw new ProviderStopError(this.stopped, 429);
-    }
-    if (response.status >= 500) {
-      this.stopped = "provider_server_error";
-      throw new ProviderStopError(this.stopped, response.status);
-    }
-    if (!response.ok) {
-      return null;
-    }
+    if (response.status === 401 || response.status === 403) this.stop("provider_unauthorized", response.status);
+    if (response.status === 429) this.stop("provider_rate_limited", 429);
+    if (response.status >= 500) this.stop("provider_server_error", response.status);
+    if (!response.ok) this.stop("provider_client_error", response.status);
+
+    // deno-lint-ignore no-explicit-any
+    let json: any;
     try {
-      const json = await response.json();
-      return json?.response ?? null;
+      json = await response.json();
     } catch {
-      return null;
+      this.stop("provider_malformed_json", response.status);
     }
+    if (json === null || typeof json !== "object") this.stop("provider_malformed_json", response.status);
+    if (!("response" in json)) this.stop("provider_malformed_json", response.status);
+    return json.response ?? null;
   }
 
   snapshot(): Record<string, unknown> {
@@ -213,13 +268,19 @@ export class ProviderSession {
 }
 
 // ---------------------------------------------------------------------------
-// Response parsing
+// Strict parsing / validation
 // ---------------------------------------------------------------------------
 
 export function isTerminalStatus(status: string | null | undefined): boolean {
   return !!status && (TERMINAL_STATUSES as readonly string[]).includes(status);
 }
 
+function finiteNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) return null;
+  return value;
+}
+
+// deno-lint-ignore no-explicit-any
 export function extractTeamStats(statsData: any, homeId: number, awayId: number) {
   const out: Record<string, number | null> = {
     corners_home: null, corners_away: null,
@@ -228,70 +289,114 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
     offsides_home: null, offsides_away: null,
   };
   if (!Array.isArray(statsData) || statsData.length < 2) return out;
-  const pick = (side: any, type: string) =>
-    side?.statistics?.find((st: any) => st.type === type)?.value ?? null;
+  // deno-lint-ignore no-explicit-any
+  const pick = (side: any, type: string) => {
+    // deno-lint-ignore no-explicit-any
+    const raw = side?.statistics?.find((st: any) => st.type === type)?.value;
+    return finiteNonNegativeInt(raw);
+  };
 
+  // deno-lint-ignore no-explicit-any
   const home = statsData.find((s: any) => s.team?.id === homeId);
+  // deno-lint-ignore no-explicit-any
   const away = statsData.find((s: any) => s.team?.id === awayId);
 
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
     if (!side?.statistics) continue;
     out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
-    const yellow = pick(side, "Yellow Cards") ?? 0;
-    const red = pick(side, "Red Cards") ?? 0;
-    out[`cards_${suffix}`] = (yellow || 0) + (red || 0);
+    const yellow = pick(side, "Yellow Cards");
+    const red = pick(side, "Red Cards");
+    // Never default a missing statistic to zero.
+    out[`cards_${suffix}`] = yellow === null && red === null ? null : (yellow ?? 0) + (red ?? 0);
     out[`fouls_${suffix}`] = pick(side, "Fouls");
     out[`offsides_${suffix}`] = pick(side, "Offsides");
   }
   return out;
 }
 
-export interface FixtureResultRow {
+export interface ValidatedFixture {
   fixture_id: number;
   league_id: number;
-  kickoff_at: string;
-  finished_at: string;
-  goals_home: number;
-  goals_away: number;
-  corners_home?: number;
-  corners_away?: number;
-  cards_home?: number;
-  cards_away?: number;
-  fouls_home?: number;
-  fouls_away?: number;
-  offsides_home?: number;
-  offsides_away?: number;
   status: string;
-  source: string;
-  fetched_at: string;
+  terminal: boolean;
+  kickoff_at: string;
+  home_team_id: number;
+  away_team_id: number;
+  goals_home: number | null;
+  goals_away: number | null;
 }
 
-export function buildFixtureResultRow(apiFixture: any, statsData: any | null): FixtureResultRow {
-  const status = apiFixture?.fixture?.status?.short as string;
-  const timestamp = apiFixture?.fixture?.timestamp;
-  const stats = statsData
-    ? extractTeamStats(statsData, apiFixture?.teams?.home?.id, apiFixture?.teams?.away?.id)
-    : null;
-  const now = new Date().toISOString();
-  const undef = (v: number | null | undefined) => (v === null || v === undefined ? undefined : v);
+/**
+ * Strictly validates one provider fixture payload against the requested id.
+ * Throws ValidationError (zero writes) on any deviation.
+ */
+export function parseProviderFixture(
+  // deno-lint-ignore no-explicit-any
+  raw: any,
+  requestedFixtureId: number,
+): ValidatedFixture {
+  if (!raw || typeof raw !== "object" || !raw.fixture || typeof raw.fixture !== "object") {
+    throw new ValidationError("invalid_provider_schema", "provider payload is not a fixture object");
+  }
+
+  const providerId = finiteNonNegativeInt(raw.fixture.id);
+  if (providerId === null) {
+    throw new ValidationError("invalid_provider_schema", "provider fixture id is missing or malformed");
+  }
+  if (providerId !== requestedFixtureId) {
+    throw new ValidationError(
+      "fixture_id_mismatch",
+      `provider returned fixture ${providerId} for requested ${requestedFixtureId}`,
+    );
+  }
+
+  const status = raw.fixture?.status?.short;
+  if (typeof status !== "string" || status.length === 0) {
+    throw new ValidationError("invalid_provider_schema", "provider status is missing");
+  }
+
+  const leagueId = finiteNonNegativeInt(raw.league?.id);
+  if (leagueId === null) {
+    throw new ValidationError("invalid_league", "provider league id is missing or malformed");
+  }
+
+  const homeId = finiteNonNegativeInt(raw.teams?.home?.id);
+  const awayId = finiteNonNegativeInt(raw.teams?.away?.id);
+  if (homeId === null || awayId === null) {
+    throw new ValidationError("invalid_teams", "provider team ids are missing or malformed");
+  }
+
+  const timestamp = raw.fixture?.timestamp;
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) {
+    throw new ValidationError("invalid_kickoff", "provider kickoff timestamp is missing or malformed");
+  }
+  const kickoff = new Date(timestamp * 1000);
+  if (Number.isNaN(kickoff.getTime())) {
+    throw new ValidationError("invalid_kickoff", "provider kickoff timestamp is not a valid date");
+  }
+
+  const terminal = isTerminalStatus(status);
+  let goalsHome: number | null = null;
+  let goalsAway: number | null = null;
+
+  if (terminal) {
+    goalsHome = finiteNonNegativeInt(raw.goals?.home) ?? finiteNonNegativeInt(raw.score?.fulltime?.home);
+    goalsAway = finiteNonNegativeInt(raw.goals?.away) ?? finiteNonNegativeInt(raw.score?.fulltime?.away);
+    if (goalsHome === null || goalsAway === null) {
+      throw new ValidationError("incomplete_score", "terminal fixture is missing finite non-negative goals");
+    }
+  }
+
   return {
-    fixture_id: apiFixture.fixture.id,
-    league_id: apiFixture.league?.id,
-    kickoff_at: timestamp ? new Date(timestamp * 1000).toISOString() : now,
-    finished_at: now,
-    goals_home: apiFixture.goals?.home ?? apiFixture.score?.fulltime?.home ?? 0,
-    goals_away: apiFixture.goals?.away ?? apiFixture.score?.fulltime?.away ?? 0,
-    corners_home: undef(stats?.corners_home),
-    corners_away: undef(stats?.corners_away),
-    cards_home: undef(stats?.cards_home),
-    cards_away: undef(stats?.cards_away),
-    fouls_home: undef(stats?.fouls_home),
-    fouls_away: undef(stats?.fouls_away),
-    offsides_home: undef(stats?.offsides_home),
-    offsides_away: undef(stats?.offsides_away),
+    fixture_id: providerId,
+    league_id: leagueId,
     status,
-    source: "api-football",
-    fetched_at: now,
+    terminal,
+    kickoff_at: kickoff.toISOString(),
+    home_team_id: homeId,
+    away_team_id: awayId,
+    goals_home: goalsHome,
+    goals_away: goalsAway,
   };
 }
 
@@ -299,9 +404,23 @@ export function buildFixtureResultRow(apiFixture: any, statsData: any | null): F
 // Targeted single-fixture ingestion
 // ---------------------------------------------------------------------------
 
+export interface IngestionPayload {
+  fixture_id: number;
+  league_id: number;
+  status: string;
+  kickoff_at: string;
+  home_team_id: number;
+  away_team_id: number;
+  goals_home: number;
+  goals_away: number;
+  stats: Record<string, number | null>;
+}
+
 export interface TargetedWriter {
-  upsertFixtureResult: (row: FixtureResultRow) => Promise<void>;
-  updateFixtureStatus: (fixtureId: number, status: string) => Promise<void>;
+  /** Must resolve to the local fixture row (or null) — checked before any provider call. */
+  loadLocalFixture: (fixtureId: number) => Promise<{ id: number; status: string | null } | null>;
+  /** Single service-role transaction: identity + status + results, all or nothing. */
+  ingestAtomically: (payload: IngestionPayload) => Promise<void>;
 }
 
 export interface TargetedOptions {
@@ -310,15 +429,23 @@ export interface TargetedOptions {
   session: ProviderSession;
   writer: TargetedWriter;
   includeStatistics: boolean;
-  localStatus?: string | null;
 }
 
+export type IngestionState =
+  | "written"
+  | "non_terminal_no_change"
+  | "provider_error"
+  | "invalid_data"
+  | "write_failed"
+  | "unknown_local_fixture";
+
 export interface TargetedOutcome {
+  success: boolean;
+  state: IngestionState;
   fixture_id: number;
   provider_status: string | null;
   terminal: boolean;
   result_written: boolean;
-  status_updated: boolean;
   stop_reason: ProviderStopKind | null;
   provider_calls: number;
   reason?: string;
@@ -326,51 +453,84 @@ export interface TargetedOutcome {
 
 export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promise<TargetedOutcome> {
   const { fixtureId, session, writer } = opts;
-  const base: TargetedOutcome = {
+  const base: Omit<TargetedOutcome, "success" | "state"> = {
     fixture_id: fixtureId,
     provider_status: null,
     terminal: false,
     result_written: false,
-    status_updated: false,
     stop_reason: null,
     provider_calls: 0,
   };
 
-  let apiFixture: any = null;
+  // 1. The fixture must exist locally BEFORE we spend a provider call.
+  const local = await writer.loadLocalFixture(fixtureId);
+  if (!local) {
+    return {
+      ...base,
+      success: false,
+      state: "unknown_local_fixture",
+      reason: "unknown_local_fixture",
+    };
+  }
+
+  // 2. Single provider call, zero retries, hard timeout.
+  // deno-lint-ignore no-explicit-any
+  let data: any = null;
   try {
-    const data = await session.get(`${opts.apiBase}/fixtures?id=${fixtureId}`);
-    apiFixture = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    data = await session.get(`${opts.apiBase}/fixtures?id=${fixtureId}`);
   } catch (error) {
     if (error instanceof ProviderStopError) {
-      return { ...base, stop_reason: error.kind, provider_calls: session.callsUsed, reason: error.kind };
+      return {
+        ...base,
+        success: false,
+        state: "provider_error",
+        stop_reason: error.kind,
+        provider_calls: session.callsUsed,
+        reason: error.kind,
+      };
     }
     throw error;
   }
 
-  if (!apiFixture?.fixture) {
-    return { ...base, provider_calls: session.callsUsed, reason: "no_provider_data" };
-  }
-
-  const providerStatus: string = apiFixture.fixture?.status?.short ?? "NS";
-  const terminal = isTerminalStatus(providerStatus);
-
-  // Non-terminal: never create fixture_results, never touch ticket outcomes.
-  if (!terminal) {
-    let statusUpdated = false;
-    if (opts.localStatus !== undefined && opts.localStatus !== providerStatus) {
-      await writer.updateFixtureStatus(fixtureId, providerStatus);
-      statusUpdated = true;
-    }
+  if (!Array.isArray(data) || data.length === 0) {
     return {
       ...base,
-      provider_status: providerStatus,
-      terminal: false,
-      status_updated: statusUpdated,
+      success: false,
+      state: "invalid_data",
+      provider_calls: session.callsUsed,
+      reason: "no_provider_data",
+    };
+  }
+
+  // 3. Strict validation — any deviation means zero writes.
+  let parsed: ValidatedFixture;
+  try {
+    parsed = parseProviderFixture(data[0], fixtureId);
+  } catch (error) {
+    const code = error instanceof ValidationError ? error.code : "invalid_provider_schema";
+    return {
+      ...base,
+      success: false,
+      state: "invalid_data",
+      provider_calls: session.callsUsed,
+      reason: code,
+    };
+  }
+
+  // 4. Non-terminal fixtures are an explicit no-change state: never written here.
+  if (!parsed.terminal) {
+    return {
+      ...base,
+      success: false,
+      state: "non_terminal_no_change",
+      provider_status: parsed.status,
       provider_calls: session.callsUsed,
       reason: "not_terminal",
     };
   }
 
+  // 5. Optional statistics call (same circuit rules).
+  // deno-lint-ignore no-explicit-any
   let statsData: any = null;
   if (opts.includeStatistics) {
     try {
@@ -379,7 +539,9 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
       if (error instanceof ProviderStopError) {
         return {
           ...base,
-          provider_status: providerStatus,
+          success: false,
+          state: "provider_error",
+          provider_status: parsed.status,
           terminal: true,
           stop_reason: error.kind,
           provider_calls: session.callsUsed,
@@ -390,21 +552,42 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
     }
   }
 
-  const row = buildFixtureResultRow(apiFixture, statsData);
-  await writer.upsertFixtureResult(row);
+  const stats = statsData
+    ? extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id)
+    : {};
 
-  let statusUpdated = false;
-  if (opts.localStatus !== undefined && opts.localStatus !== providerStatus) {
-    await writer.updateFixtureStatus(fixtureId, providerStatus);
-    statusUpdated = true;
+  // 6. One atomic service-role transaction: identity + status + results.
+  try {
+    await writer.ingestAtomically({
+      fixture_id: parsed.fixture_id,
+      league_id: parsed.league_id,
+      status: parsed.status,
+      kickoff_at: parsed.kickoff_at,
+      home_team_id: parsed.home_team_id,
+      away_team_id: parsed.away_team_id,
+      goals_home: parsed.goals_home as number,
+      goals_away: parsed.goals_away as number,
+      stats,
+    });
+  } catch (error) {
+    return {
+      ...base,
+      success: false,
+      state: "write_failed",
+      provider_status: parsed.status,
+      terminal: true,
+      provider_calls: session.callsUsed,
+      reason: error instanceof Error ? error.message : "write_failed",
+    };
   }
 
   return {
+    success: true,
+    state: "written",
     fixture_id: fixtureId,
-    provider_status: providerStatus,
+    provider_status: parsed.status,
     terminal: true,
     result_written: true,
-    status_updated: statusUpdated,
     stop_reason: null,
     provider_calls: session.callsUsed,
   };

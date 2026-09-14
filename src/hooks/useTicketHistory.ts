@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-/** Bounded page size — cursor pagination over generated_tickets. */
+/** Bounded page size — composite cursor pagination over generated_tickets. */
 export const TICKET_HISTORY_PAGE_SIZE = 10;
 
 export interface HistoryLeg {
@@ -41,6 +41,12 @@ interface RawTicketRow {
   legs: unknown;
 }
 
+/** Deterministic composite cursor: (created_at DESC, id DESC). */
+interface Cursor {
+  created_at: string;
+  id: string;
+}
+
 function legNames(rawLegs: unknown, fixtureId: number) {
   if (!Array.isArray(rawLegs)) return {};
   const match = rawLegs.find(
@@ -55,20 +61,64 @@ function legNames(rawLegs: unknown, fixtureId: number) {
 
 /**
  * Ticket history for the signed-in user only.
- * Ownership is enforced by database RLS on generated_tickets / ticket_outcomes /
- * ticket_leg_outcomes; the client filter is a convenience, never the guard.
- * Three bounded queries per page (tickets, outcomes, legs) — no N+1.
+ *
+ * - State is keyed by the authenticated user id. On logout or user change every
+ *   cached ticket is dropped and any in-flight page is abandoned, so user A's
+ *   data can never flash for user B in the same session.
+ * - Ownership is enforced by database RLS on generated_tickets /
+ *   ticket_outcomes / ticket_leg_outcomes; the client filter is a convenience,
+ *   never the guard.
+ * - Pagination uses a composite (created_at, id) cursor so tickets sharing a
+ *   timestamp are never skipped or duplicated.
  */
 export function useTicketHistory(enabled: boolean) {
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
   const [tickets, setTickets] = useState<HistoryTicket[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const cursor = useRef<string | null>(null);
-  const started = useRef(false);
+  const cursor = useRef<Cursor | null>(null);
+  /** Incremented on every auth change — stale responses are discarded. */
+  const generation = useRef(0);
+  const startedFor = useRef<string | null>(null);
+
+  // --- Auth identity tracking -------------------------------------------
+  useEffect(() => {
+    let active = true;
+
+    const applyUser = (nextId: string | null) => {
+      if (!active) return;
+      setUserId((prev) => {
+        if (prev === nextId) return prev;
+        generation.current += 1;
+        startedFor.current = null;
+        cursor.current = null;
+        setTickets([]);
+        setHasMore(false);
+        setError(null);
+        setLoading(false);
+        setLoadingMore(false);
+        return nextId;
+      });
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => applyUser(session?.user?.id ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applyUser(session?.user?.id ?? null);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const fetchPage = useCallback(async (reset: boolean) => {
+    const owner = userId;
+    if (!owner) return;
+    const gen = generation.current;
+
     if (reset) {
       cursor.current = null;
       setLoading(true);
@@ -81,18 +131,30 @@ export function useTicketHistory(enabled: boolean) {
       let query = supabase
         .from("generated_tickets")
         .select("id, created_at, total_odds, ticket_mode, legs")
+        .eq("user_id", owner)
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .limit(TICKET_HISTORY_PAGE_SIZE + 1);
 
-      if (!reset && cursor.current) query = query.lt("created_at", cursor.current);
+      const c = cursor.current;
+      if (!reset && c) {
+        // Composite keyset: created_at < cursor OR (created_at = cursor AND id < cursor.id)
+        query = query.or(
+          `created_at.lt.${c.created_at},and(created_at.eq.${c.created_at},id.lt.${c.id})`
+        );
+      }
 
       const { data: ticketRows, error: ticketError } = await query;
       if (ticketError) throw ticketError;
+      if (gen !== generation.current) return;
 
       const rows = (ticketRows ?? []) as RawTicketRow[];
       const page = rows.slice(0, TICKET_HISTORY_PAGE_SIZE);
       setHasMore(rows.length > TICKET_HISTORY_PAGE_SIZE);
-      if (page.length > 0) cursor.current = page[page.length - 1].created_at;
+      if (page.length > 0) {
+        const last = page[page.length - 1];
+        cursor.current = { created_at: last.created_at, id: last.id };
+      }
 
       const ids = page.map((t) => t.id);
       let outcomes: Record<string, { ticket_status: string; legs_total: number; legs_settled: number }> = {};
@@ -115,6 +177,7 @@ export function useTicketHistory(enabled: boolean) {
 
         if (outcomeRes.error) throw outcomeRes.error;
         if (legRes.error) throw legRes.error;
+        if (gen !== generation.current) return;
 
         outcomes = Object.fromEntries(
           (outcomeRes.data ?? []).map((o) => [
@@ -152,22 +215,27 @@ export function useTicketHistory(enabled: boolean) {
         };
       });
 
+      if (gen !== generation.current) return;
       setTickets((prev) => (reset ? mapped : [...prev, ...mapped]));
     } catch (e) {
+      if (gen !== generation.current) return;
       setError(e instanceof Error ? e.message : "Failed to load ticket history");
       if (reset) setTickets([]);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (gen === generation.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    if (enabled && !started.current) {
-      started.current = true;
-      void fetchPage(true);
-    }
-  }, [enabled, fetchPage]);
+    if (!enabled) return;
+    if (!userId) return;
+    if (startedFor.current === userId) return;
+    startedFor.current = userId;
+    void fetchPage(true);
+  }, [enabled, userId, fetchPage]);
 
   return {
     tickets,
@@ -175,6 +243,7 @@ export function useTicketHistory(enabled: boolean) {
     loadingMore,
     error,
     hasMore,
+    userId: userId ?? null,
     refetch: () => fetchPage(true),
     loadMore: () => fetchPage(false),
   };
