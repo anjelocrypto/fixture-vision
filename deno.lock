@@ -127,11 +127,7 @@
         "npm:vitest@^4.1.10",
         "npm:zod@^3.25.76",
         "npm:zustand@^5.0.8"
-      ],
-      "overrides": {
-        "lodash": "^4.18.1",
-        "ws": "^8.21.1"
-      }
+      ]
     }
   }
 }
