@@ -22,7 +22,9 @@ const MONITORED_LEAGUES = [
   { id: 848, name: "UEFA Conference League", country: "UEFA", expected_teams: 36 },
 ];
 
-const CRITICAL_JOBS = ["results-refresh", "stats-refresh"];
+// results-refresh is retired (410) — auto-backfill-results is the only
+// result-ingestion job that may be monitored.
+const CRITICAL_JOBS = ["auto-backfill-results", "stats-refresh"];
 
 // Threshold: if optimized_selections with odds in next 48h < this, auto-trigger optimizer
 const MIN_SELECTIONS_48H_WITH_ODDS = 50;
@@ -321,7 +323,7 @@ Deno.serve(async (req: Request) => {
         lastRun = pipelineLog.run_started;
         lastSuccess = pipelineLog.success;
       } else {
-        const runType = jobName === "stats-refresh" ? "stats-refresh-batch" : "results-refresh";
+        const runType = jobName === "stats-refresh" ? "stats-refresh-batch" : "auto-backfill-results";
         const { data: optimizerLog } = await supabase
           .from("optimizer_run_logs")
           .select("started_at, finished_at")

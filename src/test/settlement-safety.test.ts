@@ -9,6 +9,7 @@ import {
 import {
   settlementHoldCopy,
   isSettlementHeld,
+  SETTLEMENT_HOLD_REASONS,
   SETTLEMENT_POLICY_VERSION as FRONTEND_POLICY_VERSION,
 } from "@/lib/settlementSafety";
 
@@ -59,8 +60,11 @@ describe("kickoff drift eligibility", () => {
     ).toBe("kickoff_drift");
   });
 
-  it("does not hold when a kickoff is unknown", () => {
-    expect(evaluateLegHold({ legKickoff: null, fixtureKickoff: BASE, ...identity })).toBeNull();
+  it("fails CLOSED when a kickoff is unknown", () => {
+    expect(evaluateLegHold({ legKickoff: null, fixtureKickoff: BASE, ...identity }))
+      .toBe("kickoff_unverifiable");
+    expect(evaluateLegHold({ legKickoff: BASE, fixtureKickoff: null, ...identity }))
+      .toBe("kickoff_unverifiable");
     expect(kickoffDriftSeconds({ legKickoff: null, fixtureKickoff: BASE })).toBeNull();
   });
 });
@@ -156,10 +160,46 @@ describe("cosmetic name equivalence", () => {
   });
 });
 
+describe("identity evidence fails closed", () => {
+  it("holds when identity cannot be verified at all", () => {
+    expect(evaluateLegHold({ legKickoff: BASE, fixtureKickoff: BASE }))
+      .toBe("identity_unverifiable");
+  });
+
+  it("holds when identity evidence is only partial", () => {
+    expect(
+      evaluateLegHold({
+        legKickoff: BASE,
+        fixtureKickoff: BASE,
+        legHomeTeamId: 7612,
+        legAwayTeamId: 8657,
+        fixtureHomeTeamId: 7612,
+        // away id missing -> falls back to names, which are absent
+      }),
+    ).toBe("identity_unverifiable");
+
+    expect(
+      evaluateLegHold({
+        legKickoff: BASE,
+        fixtureKickoff: BASE,
+        legHomeTeamName: "Fenerbahce",
+        legAwayTeamName: "Ferencvarosi",
+        fixtureHomeTeamName: "Fenerbahce",
+        fixtureAwayTeamName: null,
+      }),
+    ).toBe("identity_unverifiable");
+  });
+
+  it("prefers identity evidence over kickoff evidence", () => {
+    expect(evaluateLegHold({ legKickoff: null, fixtureKickoff: null }))
+      .toBe("identity_unverifiable");
+  });
+});
+
 describe("policy version and presentation", () => {
-  it("keeps backend and frontend policy versions aligned", () => {
+  it("keeps backend and frontend policy versions aligned on V3", () => {
     expect(SETTLEMENT_POLICY_VERSION).toBe(FRONTEND_POLICY_VERSION);
-    expect(SETTLEMENT_POLICY_VERSION).toBe("reschedule-integrity-v1");
+    expect(SETTLEMENT_POLICY_VERSION).toBe("reschedule-integrity-v3");
   });
 
   it("flags held legs without inventing a new status", () => {
@@ -167,10 +207,19 @@ describe("policy version and presentation", () => {
     expect(isSettlementHeld({ result_status: "PENDING", settlement_hold_reason: null })).toBe(false);
   });
 
-  it("renders a safe, non-technical reason", () => {
-    const copy = settlementHoldCopy("kickoff_drift");
-    expect(copy.fallbackTitle).toBe("Settlement under review");
-    expect(copy.fallbackReason).toBe("Fixture schedule changed");
-    expect(JSON.stringify(copy)).not.toMatch(/api-football|cron|service_role|secret|token|fingerprint/i);
+  it("renders safe, non-technical copy for every canonical reason", () => {
+    for (const reason of SETTLEMENT_HOLD_REASONS) {
+      const copy = settlementHoldCopy(reason);
+      expect(copy.fallbackTitle).toBe("Settlement under review");
+      expect(copy.fallbackReason.length).toBeGreaterThan(0);
+      expect(JSON.stringify(copy)).not.toMatch(
+        /api-football|cron|service_role|secret|token|fingerprint|uuid/i,
+      );
+    }
+  });
+
+  it("falls back to generic copy for an unknown reason", () => {
+    expect(settlementHoldCopy("something_else").fallbackReason)
+      .toBe("We are checking this match before settling");
   });
 });

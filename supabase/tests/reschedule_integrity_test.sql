@@ -116,26 +116,36 @@ UPDATE public.fixtures
 SET "timestamp" = extract(epoch FROM timestamptz '2026-04-13 14:45+00')::bigint
 WHERE id = 1003;
 
--- T3: pure hold evaluation
-SELECT public.assert(public.evaluate_leg_hold(
+-- T3: pure hold evaluation (canonical V3 evaluator, fail-closed)
+SELECT public.assert(public.evaluate_leg_hold_v3(
   timestamptz '2026-02-10 19:45+00', timestamptz '2026-02-11 19:44+00',
   7612, 8657, 7612, 8657, NULL, NULL, NULL, NULL) IS NULL,
   'T3 23h59m drift with matching identity stays eligible');
 
-SELECT public.assert(public.evaluate_leg_hold(
+SELECT public.assert(public.evaluate_leg_hold_v3(
   timestamptz '2026-02-10 19:45+00', timestamptz '2026-02-11 19:46+00',
   7612, 8657, 7612, 8657, NULL, NULL, NULL, NULL) = 'kickoff_drift',
   'T3 drift beyond 24h is held');
 
-SELECT public.assert(public.evaluate_leg_hold(
+SELECT public.assert(public.evaluate_leg_hold_v3(
   timestamptz '2026-02-10 19:45+00', timestamptz '2026-02-10 19:45+00',
   8657, 7612, 7612, 8657, NULL, NULL, NULL, NULL) = 'team_direction_mismatch',
   'T3 home/away inversion is held regardless of kickoff');
 
-SELECT public.assert(public.evaluate_leg_hold(
+SELECT public.assert(public.evaluate_leg_hold_v3(
   timestamptz '2026-02-10 19:45+00', timestamptz '2026-02-10 19:45+00',
   NULL, NULL, NULL, NULL, 'Fenerbahce', 'Ferencvarosi', 'Fenerbahçe', 'Ferencvarosi TC') IS NULL,
   'T3 cosmetic spelling/suffix differences do not cause a false hold');
+
+SELECT public.assert(public.evaluate_leg_hold_v3(
+  timestamptz '2026-02-10 19:45+00', timestamptz '2026-02-10 19:45+00',
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) = 'identity_unverifiable',
+  'T3 missing identity evidence fails closed');
+
+SELECT public.assert(public.evaluate_leg_hold_v3(
+  NULL, timestamptz '2026-02-10 19:45+00',
+  7612, 8657, 7612, 8657, NULL, NULL, NULL, NULL) = 'kickoff_unverifiable',
+  'T3 missing kickoff evidence fails closed');
 
 -- T4: claim excludes held legs, keeps eligible ones, and never bumps attempts
 --     on held legs.
@@ -172,12 +182,20 @@ SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes WHERE 
 
 -- T6: ordinary FT scoring still works end to end for an eligible leg
 CREATE TEMP TABLE claim3 AS SELECT * FROM public.claim_scorable_ticket_legs(1);
-SELECT public.finalize_scored_ticket_leg(
-  (SELECT leg_id FROM claim3), (SELECT claim_token FROM claim3), 'WIN', 2, 'test')
-FROM claim3;
+SELECT public.assert((SELECT count(*) = 1 FROM claim3 WHERE claim_token IS NOT NULL
+                        AND result_fingerprint IS NOT NULL),
+  'T6 the claim carries a token and the scored result fingerprint');
+SELECT public.assert(
+  (SELECT (public.finalize_scored_ticket_leg(c.leg_id, c.claim_token, 'WIN', 2, 'test',
+                                             c.result_fingerprint)->>'settled')::boolean
+   FROM claim3 c),
+  'T6 ordinary FT scoring still settles an eligible leg');
 SELECT public.assert((SELECT count(*) = 1 FROM public.ticket_leg_outcomes
                       WHERE result_status = 'WIN' AND score_claim_token IS NULL),
-  'T6 ordinary FT scoring still settles an eligible leg');
+  'T6 the settled leg is WIN with its claim released');
+SELECT public.assert((SELECT settlement_policy_version = 'reschedule-integrity-v3'
+                      FROM public.ticket_leg_outcomes WHERE result_status = 'WIN'),
+  'T6 settlement stamps the canonical V3 policy version');
 
 -- T7: kickoff_at and fixture_id are immutable
 DO $$
@@ -272,7 +290,7 @@ SELECT public.assert((SELECT count(*) = 2 FROM public.pipeline_alerts WHERE aler
   'T8 repeated runs deduplicate alerts');
 
 -- T9: held legs can never be claimed afterwards
-CREATE TEMP TABLE claim4 AS SELECT * FROM public.claim_scorable_ticket_legs(1000);
+CREATE TEMP TABLE claim4 AS SELECT * FROM public.claim_scorable_ticket_legs(500);
 SELECT public.assert((SELECT count(*) = 0 FROM claim4
                       WHERE leg_id IN ('aaaaaaaa-0000-0000-0000-000000000001',
                                        'aaaaaaaa-0000-0000-0000-000000000003')),
@@ -292,7 +310,7 @@ SELECT public.persist_generated_ticket(
   jsonb_build_object('total_odds', 1.3)
 ) AS new_ticket_id \gset
 SELECT public.assert((SELECT home_team_id_snapshot = 11 AND away_team_id_snapshot = 22
-                        AND settlement_policy_version = 'reschedule-integrity-v1'
+                        AND settlement_policy_version = 'reschedule-integrity-v3'
                         AND kickoff_at = timestamptz '2026-02-10 19:45+00'
                         AND league_id = 3 AND fixture_id = 1002
                       FROM public.ticket_leg_outcomes WHERE ticket_id = :'new_ticket_id'),

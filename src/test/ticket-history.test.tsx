@@ -206,7 +206,7 @@ describe("ticket history panel", () => {
     expect(screen.getByText("Fixture #999")).toBeInTheDocument();
     expect(screen.getByText("WIN")).toBeInTheDocument();
     expect(
-      screen.getByText("Settlement under review · Fixture schedule changed")
+      screen.getByText("Settlement under review · Match was moved to a different date")
     ).toBeInTheDocument();
 
     // no internal detail leaks

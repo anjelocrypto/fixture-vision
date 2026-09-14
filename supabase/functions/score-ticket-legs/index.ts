@@ -1,31 +1,32 @@
 /*
- * SCORE TICKET LEGS - Process pending legs and mark WIN/LOSS/PUSH/VOID
- * 
- * Runs every 5 minutes via cron.
- * Scores legs based on fixture_results after match is finished (FT).
- * 
- * Uses RPC get_scorable_pending_legs which:
- * - INNER JOINs with fixture_results (FT) so we only get scorable legs
- * - Uses FOR UPDATE SKIP LOCKED to prevent double-processing
- * 
- * Scoring rules:
- * - goals: goals_home + goals_away
- * - corners: corners_home + corners_away  
- * - cards: cards_home + cards_away
- * 
- * over: actual > line = WIN, actual = line = PUSH, actual < line = LOSS
- * under: actual < line = WIN, actual = line = PUSH, actual > line = LOSS
+ * SCORE TICKET LEGS (RC3.1)
+ *
+ * ONE documented input contract — a JSON body:
+ *   { "limit": <1..500>, "confirm_scoring": true }
+ * `limit` is mandatory and never silently defaulted; `confirm_scoring` is the
+ * explicit guard required before any scoring run (including cron).
+ *
+ * Safety contract:
+ *  - legs are claimed atomically with a durable lease token AND the fingerprint
+ *    of the fixture result they are scored from
+ *  - finalization re-locks the fixture and fixture result, re-evaluates the
+ *    canonical settlement policy, rejects stale result evidence, and refreshes
+ *    the parent ticket outcome inside the SAME transaction
+ *  - any finalization/refresh failure fails the whole run: success is never
+ *    reported with stale parent state
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
-import { normalizeScoreBatchSize } from "../_shared/gate_d_health.ts";
+import { readJsonWithLimit } from "../_shared/request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-key",
 };
+
+const MAX_BODY_BYTES = 4096;
 
 interface ScorableLeg {
   claim_token: string;
@@ -42,6 +43,53 @@ interface ScorableLeg {
   corners_away: number | null;
   cards_home: number | null;
   cards_away: number | null;
+  result_fingerprint: string;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+/** Strict, fail-closed request contract. */
+function parseRequest(body: unknown): { limit: number } {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("invalid_request_body");
+  }
+  const record = body as Record<string, unknown>;
+  if (record.confirm_scoring !== true) throw new Error("confirm_scoring_required");
+  const raw = record.limit;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1 || raw > 500) {
+    throw new Error("limit_required_1_to_500");
+  }
+  return { limit: raw };
+}
+
+function actualValueFor(leg: ScorableLeg): number | null {
+  const market = leg.market.toLowerCase();
+  if (market === "goals" || market === "total_goals" || market === "over_under") {
+    return leg.goals_home + leg.goals_away;
+  }
+  if (market === "corners" || market === "total_corners") {
+    return leg.corners_home !== null && leg.corners_away !== null
+      ? leg.corners_home + leg.corners_away
+      : null;
+  }
+  if (market === "cards" || market === "total_cards") {
+    return leg.cards_home !== null && leg.cards_away !== null
+      ? leg.cards_home + leg.cards_away
+      : null;
+  }
+  return null;
+}
+
+function statusFor(side: string, actual: number, line: number): string | null {
+  const s = side.toLowerCase();
+  if (s === "over") return actual > line ? "WIN" : actual === line ? "PUSH" : "LOSS";
+  if (s === "under") return actual < line ? "WIN" : actual === line ? "PUSH" : "LOSS";
+  return null;
 }
 
 serve(async (req) => {
@@ -54,22 +102,15 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // Auth check - require service role, cron key, or admin user
   const auth = await checkCronOrAdminAuth(req, supabase, serviceRoleKey, "[score-ticket-legs]");
   if (!auth.authorized) {
     console.error("[score-ticket-legs] Unauthorized request");
-    return new Response(
-      JSON.stringify({ error: "Unauthorized", method: auth.method }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: "Unauthorized", method: auth.method }, 401);
   }
-
   logs.push(`[score] Authorized via ${auth.method}`);
 
-  // Durable scorer run log — one row per invocation, success or failure.
   const recordRun = async (fields: Record<string, unknown>) => {
     const { error } = await supabase.from("scorer_run_logs").insert({
       run_started: new Date(startTime).toISOString(),
@@ -80,199 +121,137 @@ serve(async (req) => {
     if (error) console.error("[score] scorer_run_logs insert failed:", error.message);
   };
 
+  let limit: number;
   try {
-    // Parse optional batch_size param
-    const url = new URL(req.url);
-    const batchSize = normalizeScoreBatchSize(url.searchParams.get("batch_size"));
+    limit = parseRequest(await readJsonWithLimit(req, MAX_BODY_BYTES)).limit;
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "invalid_request";
+    await recordRun({ success: false, error_message: code, details: { stage: "request_validation" } });
+    return json({ success: false, code }, 400);
+  }
 
-    logs.push(`[score] Starting with batch_size=${batchSize}`);
+  try {
+    logs.push(`[score] Starting with limit=${limit}`);
 
-    // Step 1: atomically claim scorable legs with a durable lease token.
     const { data: scorableLegs, error: legsError } = await supabase
-      .rpc("claim_scorable_ticket_legs", { batch_limit: batchSize });
+      .rpc("claim_scorable_ticket_legs", { batch_limit: limit });
 
-    if (legsError) {
-      logs.push(`[score] RPC error: ${legsError.message}`);
-      throw legsError;
+    if (legsError) throw new Error(`claim_failed: ${legsError.message}`);
+
+    const legs = (scorableLegs ?? []) as ScorableLeg[];
+    if (legs.length === 0) {
+      await recordRun({ success: true, batch_size: limit, details: { reason: "no_scorable_legs" } });
+      return json({
+        success: true,
+        scanned_legs: 0,
+        scored_legs: 0,
+        updated_tickets: 0,
+        duration_ms: Date.now() - startTime,
+        logs,
+      });
     }
 
-    if (!scorableLegs || scorableLegs.length === 0) {
-      logs.push("[score] No scorable legs found (all pending legs either have no FT results or are locked)");
-      await recordRun({ success: true, batch_size: batchSize, details: { reason: "no_scorable_legs" } });
-      return new Response(
-        JSON.stringify({
-          success: true,
-          scanned_legs: 0,
-          scored_legs: 0,
-          updated_tickets: 0,
-          duration_ms: Date.now() - startTime,
-          logs,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    logs.push(`[score] Claimed ${legs.length} scorable legs`);
 
-    logs.push(`[score] Found ${scorableLegs.length} scorable legs with FT results`);
-
-    // Step 2: Score each leg (results are already in the row from RPC)
     let scoredLegs = 0;
     let skippedLegs = 0;
     let heldOrRejected = 0;
-    const ticketsToUpdate = new Set<string>();
+    let staleEvidence = 0;
+    const updatedTickets = new Set<string>();
 
-    for (const leg of scorableLegs as ScorableLeg[]) {
-      // Calculate actual value based on market
-      let actualValue: number | null = null;
-      const market = leg.market.toLowerCase();
-      
-      if (market === "goals" || market === "total_goals" || market === "over_under") {
-        actualValue = leg.goals_home + leg.goals_away;
-      } else if (market === "corners" || market === "total_corners") {
-        if (leg.corners_home !== null && leg.corners_away !== null) {
-          actualValue = leg.corners_home + leg.corners_away;
-        }
-      } else if (market === "cards" || market === "total_cards") {
-        if (leg.cards_home !== null && leg.cards_away !== null) {
-          actualValue = leg.cards_home + leg.cards_away;
-        }
-      } else if (market === "team_goals" || market === "team_total") {
-        // For team-specific markets, we'd need side info like "home" or "away"
-        // For now, skip these as they need more context
-        await supabase.rpc("release_ticket_leg_score_claim", {
+    for (const leg of legs) {
+      const release = async () => {
+        const { error } = await supabase.rpc("release_ticket_leg_score_claim", {
           p_leg_id: leg.leg_id,
           p_claim_token: leg.claim_token,
         });
+        if (error) throw new Error(`release_claim_failed: ${error.message}`);
+      };
+
+      const actual = actualValueFor(leg);
+      if (actual === null) {
+        await release();
         skippedLegs++;
         continue;
       }
 
-      if (actualValue === null) {
-        // Can't score without actual value (e.g., corners/cards not available)
-        await supabase.rpc("release_ticket_leg_score_claim", {
-          p_leg_id: leg.leg_id,
-          p_claim_token: leg.claim_token,
-        });
+      const resultStatus = statusFor(leg.side, actual, leg.line);
+      if (resultStatus === null) {
+        logs.push(`[score] Unsupported side "${leg.side}" for leg ${leg.leg_id}`);
+        await release();
         skippedLegs++;
         continue;
       }
 
-      // Determine result status
-      let resultStatus: string;
-      const side = leg.side.toLowerCase();
-      
-      if (side === "over") {
-        if (actualValue > leg.line) {
-          resultStatus = "WIN";
-        } else if (actualValue === leg.line) {
-          resultStatus = "PUSH";
-        } else {
-          resultStatus = "LOSS";
-        }
-      } else if (side === "under") {
-        if (actualValue < leg.line) {
-          resultStatus = "WIN";
-        } else if (actualValue === leg.line) {
-          resultStatus = "PUSH";
-        } else {
-          resultStatus = "LOSS";
-        }
-      } else {
-        // Unknown side, skip
-        logs.push(`[score] Unknown side "${leg.side}" for leg ${leg.leg_id}`);
-        await supabase.rpc("release_ticket_leg_score_claim", {
-          p_leg_id: leg.leg_id,
-          p_claim_token: leg.claim_token,
-        });
-        skippedLegs++;
-        continue;
-      }
-
-      const { data: finalized, error: updateError } = await supabase.rpc(
+      const { data: outcome, error: finalizeError } = await supabase.rpc(
         "finalize_scored_ticket_leg",
         {
           p_leg_id: leg.leg_id,
           p_claim_token: leg.claim_token,
           p_result_status: resultStatus,
-          p_actual_value: actualValue,
-          p_scored_version: "v1.3-durable-claim",
+          p_actual_value: actual,
+          p_scored_version: "v3.1-atomic",
+          p_result_fingerprint: leg.result_fingerprint,
         },
       );
 
-      if (updateError || finalized !== true) {
-        // finalize re-locks the leg and fixture and re-runs the canonical
-        // settlement evaluator; a false return means the leg was held or the
-        // claim was lost — never a settlement.
-        heldOrRejected++;
-        logs.push(
-          `[score] Not settled ${leg.leg_id}: ${updateError?.message ?? "held or claim no longer owned"}`,
-        );
-        continue;
+      // A database error means the leg AND its parent ticket may be in an
+      // unknown state: fail the run instead of reporting partial success.
+      if (finalizeError) {
+        throw new Error(`finalize_failed:${leg.leg_id}:${finalizeError.message}`);
       }
 
-      scoredLegs++;
-      ticketsToUpdate.add(leg.ticket_id);
-    }
-
-    logs.push(`[score] Scored ${scoredLegs} legs, skipped ${skippedLegs}`);
-
-    // Step 3: Update ticket summaries
-    let updatedTickets = 0;
-
-    for (const ticketId of ticketsToUpdate) {
-      const { error: ticketUpdateError } = await supabase.rpc(
-        "refresh_ticket_outcome",
-        { p_ticket_id: ticketId },
-      );
-
-      if (ticketUpdateError) {
-        logs.push(`[score] Error updating ticket ${ticketId}: ${ticketUpdateError.message}`);
+      const state = (outcome ?? {}) as { settled?: boolean; outcome?: string };
+      if (state.settled === true) {
+        scoredLegs++;
+        updatedTickets.add(leg.ticket_id);
         continue;
       }
-
-      updatedTickets++;
+      if (state.outcome === "stale_result_evidence") {
+        staleEvidence++;
+        logs.push(`[score] Stale result evidence for leg ${leg.leg_id} — not settled`);
+        continue;
+      }
+      heldOrRejected++;
+      logs.push(`[score] Not settled ${leg.leg_id}: ${state.outcome ?? "unknown"}`);
     }
 
-    logs.push(`[score] Updated ${updatedTickets} tickets`);
+    logs.push(
+      `[score] Settled ${scoredLegs}, held/rejected ${heldOrRejected}, stale ${staleEvidence}, skipped ${skippedLegs}`,
+    );
 
     await recordRun({
       success: true,
-      batch_size: batchSize,
-      scanned_legs: scorableLegs.length,
+      batch_size: limit,
+      scanned_legs: legs.length,
       scored_legs: scoredLegs,
       skipped_legs: skippedLegs,
       held_legs: heldOrRejected,
-      updated_tickets: updatedTickets,
-      details: { duration_ms: Date.now() - startTime },
+      updated_tickets: updatedTickets.size,
+      details: { duration_ms: Date.now() - startTime, stale_result_evidence: staleEvidence },
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        scanned_legs: scorableLegs.length,
-        scored_legs: scoredLegs,
-        skipped_legs: skippedLegs,
-        held_or_rejected_legs: heldOrRejected,
-        updated_tickets: updatedTickets,
-        duration_ms: Date.now() - startTime,
-        logs,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({
+      success: true,
+      scanned_legs: legs.length,
+      scored_legs: scoredLegs,
+      skipped_legs: skippedLegs,
+      held_or_rejected_legs: heldOrRejected,
+      stale_result_evidence: staleEvidence,
+      // Parent tickets are refreshed inside the settlement transaction.
+      updated_tickets: updatedTickets.size,
+      duration_ms: Date.now() - startTime,
+      logs,
+    });
   } catch (error) {
-    console.error("[score] Error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[score] Error:", message);
     await recordRun({
       success: false,
-      error_message: error instanceof Error ? error.message : "Unknown error",
+      batch_size: limit,
+      error_message: message,
       details: { duration_ms: Date.now() - startTime },
     });
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-        logs,
-        duration_ms: Date.now() - startTime,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-    );
+    return json({ success: false, error: message, logs, duration_ms: Date.now() - startTime }, 500);
   }
 });

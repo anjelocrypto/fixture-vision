@@ -26,18 +26,28 @@ post_phase3_migrations=(
   supabase/migrations/20260822234539_870bac5d-0322-4444-b9a8-fa6da4d00115.sql
   supabase/migrations/20260914220921_7a853358-0292-4ede-a5ad-7a4908309517.sql
   supabase/migrations/20260914223437_34442ed3-f533-4b98-bfb1-2dbcf51fd226.sql
+  supabase/migrations/20260914232046_8bd40672-bec9-4d7d-8c7e-2270a341d42d.sql
+  supabase/migrations/20260914233222_c1b73be0-2b3e-416e-bf9b-c82dd90e9feb.sql
+  supabase/migrations/20260914233528_052de65e-a583-43ad-9226-6499bb604769.sql
 )
 
-# Guard: every migration newer than the Phase 3 batch must be listed above.
-newest_covered="$(printf '%s\n' "${post_phase3_migrations[@]}" | sed 's|.*/||' | cut -d_ -f1 | sort | tail -1)"
-uncovered="$(
+# Guard: EXACT sorted-set equality between the declared list and every
+# migration after the Phase 3 cutoff. A backdated or intermediate migration
+# that is omitted from the list fails CI just like a newer one.
+phase3_cutoff="20260822160933"
+declared="$(printf '%s\n' "${post_phase3_migrations[@]}" | sed 's|.*/||' | sort -u)"
+actual="$(
   find supabase/migrations -maxdepth 1 -name '*.sql' |
   sed 's|.*/||' |
-  awk -F_ -v newest="${newest_covered}" '$1 > "20260822160933" && $1 > newest'
+  awk -F_ -v cutoff="${phase3_cutoff}" '$1 > cutoff' |
+  sort -u
 )"
-if [ -n "${uncovered}" ]; then
-  echo "Migrations not covered by this script:" >&2
-  echo "${uncovered}" >&2
+if [ "${declared}" != "${actual}" ]; then
+  echo "Declared post-Phase 3 migration list does not exactly match the repository." >&2
+  echo "Only in the declared list:" >&2
+  comm -23 <(printf '%s\n' "${declared}") <(printf '%s\n' "${actual}") >&2
+  echo "Only in supabase/migrations:" >&2
+  comm -13 <(printf '%s\n' "${declared}") <(printf '%s\n' "${actual}") >&2
   exit 3
 fi
 

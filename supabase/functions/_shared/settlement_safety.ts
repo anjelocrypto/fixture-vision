@@ -1,23 +1,40 @@
 /**
- * SETTLEMENT SAFETY (shared, pure)
+ * SETTLEMENT SAFETY (shared, pure) — canonical policy V3.
  *
- * Mirrors public.evaluate_leg_hold / public.normalize_team_name in SQL.
+ * Exact mirror of public.evaluate_leg_hold_v3 / public.normalize_team_name.
  * The database is the enforcement point; this module exists so edge functions
  * and tests can reason about the same rules without a round-trip.
  *
- * Rules:
- * - |kickoff drift| <= 24h and identity matches  -> eligible
- * - |kickoff drift|  > 24h                        -> hold: kickoff_drift
- * - home/away inverted or different match         -> hold: team_direction_mismatch
- * - cosmetic name differences (accents, FC/AFC/SC suffixes, punctuation) are equal
+ * Rules (evaluated in this order, fail CLOSED):
+ * - provider team IDs on both sides: must match directionally, else
+ *   `team_direction_mismatch`
+ * - otherwise fall back to normalized names; if any of the four names is
+ *   missing, identity cannot be verified -> `identity_unverifiable`
+ * - missing leg or fixture kickoff -> `kickoff_unverifiable`
+ * - |kickoff drift| > 24h -> `kickoff_drift`
+ * - otherwise eligible (null)
  */
 
-export const SETTLEMENT_POLICY_VERSION = "reschedule-integrity-v1";
+export const SETTLEMENT_POLICY_VERSION = "reschedule-integrity-v3";
 
 /** Maximum tolerated absolute kickoff drift, in seconds. */
 export const MAX_KICKOFF_DRIFT_SECONDS = 86400;
 
-export type SettlementHoldReason = "kickoff_drift" | "team_direction_mismatch";
+export type SettlementHoldReason =
+  | "kickoff_drift"
+  | "team_direction_mismatch"
+  | "identity_unverifiable"
+  | "kickoff_unverifiable"
+  | "manual_review_non_terminal";
+
+/** Every reason the database constraint accepts. */
+export const SETTLEMENT_HOLD_REASONS: readonly SettlementHoldReason[] = [
+  "kickoff_drift",
+  "team_direction_mismatch",
+  "identity_unverifiable",
+  "kickoff_unverifiable",
+  "manual_review_non_terminal",
+];
 
 const ACCENTS = "àáâãäåāăąèéêëēĕėęěìíîïĩīĭįıòóôõöøōŏőùúûüũūŭůűųçćĉċčñńņňýÿŷšśşžźżđğłß";
 const PLAIN = "aaaaaaaaaeeeeeeeeeiiiiiiiiiooooooooouuuuuuuuuucccccnnnnyyyssszzzdgls";
@@ -85,16 +102,15 @@ export function evaluateLegHold(input: LegHoldInput): SettlementHoldReason | nul
     const la = normalizeTeamName(input.legAwayTeamName);
     const fh = normalizeTeamName(input.fixtureHomeTeamName);
     const fa = normalizeTeamName(input.fixtureAwayTeamName);
-    if (lh && la && fh && fa) {
-      if (!(lh === fh && la === fa)) return "team_direction_mismatch";
-    }
-    // Neither IDs nor names available: identity cannot be disproved.
+    // Fail closed: without four comparable names identity is unverifiable.
+    if (!lh || !la || !fh || !fa) return "identity_unverifiable";
+    if (!(lh === fh && la === fa)) return "team_direction_mismatch";
   }
 
   const drift = kickoffDriftSeconds(input);
-  if (drift !== null && Math.abs(drift) > MAX_KICKOFF_DRIFT_SECONDS) {
-    return "kickoff_drift";
-  }
+  // Fail closed: a missing kickoff on either side cannot be verified.
+  if (drift === null) return "kickoff_unverifiable";
+  if (Math.abs(drift) > MAX_KICKOFF_DRIFT_SECONDS) return "kickoff_drift";
 
   return null;
 }

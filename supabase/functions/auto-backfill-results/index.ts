@@ -60,6 +60,8 @@ function makeWriter(supabase: any): TargetedWriter {
         p_kickoff_at: payload.kickoff_at,
         p_home_team_id: payload.home_team_id,
         p_away_team_id: payload.away_team_id,
+        p_home_team_name: payload.home_team_name,
+        p_away_team_name: payload.away_team_name,
         p_goals_home: payload.goals_home,
         p_goals_away: payload.goals_away,
         p_stats: payload.stats,
@@ -319,7 +321,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const finalDuration = Date.now() - startTime;
-    await finalizePipelineLog(supabase, pipelineLogId, stopReason === null, processed, failed, [...leagueSet], {
+    // A run with ANY failed fixture is not a success — health monitoring counts
+    // only truthful successful runs.
+    const runSucceeded = stopReason === null && failed === 0;
+    await finalizePipelineLog(supabase, pipelineLogId, runSucceeded, processed, failed, [...leagueSet], {
       missing_found: allMissing.length,
       inserted,
       duration_ms: finalDuration,
@@ -327,7 +332,7 @@ Deno.serve(async (req: Request) => {
       provider: session.snapshot(),
       stop_reason: stopReason,
       scorer_chained: false,
-    }, stopReason ?? undefined);
+    }, stopReason ?? (failed > 0 ? `failed_fixtures:${failed}` : undefined));
 
     // Watchdog (unchanged semantics, no scorer chaining)
     const backfillAlertFingerprint = "pipeline:auto-backfill-results:stalled";
@@ -367,7 +372,7 @@ Deno.serve(async (req: Request) => {
 
     console.log("[auto-backfill] ===== FUNCTION END =====");
     return jsonResponse({
-      success: stopReason === null,
+      success: runSucceeded,
       mode: "bulk",
       missing_found: allMissing.length,
       processed,
@@ -378,7 +383,7 @@ Deno.serve(async (req: Request) => {
       scorer_chained: false,
       provider: session.snapshot(),
       duration_ms: finalDuration,
-    }, origin, stopReason ? 502 : 200, req);
+    }, origin, stopReason ? 502 : (failed > 0 ? 207 : 200), req);
   } catch (error) {
     if (error instanceof ValidationError) {
       return jsonResponse({ success: false, code: error.code, error: error.message }, origin, 400, req);
