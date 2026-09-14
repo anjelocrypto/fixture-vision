@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 
 /** ---- Supabase client mock -------------------------------------------- */
 type Row = Record<string, unknown>;
@@ -8,22 +8,58 @@ const state: {
   outcomes: Row[];
   legs: Row[];
   failTickets: boolean;
-  calls: { table: string; cursor?: string }[];
-} = { tickets: [], outcomes: [], legs: [], failTickets: false, calls: [] };
+  calls: { table: string; cursor?: string; userId?: string }[];
+  userId: string | null;
+  listeners: Array<(event: string, session: unknown) => void>;
+} = {
+  tickets: [],
+  outcomes: [],
+  legs: [],
+  failTickets: false,
+  calls: [],
+  userId: "user-a",
+  listeners: [],
+};
+
+/** Simulates an auth change in the same browser session. */
+function signInAs(userId: string | null) {
+  state.userId = userId;
+  const session = userId ? { user: { id: userId } } : null;
+  for (const cb of state.listeners) cb(userId ? "SIGNED_IN" : "SIGNED_OUT", session);
+}
+
+interface Cursor { created_at: string; id: string }
+
+function parseOr(filter: string): Cursor | undefined {
+  // created_at.lt.<ts>,and(created_at.eq.<ts>,id.lt.<id>)
+  const ts = /created_at\.lt\.([^,]+)/.exec(filter)?.[1];
+  const id = /id\.lt\.([^),]+)/.exec(filter)?.[1];
+  return ts && id ? { created_at: ts, id } : undefined;
+}
 
 function makeBuilder(table: string) {
-  let cursor: string | undefined;
+  let cursor: Cursor | undefined;
   let limit = Infinity;
+  let userId: string | undefined;
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
   const resolve = () => {
-    state.calls.push({ table, cursor });
+    state.calls.push({ table, cursor: cursor?.created_at, userId });
     if (table === "generated_tickets") {
       if (state.failTickets) return { data: null, error: new Error("network down") };
-      let rows = [...state.tickets].sort((a, b) =>
-        String(b.created_at).localeCompare(String(a.created_at))
-      );
-      if (cursor) rows = rows.filter((r) => String(r.created_at) < cursor!);
+      let rows = [...state.tickets]
+        .filter((r) => (userId ? r.user_id === userId : true))
+        .sort((a, b) => {
+          const byDate = String(b.created_at).localeCompare(String(a.created_at));
+          return byDate !== 0 ? byDate : String(b.id).localeCompare(String(a.id));
+        });
+      if (cursor) {
+        rows = rows.filter((r) => {
+          const c = String(r.created_at);
+          if (c < cursor!.created_at) return true;
+          return c === cursor!.created_at && String(r.id) < cursor!.id;
+        });
+      }
       return { data: rows.slice(0, limit), error: null };
     }
     if (table === "ticket_outcomes") return { data: state.outcomes, error: null };
@@ -33,12 +69,16 @@ function makeBuilder(table: string) {
     select: chain,
     order: chain,
     in: chain,
-    limit: (n: number) => {
-      limit = n;
+    eq: (_col: string, value: string) => {
+      userId = value;
       return builder;
     },
-    lt: (_col: string, value: string) => {
-      cursor = value;
+    or: (filter: string) => {
+      cursor = parseOr(filter);
+      return builder;
+    },
+    limit: (n: number) => {
+      limit = n;
       return builder;
     },
     then: (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
@@ -48,7 +88,26 @@ function makeBuilder(table: string) {
 }
 
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { from: (table: string) => makeBuilder(table) },
+  supabase: {
+    from: (table: string) => makeBuilder(table),
+    auth: {
+      getSession: async () => ({
+        data: { session: state.userId ? { user: { id: state.userId } } : null },
+      }),
+      onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
+        state.listeners.push(cb);
+        return {
+          data: {
+            subscription: {
+              unsubscribe: () => {
+                state.listeners = state.listeners.filter((l) => l !== cb);
+              },
+            },
+          },
+        };
+      },
+    },
+  },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -61,8 +120,9 @@ vi.mock("react-i18next", () => ({
 import { TicketHistoryPanel } from "@/components/tickets/TicketHistoryPanel";
 import { TICKET_HISTORY_PAGE_SIZE } from "@/hooks/useTicketHistory";
 
-const mkTicket = (i: number) => ({
+const mkTicket = (i: number, userId = "user-a") => ({
   id: `t${i}`,
+  user_id: userId,
   created_at: `2026-02-${String(i).padStart(2, "0")}T10:00:00Z`,
   total_odds: 3.5,
   ticket_mode: "balanced",
@@ -75,6 +135,8 @@ beforeEach(() => {
   state.legs = [];
   state.failTickets = false;
   state.calls = [];
+  state.userId = "user-a";
+  state.listeners = [];
 });
 
 describe("ticket history panel", () => {
@@ -152,11 +214,10 @@ describe("ticket history panel", () => {
     expect(screen.queryByText(/alert|provider|api-football/i)).toBeNull();
   });
 
-  it("paginates with a bounded page size and a descending cursor", async () => {
+  it("paginates with a bounded page size and a composite cursor", async () => {
     state.tickets = Array.from({ length: TICKET_HISTORY_PAGE_SIZE + 3 }, (_, i) => mkTicket(i + 1));
     render(<TicketHistoryPanel active />);
     await waitFor(() => expect(screen.getByText("Load more")).toBeInTheDocument());
-    // first page is bounded
     expect(screen.getAllByRole("button", { expanded: false })).toHaveLength(TICKET_HISTORY_PAGE_SIZE);
 
     fireEvent.click(screen.getByText("Load more"));
@@ -171,5 +232,56 @@ describe("ticket history panel", () => {
     // avoids N+1: one outcomes + one legs query per page
     expect(state.calls.filter((c) => c.table === "ticket_leg_outcomes")).toHaveLength(2);
     expect(state.calls.filter((c) => c.table === "ticket_outcomes")).toHaveLength(2);
+  });
+
+  it("never skips or duplicates tickets that share a created_at timestamp", async () => {
+    const sameTs = "2026-02-11T10:00:00Z";
+    state.tickets = Array.from({ length: TICKET_HISTORY_PAGE_SIZE + 2 }, (_, i) => ({
+      ...mkTicket(1),
+      id: `same-${String(i).padStart(2, "0")}`,
+      created_at: sameTs,
+    }));
+    render(<TicketHistoryPanel active />);
+    await waitFor(() => expect(screen.getByText("Load more")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Load more"));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { expanded: false }).length).toBe(
+        TICKET_HISTORY_PAGE_SIZE + 2
+      )
+    );
+    // every ticket rendered exactly once
+    expect(screen.getAllByRole("button", { expanded: false })).toHaveLength(
+      TICKET_HISTORY_PAGE_SIZE + 2
+    );
+  });
+
+  it("scopes every query to the signed-in user", async () => {
+    state.tickets = [mkTicket(3, "user-a"), mkTicket(4, "user-b")];
+    render(<TicketHistoryPanel active />);
+    await waitFor(() =>
+      expect(state.calls.filter((c) => c.table === "generated_tickets").length).toBeGreaterThan(0)
+    );
+    expect(state.calls.find((c) => c.table === "generated_tickets")?.userId).toBe("user-a");
+  });
+
+  it("clears user A's tickets immediately when user B signs in", async () => {
+    state.tickets = [mkTicket(7, "user-a")];
+    state.outcomes = [{ ticket_id: "t7", ticket_status: "WON", legs_total: 1, legs_settled: 1 }];
+    render(<TicketHistoryPanel active />);
+    await waitFor(() => expect(screen.getByText("WON")).toBeInTheDocument());
+
+    // A logs out: cached tickets are dropped at once.
+    await act(async () => { signInAs(null); });
+    await waitFor(() => expect(screen.queryByText("WON")).toBeNull());
+
+    // B signs in: only B's data is ever fetched.
+    state.tickets = [mkTicket(8, "user-b")];
+    state.outcomes = [{ ticket_id: "t8", ticket_status: "LOST", legs_total: 1, legs_settled: 1 }];
+    await act(async () => { signInAs("user-b"); });
+    await waitFor(() => expect(screen.getByText("LOST")).toBeInTheDocument());
+    expect(screen.queryByText("WON")).toBeNull();
+    const owners = state.calls.filter((c) => c.table === "generated_tickets").map((c) => c.userId);
+    expect(owners).not.toContain(undefined);
+    expect(new Set(owners)).toEqual(new Set(["user-a", "user-b"]));
   });
 });
