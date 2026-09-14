@@ -105,6 +105,7 @@ serve(async (req) => {
     // Step 2: Score each leg (results are already in the row from RPC)
     let scoredLegs = 0;
     let skippedLegs = 0;
+    let heldOrRejected = 0;
     const ticketsToUpdate = new Set<string>();
 
     for (const leg of scorableLegs as ScorableLeg[]) {
@@ -186,7 +187,13 @@ serve(async (req) => {
       );
 
       if (updateError || finalized !== true) {
-        logs.push(`[score] Error updating leg ${leg.leg_id}: ${updateError?.message ?? "claim no longer owned"}`);
+        // finalize re-locks the leg and fixture and re-runs the canonical
+        // settlement evaluator; a false return means the leg was held or the
+        // claim was lost — never a settlement.
+        heldOrRejected++;
+        logs.push(
+          `[score] Not settled ${leg.leg_id}: ${updateError?.message ?? "held or claim no longer owned"}`,
+        );
         continue;
       }
 
