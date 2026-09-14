@@ -193,11 +193,11 @@ Deno.serve(async (req: Request) => {
         : 422;
 
       return jsonResponse({
+        ...outcome,
         success: outcome.success,
         mode: "targeted",
         scorer_chained: false,
         duration_ms: Date.now() - startTime,
-        ...outcome,
         provider: session.snapshot(),
       }, origin, httpStatus, req);
     }
