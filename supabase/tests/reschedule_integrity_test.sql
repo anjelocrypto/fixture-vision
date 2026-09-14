@@ -192,12 +192,64 @@ BEGIN
   RAISE NOTICE 'ok  - T7 kickoff_at is immutable pick-time metadata';
 END $$;
 
--- T8: hold classifier flags exactly the unsafe legs and dedupes alerts
-CREATE TEMP TABLE hold1 AS SELECT * FROM public.hold_unsafe_pending_legs(100);
-SELECT public.assert((SELECT held_legs = 2 AND held_fixtures = 2 FROM hold1),
-  'T8 classifier holds exactly the two unsafe legs');
+-- T8: paged V3 preview/apply holds exactly the unsafe legs, per fixture
+SELECT public.assert(
+  (SELECT count(*) = 0 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname IN ('hold_unsafe_pending_legs', 'void_non_ft_pending_legs_impl')),
+  'T8 legacy broad classifier is retired');
+
+CREATE TEMP TABLE prev1001 AS SELECT public.preview_settlement_holds_v3(1001, NULL, 50) AS p;
+SELECT public.assert((SELECT (p->>'total_candidates')::int = 1 AND (p->>'returned')::int = 1
+                        AND (p->>'has_more')::boolean IS FALSE FROM prev1001),
+  'T8 preview is read-only and reports exact candidate counts for fixture 1001');
+SELECT public.assert((SELECT p->'legs'->0->>'reason' = 'kickoff_drift' FROM prev1001),
+  'T8 preview reports the canonical reason');
+SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes WHERE settlement_hold_reason IS NOT NULL),
+  'T8 preview writes nothing');
+
+-- confirmation string is mandatory
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.apply_settlement_holds_v3(1001,
+      ARRAY['aaaaaaaa-0000-0000-0000-000000000001'::uuid], 'whatever', 'nope');
+    RAISE EXCEPTION 'FAIL: T8 apply ran without confirmation';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok  - T8 apply requires the exact confirmation string';
+END $$;
+
+-- a stale snapshot hash rolls the whole apply back
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.apply_settlement_holds_v3(1001,
+      ARRAY['aaaaaaaa-0000-0000-0000-000000000001'::uuid], 'stale-hash', 'APPLY_SETTLEMENT_HOLDS_V3');
+    RAISE EXCEPTION 'FAIL: T8 apply accepted a stale snapshot';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok  - T8 apply rejects a stale snapshot hash';
+END $$;
+SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes WHERE settlement_hold_reason IS NOT NULL),
+  'T8 rejected apply left every leg unheld');
+
+DO $$
+DECLARE v_prev jsonb; v_res jsonb; v_ids uuid[];
+BEGIN
+  FOR v_prev IN SELECT public.preview_settlement_holds_v3(f, NULL, 50) FROM unnest(ARRAY[1001::bigint, 1003::bigint]) f
+  LOOP
+    SELECT array_agg((l->>'leg_id')::uuid) INTO v_ids FROM jsonb_array_elements(v_prev->'legs') l;
+    v_res := public.apply_settlement_holds_v3((v_prev->>'fixture_id')::bigint, v_ids,
+      v_prev->>'snapshot_hash', 'APPLY_SETTLEMENT_HOLDS_V3');
+    IF (v_res->>'applied')::int <> array_length(v_ids, 1) THEN
+      RAISE EXCEPTION 'FAIL: T8 partial apply for fixture %', v_prev->>'fixture_id';
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'ok  - T8 confirmed apply holds every expected leg';
+END $$;
+
 SELECT public.assert((SELECT settlement_hold_reason = 'kickoff_drift'
-                        AND settlement_policy_version = 'reschedule-integrity-v1'
+                        AND settlement_policy_version = 'reschedule-integrity-v3'
                         AND kickoff_drift_seconds > 86400
                       FROM public.ticket_leg_outcomes WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001'),
   'T8 drift hold records reason, drift and policy version');
@@ -207,13 +259,17 @@ SELECT public.assert((SELECT settlement_hold_reason = 'team_direction_mismatch'
 SELECT public.assert((SELECT count(*) = 2 FROM public.ticket_leg_outcomes
                       WHERE settlement_hold_reason IS NOT NULL AND result_status = 'PENDING'),
   'T8 held legs stay PENDING');
+SELECT public.assert((SELECT count(*) = 2 FROM public.settlement_hold_audit
+                      WHERE source = 'apply_settlement_holds_v3'),
+  'T8 every applied hold is audited');
 SELECT public.assert((SELECT count(*) = 2 FROM public.pipeline_alerts WHERE alert_type = 'settlement_hold'),
-  'T8 one alert per fixture/reason');
+  'T8 one alert per fixture');
 
-SELECT * FROM public.hold_unsafe_pending_legs(100);
-SELECT * FROM public.hold_unsafe_pending_legs(100);
+-- re-previewing finds nothing left and alerts stay deduplicated
+SELECT public.assert((SELECT (public.preview_settlement_holds_v3(1001, NULL, 50)->>'total_candidates')::int = 0),
+  'T8 repeated preview finds no remaining candidates');
 SELECT public.assert((SELECT count(*) = 2 FROM public.pipeline_alerts WHERE alert_type = 'settlement_hold'),
-  'T8 repeated classifier runs deduplicate alerts');
+  'T8 repeated runs deduplicate alerts');
 
 -- T9: held legs can never be claimed afterwards
 CREATE TEMP TABLE claim4 AS SELECT * FROM public.claim_scorable_ticket_legs(1000);
