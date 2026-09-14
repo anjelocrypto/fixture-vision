@@ -2363,6 +2363,57 @@ export type Database = {
         }
         Relationships: []
       }
+      scorer_run_logs: {
+        Row: {
+          auth_method: string | null
+          batch_size: number | null
+          created_at: string
+          details: Json
+          error_message: string | null
+          held_legs: number
+          id: string
+          run_finished: string | null
+          run_started: string
+          scanned_legs: number
+          scored_legs: number
+          skipped_legs: number
+          success: boolean
+          updated_tickets: number
+        }
+        Insert: {
+          auth_method?: string | null
+          batch_size?: number | null
+          created_at?: string
+          details?: Json
+          error_message?: string | null
+          held_legs?: number
+          id?: string
+          run_finished?: string | null
+          run_started?: string
+          scanned_legs?: number
+          scored_legs?: number
+          skipped_legs?: number
+          success?: boolean
+          updated_tickets?: number
+        }
+        Update: {
+          auth_method?: string | null
+          batch_size?: number | null
+          created_at?: string
+          details?: Json
+          error_message?: string | null
+          held_legs?: number
+          id?: string
+          run_finished?: string | null
+          run_started?: string
+          scanned_legs?: number
+          scored_legs?: number
+          skipped_legs?: number
+          success?: boolean
+          updated_tickets?: number
+        }
+        Relationships: []
+      }
       settlement_hold_audit: {
         Row: {
           actor: string
@@ -3090,6 +3141,34 @@ export type Database = {
         }
         Relationships: []
       }
+      v_leg_settlement_evidence: {
+        Row: {
+          drift_seconds: number | null
+          fixture_id: number | null
+          fixture_kickoff: string | null
+          hold_reason: string | null
+          leg_id: string | null
+          leg_kickoff: string | null
+          line: number | null
+          market: string | null
+          result_status: string | null
+          score_claim_token: string | null
+          score_claimed_at: string | null
+          settlement_hold_reason: string | null
+          side: string | null
+          ticket_id: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_leg_outcomes_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_market_leaderboard: {
         Row: {
           balance: number | null
@@ -3270,6 +3349,15 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_settlement_holds_v3: {
+        Args: {
+          p_confirmation: string
+          p_expected_leg_ids: string[]
+          p_expected_snapshot_hash: string
+          p_fixture_id: number
+        }
+        Returns: Json
+      }
       apply_stripe_entitlement_event: {
         Args: {
           p_event_created_at: string
@@ -3370,6 +3458,21 @@ export type Database = {
       ensure_market_coins: { Args: never; Returns: undefined }
       ensure_trial_row: { Args: never; Returns: undefined }
       evaluate_leg_hold: {
+        Args: {
+          p_fixture_kickoff: string
+          p_fx_away_id: number
+          p_fx_away_name: string
+          p_fx_home_id: number
+          p_fx_home_name: string
+          p_leg_away_id: number
+          p_leg_away_name: string
+          p_leg_home_id: number
+          p_leg_home_name: string
+          p_leg_kickoff: string
+        }
+        Returns: string
+      }
+      evaluate_leg_hold_v3: {
         Args: {
           p_fixture_kickoff: string
           p_fx_away_id: number
@@ -3514,8 +3617,23 @@ export type Database = {
           updated_count: number
         }[]
       }
+      ingest_fixture_result_tx: {
+        Args: {
+          p_away_team_id: number
+          p_fixture_id: number
+          p_goals_away: number
+          p_goals_home: number
+          p_home_team_id: number
+          p_kickoff_at: string
+          p_league_id: number
+          p_stats?: Json
+          p_status: string
+        }
+        Returns: Json
+      }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
+      leg_hold_reason: { Args: { p_leg_id: string }; Returns: string }
       normalize_team_name: { Args: { p_name: string }; Returns: string }
       persist_generated_ticket: {
         Args: {
@@ -3529,6 +3647,22 @@ export type Database = {
       }
       place_market_bet: {
         Args: { _market_id: string; _outcome: string; _stake: number }
+        Returns: Json
+      }
+      preview_settlement_holds_v3: {
+        Args: {
+          p_after_leg_id?: string
+          p_fixture_id: number
+          p_page_size?: number
+        }
+        Returns: Json
+      }
+      preview_settlement_releases_v3: {
+        Args: {
+          p_after_leg_id?: string
+          p_fixture_id: number
+          p_page_size?: number
+        }
         Returns: Json
       }
       prune_operational_logs: { Args: never; Returns: Json }
@@ -3559,6 +3693,15 @@ export type Database = {
       release_feature_use: {
         Args: { p_reservation_id: string }
         Returns: boolean
+      }
+      release_settlement_holds_v3: {
+        Args: {
+          p_confirmation: string
+          p_expected_leg_ids: string[]
+          p_expected_snapshot_hash: string
+          p_fixture_id: number
+        }
+        Returns: Json
       }
       release_team_stats_refresh_claims: {
         Args: { p_claim_token: string }
