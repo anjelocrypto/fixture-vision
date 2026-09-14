@@ -3597,26 +3597,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      hold_unsafe_pending_legs_v2: {
-        Args: {
-          p_confirm?: string
-          p_dry_run?: boolean
-          p_fixture_id: number
-          p_max_rows: number
-        }
-        Returns: {
-          applied: boolean
-          drift_seconds: number
-          fixture_id: number
-          leg_id: string
-          reason: string
-          result_status: string
-          score_attempts: number
-          selected_count: number
-          ticket_id: string
-          updated_count: number
-        }[]
-      }
       ingest_fixture_result_tx: {
         Args: {
           p_away_team_id: number
