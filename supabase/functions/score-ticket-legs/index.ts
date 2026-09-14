@@ -69,6 +69,17 @@ serve(async (req) => {
 
   logs.push(`[score] Authorized via ${auth.method}`);
 
+  // Durable scorer run log — one row per invocation, success or failure.
+  const recordRun = async (fields: Record<string, unknown>) => {
+    const { error } = await supabase.from("scorer_run_logs").insert({
+      run_started: new Date(startTime).toISOString(),
+      run_finished: new Date().toISOString(),
+      auth_method: auth.method,
+      ...fields,
+    });
+    if (error) console.error("[score] scorer_run_logs insert failed:", error.message);
+  };
+
   try {
     // Parse optional batch_size param
     const url = new URL(req.url);
