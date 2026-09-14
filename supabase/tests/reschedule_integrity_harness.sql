@@ -129,7 +129,8 @@ CREATE TABLE public.pipeline_alerts (
   occurrences integer NOT NULL DEFAULT 1,
   first_seen_at timestamptz DEFAULT now(),
   last_seen_at timestamptz DEFAULT now(),
-  resolved_at timestamptz
+  resolved_at timestamptz,
+  resolved_by text
 );
 
 -- Deduplicating alert recorder (mirrors production semantics).
@@ -146,6 +147,21 @@ BEGIN
         resolved_at = NULL
   RETURNING id INTO v_id;
   RETURN v_id;
+END $$;
+
+-- Alert resolver (mirrors production minus the Supabase role guard).
+CREATE OR REPLACE FUNCTION public.resolve_pipeline_alert(p_fingerprint text)
+RETURNS integer LANGUAGE plpgsql SET search_path TO 'public' AS $$
+DECLARE v_count integer;
+BEGIN
+  IF p_fingerprint IS NULL OR btrim(p_fingerprint) = '' THEN
+    RAISE EXCEPTION 'fingerprint required';
+  END IF;
+  UPDATE public.pipeline_alerts
+  SET resolved_at = now(), resolved_by = 'automatic_recovery'
+  WHERE fingerprint = btrim(p_fingerprint) AND resolved_at IS NULL;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
 END $$;
 
 -- Production-identical scorer helpers (copied verbatim from production
@@ -174,4 +190,46 @@ BEGIN
       scored_version = p_scored_version, score_claim_token = NULL, score_claimed_at = NULL
   WHERE id = p_leg_id AND result_status = 'PENDING' AND score_claim_token = p_claim_token;
   RETURN FOUND;
+END; $function$;
+
+-- Parent ticket refresh: mirrors production public.refresh_ticket_outcome minus
+-- the service-role guard (the harness runs without Supabase auth helpers).
+CREATE OR REPLACE FUNCTION public.refresh_ticket_outcome(p_ticket_id uuid)
+RETURNS text LANGUAGE plpgsql SET search_path TO 'public' AS $function$
+DECLARE
+  v_total integer; v_won integer; v_lost integer; v_pushed integer;
+  v_void integer; v_settled integer; v_status text;
+BEGIN
+  PERFORM 1 FROM public.ticket_outcomes WHERE ticket_id = p_ticket_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ticket outcome not found';
+  END IF;
+
+  SELECT
+    count(*)::integer,
+    count(*) FILTER (WHERE result_status = 'WIN')::integer,
+    count(*) FILTER (WHERE result_status = 'LOSS')::integer,
+    count(*) FILTER (WHERE result_status = 'PUSH')::integer,
+    count(*) FILTER (WHERE result_status = 'VOID')::integer
+  INTO v_total, v_won, v_lost, v_pushed, v_void
+  FROM public.ticket_leg_outcomes
+  WHERE ticket_id = p_ticket_id;
+
+  v_settled := v_won + v_lost + v_pushed + v_void;
+  v_status := CASE
+    WHEN v_lost > 0 THEN 'LOST'
+    WHEN v_total > 0 AND v_void = v_total THEN 'VOID'
+    WHEN v_total > 0 AND v_settled = v_total THEN 'WON'
+    WHEN v_settled > 0 THEN 'PARTIAL'
+    ELSE 'PENDING'
+  END;
+
+  UPDATE public.ticket_outcomes
+  SET legs_total = v_total, legs_settled = v_settled, legs_won = v_won,
+      legs_lost = v_lost, legs_pushed = v_pushed, legs_void = v_void,
+      ticket_status = v_status,
+      settled_at = CASE WHEN v_total > 0 AND v_settled = v_total THEN now() ELSE NULL END
+  WHERE ticket_id = p_ticket_id;
+
+  RETURN v_status;
 END; $function$;

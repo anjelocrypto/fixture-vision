@@ -124,14 +124,10 @@
         "npm:typescript@^5.8.3",
         "npm:vaul@~0.9.9",
         "npm:vite@^8.1.5",
-        "npm:vitest@^4.1.10",
+        "npm:vitest@^4.1.11",
         "npm:zod@^3.25.76",
         "npm:zustand@^5.0.8"
-      ],
-      "overrides": {
-        "lodash": "^4.18.1",
-        "ws": "^8.21.1"
-      }
+      ]
     }
   }
 }

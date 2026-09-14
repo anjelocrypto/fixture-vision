@@ -52,6 +52,8 @@ export type ProviderStopKind =
   | "provider_unauthorized"
   | "provider_client_error"
   | "provider_malformed_json"
+  | "provider_error_envelope"
+  | "provider_invalid_schema"
   | "provider_call_budget_exhausted";
 
 export class ProviderStopError extends Error {
@@ -214,7 +216,15 @@ export class ProviderSession {
     throw new ProviderStopError(kind, status);
   }
 
-  /** Single attempt, hard timeout, zero retries by contract. */
+  /**
+   * Latches the circuit for systemic provider schema / envelope defects so a
+   * whole run cannot keep spending calls against a broken provider contract.
+   */
+  latchSchemaFailure(): void {
+    this.stopped = "provider_invalid_schema";
+  }
+
+  /** Single attempt, hard timeout over the whole exchange, zero retries. */
   // deno-lint-ignore no-explicit-any
   async get(url: string): Promise<any> {
     if (this.stopped) throw new ProviderStopError(this.stopped);
@@ -227,34 +237,50 @@ export class ProviderSession {
 
     this.attempts++;
     const controller = new AbortController();
+    // The timer is cleared only after the body has been read AND parsed, so a
+    // provider that stalls mid-body still trips the timeout.
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let response: Response;
+    const aborted = (error: unknown) =>
+      controller.signal.aborted ||
+      (error as { name?: string } | null)?.name === "AbortError" ||
+      (error as { name?: string } | null)?.name === "TimeoutError";
+
     try {
-      response = await this.fetchImpl(url, { headers: this.headers, signal: controller.signal });
-    } catch (error) {
-      const aborted = controller.signal.aborted ||
-        (error as { name?: string } | null)?.name === "AbortError" ||
-        (error as { name?: string } | null)?.name === "TimeoutError";
-      this.stop(aborted ? "provider_timeout" : "provider_network_error");
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, { headers: this.headers, signal: controller.signal });
+      } catch (error) {
+        this.stop(aborted(error) ? "provider_timeout" : "provider_network_error");
+      }
+
+      if (response.status === 401 || response.status === 403) this.stop("provider_unauthorized", response.status);
+      if (response.status === 429) this.stop("provider_rate_limited", 429);
+      if (response.status >= 500) this.stop("provider_server_error", response.status);
+      if (!response.ok) this.stop("provider_client_error", response.status);
+
+      // deno-lint-ignore no-explicit-any
+      let json: any;
+      try {
+        const text = await response.text();
+        json = JSON.parse(text);
+      } catch (error) {
+        if (aborted(error)) this.stop("provider_timeout", response.status);
+        this.stop("provider_malformed_json", response.status);
+      }
+      if (json === null || typeof json !== "object") this.stop("provider_malformed_json", response.status);
+      if (!("response" in json)) this.stop("provider_malformed_json", response.status);
+
+      // API-Football reports failures inside an HTTP 200 envelope.
+      const errors = (json as { errors?: unknown }).errors;
+      const hasErrors = Array.isArray(errors)
+        ? errors.length > 0
+        : errors !== null && typeof errors === "object" && Object.keys(errors as object).length > 0;
+      if (hasErrors) this.stop("provider_error_envelope", response.status);
+
+      return json.response ?? null;
     } finally {
       clearTimeout(timer);
     }
-
-    if (response.status === 401 || response.status === 403) this.stop("provider_unauthorized", response.status);
-    if (response.status === 429) this.stop("provider_rate_limited", 429);
-    if (response.status >= 500) this.stop("provider_server_error", response.status);
-    if (!response.ok) this.stop("provider_client_error", response.status);
-
-    // deno-lint-ignore no-explicit-any
-    let json: any;
-    try {
-      json = await response.json();
-    } catch {
-      this.stop("provider_malformed_json", response.status);
-    }
-    if (json === null || typeof json !== "object") this.stop("provider_malformed_json", response.status);
-    if (!("response" in json)) this.stop("provider_malformed_json", response.status);
-    return json.response ?? null;
   }
 
   snapshot(): Record<string, unknown> {
@@ -301,13 +327,16 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
   // deno-lint-ignore no-explicit-any
   const away = statsData.find((s: any) => s.team?.id === awayId);
 
+  // Team association must be unambiguous for BOTH sides, otherwise the whole
+  // statistics payload is discarded rather than attributed to a guess.
+  if (!home?.statistics || !away?.statistics || home === away) return out;
+
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
-    if (!side?.statistics) continue;
     out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
     const yellow = pick(side, "Yellow Cards");
     const red = pick(side, "Red Cards");
-    // Never default a missing statistic to zero.
-    out[`cards_${suffix}`] = yellow === null && red === null ? null : (yellow ?? 0) + (red ?? 0);
+    // A missing card component is unknown, never zero.
+    out[`cards_${suffix}`] = yellow === null || red === null ? null : yellow + red;
     out[`fouls_${suffix}`] = pick(side, "Fouls");
     out[`offsides_${suffix}`] = pick(side, "Offsides");
   }
@@ -322,8 +351,24 @@ export interface ValidatedFixture {
   kickoff_at: string;
   home_team_id: number;
   away_team_id: number;
+  home_team_name: string | null;
+  away_team_name: string | null;
   goals_home: number | null;
   goals_away: number | null;
+}
+
+/** Schema/envelope defects that indicate a systemic provider contract break. */
+export const SYSTEMIC_SCHEMA_CODES = new Set([
+  "invalid_provider_schema",
+  "invalid_league",
+  "invalid_teams",
+  "invalid_kickoff",
+]);
+
+function cleanTeamName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 120 ? trimmed : null;
 }
 
 /**
@@ -362,8 +407,11 @@ export function parseProviderFixture(
 
   const homeId = finiteNonNegativeInt(raw.teams?.home?.id);
   const awayId = finiteNonNegativeInt(raw.teams?.away?.id);
-  if (homeId === null || awayId === null) {
-    throw new ValidationError("invalid_teams", "provider team ids are missing or malformed");
+  if (homeId === null || awayId === null || homeId === 0 || awayId === 0 || homeId === awayId) {
+    throw new ValidationError("invalid_teams", "provider team ids are missing, zero or identical");
+  }
+  if (leagueId === 0) {
+    throw new ValidationError("invalid_league", "provider league id must be positive");
   }
 
   const timestamp = raw.fixture?.timestamp;
@@ -395,6 +443,8 @@ export function parseProviderFixture(
     kickoff_at: kickoff.toISOString(),
     home_team_id: homeId,
     away_team_id: awayId,
+    home_team_name: cleanTeamName(raw.teams?.home?.name),
+    away_team_name: cleanTeamName(raw.teams?.away?.name),
     goals_home: goalsHome,
     goals_away: goalsAway,
   };
@@ -411,6 +461,8 @@ export interface IngestionPayload {
   kickoff_at: string;
   home_team_id: number;
   away_team_id: number;
+  home_team_name: string | null;
+  away_team_name: string | null;
   goals_home: number;
   goals_away: number;
   stats: Record<string, number | null>;
@@ -508,10 +560,13 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
     parsed = parseProviderFixture(data[0], fixtureId);
   } catch (error) {
     const code = error instanceof ValidationError ? error.code : "invalid_provider_schema";
+    // Systemic contract breaks latch the circuit for the whole run.
+    if (SYSTEMIC_SCHEMA_CODES.has(code)) session.latchSchemaFailure();
     return {
       ...base,
       success: false,
       state: "invalid_data",
+      stop_reason: session.stopped,
       provider_calls: session.callsUsed,
       reason: code,
     };
@@ -565,6 +620,8 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
       kickoff_at: parsed.kickoff_at,
       home_team_id: parsed.home_team_id,
       away_team_id: parsed.away_team_id,
+      home_team_name: parsed.home_team_name,
+      away_team_name: parsed.away_team_name,
       goals_home: parsed.goals_home as number,
       goals_away: parsed.goals_away as number,
       stats,

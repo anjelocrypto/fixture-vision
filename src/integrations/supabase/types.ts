@@ -3143,15 +3143,29 @@ export type Database = {
       }
       v_leg_settlement_evidence: {
         Row: {
+          cards_away: number | null
+          cards_home: number | null
+          corners_away: number | null
+          corners_home: number | null
           drift_seconds: number | null
+          evidence_hash: string | null
+          fixture_away_id: number | null
+          fixture_home_id: number | null
           fixture_id: number | null
           fixture_kickoff: string | null
+          goals_away: number | null
+          goals_home: number | null
           hold_reason: string | null
+          leg_away_id: number | null
+          leg_home_id: number | null
           leg_id: string | null
           leg_kickoff: string | null
           line: number | null
           market: string | null
+          result_fetched_at: string | null
+          result_fingerprint: string | null
           result_status: string | null
+          result_status_provider: string | null
           score_claim_token: string | null
           score_claimed_at: string | null
           settlement_hold_reason: string | null
@@ -3405,6 +3419,7 @@ export type Database = {
           leg_id: string
           line: number
           market: string
+          result_fingerprint: string
           side: string
           ticket_id: string
           user_id: string
@@ -3502,16 +3517,28 @@ export type Database = {
           remaining_uses: number
         }[]
       }
-      finalize_scored_ticket_leg: {
-        Args: {
-          p_actual_value: number
-          p_claim_token: string
-          p_leg_id: string
-          p_result_status: string
-          p_scored_version: string
-        }
-        Returns: boolean
-      }
+      finalize_scored_ticket_leg:
+        | {
+            Args: {
+              p_actual_value: number
+              p_claim_token: string
+              p_leg_id: string
+              p_result_status: string
+              p_scored_version: string
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_actual_value: number
+              p_claim_token: string
+              p_leg_id: string
+              p_result_fingerprint: string
+              p_result_status: string
+              p_scored_version: string
+            }
+            Returns: Json
+          }
       get_cron_internal_key: { Args: never; Returns: string }
       get_fixtures_missing_results: {
         Args: {
@@ -3597,20 +3624,37 @@ export type Database = {
         }
         Returns: boolean
       }
-      ingest_fixture_result_tx: {
-        Args: {
-          p_away_team_id: number
-          p_fixture_id: number
-          p_goals_away: number
-          p_goals_home: number
-          p_home_team_id: number
-          p_kickoff_at: string
-          p_league_id: number
-          p_stats?: Json
-          p_status: string
-        }
-        Returns: Json
-      }
+      ingest_fixture_result_tx:
+        | {
+            Args: {
+              p_away_team_id: number
+              p_fixture_id: number
+              p_goals_away: number
+              p_goals_home: number
+              p_home_team_id: number
+              p_kickoff_at: string
+              p_league_id: number
+              p_stats?: Json
+              p_status: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_away_team_id: number
+              p_away_team_name: string
+              p_fixture_id: number
+              p_goals_away: number
+              p_goals_home: number
+              p_home_team_id: number
+              p_home_team_name: string
+              p_kickoff_at: string
+              p_league_id: number
+              p_stats?: Json
+              p_status: string
+            }
+            Returns: Json
+          }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
       leg_hold_reason: { Args: { p_leg_id: string }; Returns: string }

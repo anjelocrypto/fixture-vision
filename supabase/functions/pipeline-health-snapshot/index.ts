@@ -20,7 +20,15 @@ const LOG = "[health-snapshot]";
 
 interface HealthMetrics {
   pending_missing_fixture_results: number;
+  pending_missing_actionable_30d: number;
+  pending_missing_historical: number;
   pending_with_ft_results: number;
+  pending_held: number;
+  pending_unsafe_unheld: number;
+  scorer_stalled: boolean;
+  scorer_last_success_at: string | null;
+  scorer_last_progress_at: string | null;
+  legs_settled_24h: number;
   pending_older_than_6h: number;
   total_win: number;
   total_loss: number;
@@ -29,6 +37,7 @@ interface HealthMetrics {
   cards_leakage_24h: number;
   blacklist_leakage_24h: number;
 }
+
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -131,13 +140,18 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Health metrics unavailable", origin, 503, req);
     }
 
+    const rpcMetrics = (pipelineMetricsResult.data ?? {}) as Record<string, unknown>;
     const metrics: HealthMetrics = {
-      pending_missing_fixture_results: Number(
-        pipelineMetricsResult.data?.pending_missing_fixture_results ?? 0,
-      ),
-      pending_with_ft_results: Number(
-        pipelineMetricsResult.data?.pending_with_ft_results ?? 0,
-      ),
+      pending_missing_fixture_results: Number(rpcMetrics.pending_missing_fixture_results ?? 0),
+      pending_missing_actionable_30d: Number(rpcMetrics.pending_missing_actionable_30d ?? 0),
+      pending_missing_historical: Number(rpcMetrics.pending_missing_historical ?? 0),
+      pending_with_ft_results: Number(rpcMetrics.pending_with_ft_results ?? 0),
+      pending_held: Number(rpcMetrics.pending_held ?? 0),
+      pending_unsafe_unheld: Number(rpcMetrics.pending_unsafe_unheld ?? 0),
+      scorer_stalled: rpcMetrics.scorer_stalled === true,
+      scorer_last_success_at: (rpcMetrics.scorer_last_success_at as string | null) ?? null,
+      scorer_last_progress_at: (rpcMetrics.scorer_last_progress_at as string | null) ?? null,
+      legs_settled_24h: Number(rpcMetrics.legs_settled_24h ?? 0),
       pending_older_than_6h: older6hResult.count ?? 0,
       total_win: winsResult.count ?? 0,
       total_loss: lossesResult.count ?? 0,
@@ -146,6 +160,7 @@ Deno.serve(async (req: Request) => {
       cards_leakage_24h: cardsResult.count ?? 0,
       blacklist_leakage_24h: blacklistResult.count ?? 0,
     };
+
 
     console.log(`${LOG} Metrics:`, JSON.stringify(metrics));
 
@@ -163,50 +178,43 @@ Deno.serve(async (req: Request) => {
     });
 
     // ===== WATCHDOG 1: Scorer health =====
+    // Stall is determined by REAL scorer progress (scorer_run_logs), not by a
+    // pending count that can stay positive for legitimate reasons.
     const alerts: string[] = [];
     const scorerFingerprint = "pipeline:score-ticket-legs:stalled";
-    let scorerStalled = false;
-    if (metrics.pending_with_ft_results > 0) {
-      const { data: prevSnapshots } = await supabase
-        .from("pipeline_run_logs")
-        .select("details")
-        .eq("job_name", "pipeline-health-snapshot")
-        .eq("success", true)
-        .order("run_started", { ascending: false })
-        .limit(2);
-
-      const prevAlsoPositive = prevSnapshots && prevSnapshots.length >= 2 &&
-        (prevSnapshots[1] as any)?.details?.pending_with_ft_results > 0;
-
-      if (prevAlsoPositive) {
-        scorerStalled = true;
-        const msg = `Scorer stalled: pending_with_ft_results=${metrics.pending_with_ft_results} for 2+ consecutive checks`;
-        console.error(`${LOG} ALERT: ${msg}`);
-        alerts.push(msg);
-        await supabase.rpc("record_pipeline_alert", {
-          p_fingerprint: scorerFingerprint,
-          p_alert_type: "scorer_stalled",
-          p_severity: "critical",
-          p_message: "Ticket outcome scoring is stalled",
-          p_details: { pending_with_ft: metrics.pending_with_ft_results, metrics },
-        });
-      } else {
-        console.warn(`${LOG} pending_with_ft=${metrics.pending_with_ft_results} (first occurrence, watching)`);
-      }
+    const scorerStalled = metrics.scorer_stalled;
+    if (scorerStalled) {
+      const msg =
+        `Scorer stalled: ${metrics.pending_with_ft_results} claimable legs, last settlement progress ` +
+        `${metrics.scorer_last_progress_at ?? "never"}`;
+      console.error(`${LOG} ALERT: ${msg}`);
+      alerts.push(msg);
+      await supabase.rpc("record_pipeline_alert", {
+        p_fingerprint: scorerFingerprint,
+        p_alert_type: "scorer_stalled",
+        p_severity: "critical",
+        p_message: "Ticket outcome scoring is stalled",
+        p_details: { pending_with_ft: metrics.pending_with_ft_results, metrics },
+      });
+    } else if (metrics.pending_with_ft_results > 0) {
+      console.warn(`${LOG} pending_with_ft=${metrics.pending_with_ft_results} (scorer still progressing)`);
     }
     if (!scorerStalled && shouldResolveScorerAlert(metrics)) {
       await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: scorerFingerprint });
     }
 
-    // ===== WATCHDOG 2: Backfill stall =====
+    // ===== WATCHDOG 2: Backfill stall (actionable backlog only) =====
     const backfillFingerprint = "pipeline:auto-backfill-results:stalled";
     let backfillStalled = false;
-    if (metrics.pending_missing_fixture_results > 50) {
+    if (metrics.pending_missing_actionable_30d > 50) {
+      // Only truthful successful runs count: a run with failures is logged as
+      // unsuccessful by auto-backfill-results and is excluded here.
       const { data: recentBackfills } = await supabase
         .from("pipeline_run_logs")
-        .select("details")
+        .select("details, failed")
         .eq("job_name", "auto-backfill-results")
         .eq("success", true)
+        .eq("failed", 0)
         .order("run_started", { ascending: false })
         .limit(3);
 
@@ -215,7 +223,9 @@ Deno.serve(async (req: Request) => {
 
       if (allZeroInserts) {
         backfillStalled = true;
-        const msg = `Backfill stalled: ${metrics.pending_missing_fixture_results} missing fixtures but 3 consecutive zero-insert runs`;
+        const msg =
+          `Backfill stalled: ${metrics.pending_missing_actionable_30d} actionable missing fixtures ` +
+          `but 3 consecutive zero-insert successful runs`;
         console.error(`${LOG} ALERT: ${msg}`);
         alerts.push(msg);
         await supabase.rpc("record_pipeline_alert", {
@@ -223,10 +233,11 @@ Deno.serve(async (req: Request) => {
           p_alert_type: "backfill_stalled",
           p_severity: "warning",
           p_message: "Fixture-result backfill is stalled",
-          p_details: { pending_missing: metrics.pending_missing_fixture_results, metrics },
+          p_details: { pending_missing_actionable: metrics.pending_missing_actionable_30d, metrics },
         });
       }
     }
+
     if (!backfillStalled && shouldResolveBackfillAlert(metrics)) {
       await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillFingerprint });
     }

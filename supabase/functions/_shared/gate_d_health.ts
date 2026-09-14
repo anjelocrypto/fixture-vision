@@ -34,31 +34,54 @@ export function calculateFreshCoverage(
 }
 
 export interface PipelineBacklogMetrics {
+  /** Whole historical backlog — reporting only, never an alert trigger. */
   pending_missing_fixture_results: number;
+  /** Missing results for legs whose kickoff is within the last 30 days. */
+  pending_missing_actionable_30d: number;
+  /** Legs the scorer can actually claim right now. */
   pending_with_ft_results: number;
+  /** Legs held by the settlement policy. */
+  pending_held?: number;
+  /** Legs that are unsafe under the policy but not yet held. */
+  pending_unsafe_unheld?: number;
+  /** Database-computed stall flag, derived from real scorer progress. */
+  scorer_stalled?: boolean;
 }
+
+export const ACTIONABLE_BACKLOG_THRESHOLD = 50;
 
 export function derivePipelineHealth(
   metrics: PipelineBacklogMetrics,
   alerts: readonly string[],
 ): "GREEN" | "YELLOW" | "RED" {
   if (alerts.length > 0) return "RED";
-  if (metrics.pending_with_ft_results > 0 || metrics.pending_missing_fixture_results > 50) {
+  if ((metrics.pending_unsafe_unheld ?? 0) > 0) return "RED";
+  if (
+    metrics.pending_with_ft_results > 0 ||
+    metrics.pending_missing_actionable_30d > ACTIONABLE_BACKLOG_THRESHOLD
+  ) {
     return "YELLOW";
   }
   return "GREEN";
 }
 
 export function shouldResolveScorerAlert(metrics: PipelineBacklogMetrics): boolean {
-  return metrics.pending_with_ft_results === 0;
+  return metrics.pending_with_ft_results === 0 && metrics.scorer_stalled !== true;
 }
 
 export function shouldResolveBackfillAlert(metrics: PipelineBacklogMetrics): boolean {
-  return metrics.pending_missing_fixture_results <= 50;
+  return metrics.pending_missing_actionable_30d <= ACTIONABLE_BACKLOG_THRESHOLD;
 }
 
-export function normalizeScoreBatchSize(raw: string | null, fallback = 500): number {
-  const parsed = raw == null ? fallback : Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(Math.max(parsed, 1), 1000);
+/**
+ * Strict, fail-closed batch size. There is no default: callers must state the
+ * batch size explicitly, and anything outside 1..500 is rejected.
+ */
+export function requireScoreBatchSize(raw: unknown): number {
+  const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
+    throw new Error("limit_required_1_to_500");
+  }
+  return parsed;
 }
+

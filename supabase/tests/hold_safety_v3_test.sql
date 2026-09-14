@@ -82,6 +82,12 @@ UNION ALL SELECT (SELECT v FROM ids WHERE k='legOther'), (SELECT v FROM ids WHER
        (SELECT v FROM ids WHERE k='userB'), 2002, 'goals','over',2.5,1.9,
        timestamptz '2026-02-10 19:45+00','PENDING',NULL;
 
+-- legOther carries a complete identity snapshot for fixture 2002 so the V3
+-- evaluator has verifiable evidence (without it the leg fails closed).
+UPDATE public.ticket_leg_outcomes
+SET home_team_id_snapshot = 55, away_team_id_snapshot = 66
+WHERE id = (SELECT v FROM ids WHERE k='legOther');
+
 -- ===================== 1. Fail-closed input validation =====================
 DO $$ BEGIN
   PERFORM public.preview_settlement_holds_v3(NULL, NULL, 50);
@@ -234,34 +240,267 @@ BEGIN
     'still-unsafe held legs are not release candidates');
 END $$;
 
--- a leg claimed for scoring cannot be settled once the fixture moves
+-- A claimed leg can NEVER be settled once the fixture moves. This test is
+-- mandatory: it creates real claimable FT evidence first, so there is no
+-- "nothing to test" success branch.
+INSERT INTO public.fixture_results
+  (fixture_id, league_id, kickoff_at, status, goals_home, goals_away, source)
+VALUES (2002, 51, timestamptz '2026-02-10 19:45+00', 'FT', 2, 1, 'test');
+
 DO $$
-DECLARE v_leg uuid; v_token uuid; v_ok boolean; v_fixture bigint := 2002;
+DECLARE
+  v_leg uuid; v_token uuid; v_fp text; v_res jsonb;
+  v_fixture bigint := 2002;
+  v_ticket uuid := (SELECT v FROM ids WHERE k='tB1');
+  v_before_status text; v_before_settled integer;
 BEGIN
-  SELECT c.leg_id, c.claim_token INTO v_leg, v_token
+  SELECT ticket_status, legs_settled INTO v_before_status, v_before_settled
+  FROM public.ticket_outcomes WHERE ticket_id = v_ticket;
+
+  SELECT c.leg_id, c.claim_token, c.result_fingerprint INTO v_leg, v_token, v_fp
   FROM public.claim_scorable_ticket_legs(50) c
   JOIN ids i ON i.v = c.leg_id AND i.k = 'legOther';
 
-  IF v_leg IS NULL THEN
-    RAISE NOTICE 'ok  - no claimable leg for the race test (fixture has no FT result)';
-  ELSE
-    -- fixture is rescheduled far away after the claim was taken
-    UPDATE public.fixtures SET "timestamp" = extract(epoch FROM timestamptz '2026-06-30 19:45+00')::bigint
-    WHERE id = v_fixture;
+  PERFORM public.assert(v_leg IS NOT NULL, 'race test: the eligible leg is claimable');
+  PERFORM public.assert(v_token IS NOT NULL, 'race test: the claim token is non-null');
+  PERFORM public.assert(v_fp IS NOT NULL, 'race test: the claim carries a result fingerprint');
 
-    v_ok := public.finalize_scored_ticket_leg(v_leg, v_token, 'WIN', 3::numeric, 'race-test');
-    PERFORM public.assert(v_ok IS NOT TRUE, 'finalize refuses a leg whose fixture moved after the claim');
-    PERFORM public.assert((SELECT result_status = 'PENDING' AND settlement_hold_reason IS NOT NULL
-                           FROM public.ticket_leg_outcomes WHERE id = v_leg),
-      'racing leg stays PENDING and is held, never WIN/LOSS/PUSH/VOID');
-  END IF;
+  -- fixture is rescheduled far away AFTER the claim was taken
+  UPDATE public.fixtures SET "timestamp" = extract(epoch FROM timestamptz '2026-06-30 19:45+00')::bigint
+  WHERE id = v_fixture;
+
+  -- finalization is invoked unconditionally and must be rejected
+  v_res := public.finalize_scored_ticket_leg(v_leg, v_token, 'WIN', 3::numeric, 'race-test', v_fp);
+  PERFORM public.assert((v_res->>'settled')::boolean IS FALSE,
+    'race test: finalize refuses a leg whose fixture moved after the claim');
+  PERFORM public.assert(v_res->>'outcome' = 'held', 'race test: rejection is recorded as a hold');
+  PERFORM public.assert((SELECT result_status = 'PENDING' AND settlement_hold_reason = 'kickoff_drift'
+                         FROM public.ticket_leg_outcomes WHERE id = v_leg),
+    'race test: racing leg stays PENDING and is held, never WIN/LOSS/PUSH/VOID');
+  PERFORM public.assert((SELECT score_claim_token IS NULL AND score_claimed_at IS NULL
+                         FROM public.ticket_leg_outcomes WHERE id = v_leg),
+    'race test: the claim is safely released');
+  PERFORM public.assert((SELECT ticket_status = v_before_status AND legs_settled = v_before_settled
+                         FROM public.ticket_outcomes WHERE ticket_id = v_ticket),
+    'race test: the parent ticket outcome is unchanged');
 END $$;
+
+-- Stale result evidence can never settle a leg -----------------------------
+INSERT INTO public.fixtures (id, league_id, "timestamp", status, teams_home, teams_away) VALUES
+  (2003, 51, extract(epoch FROM timestamptz '2026-02-10 19:45+00')::bigint, 'FT',
+   '{"id":91,"name":"Stale Town"}', '{"id":92,"name":"Fresh City"}');
+INSERT INTO public.fixture_results
+  (fixture_id, league_id, kickoff_at, status, goals_home, goals_away, source)
+VALUES (2003, 51, timestamptz '2026-02-10 19:45+00', 'FT', 1, 1, 'test');
+INSERT INTO ids VALUES ('tStale', gen_random_uuid()), ('legStale', gen_random_uuid());
+INSERT INTO public.generated_tickets (id, user_id, total_odds, legs, ticket_mode)
+SELECT (SELECT v FROM ids WHERE k='tStale'), (SELECT v FROM ids WHERE k='userB'), 1.9,
+  '[{"fixtureId":2003,"homeTeam":"Stale Town","awayTeam":"Fresh City","homeTeamId":91,"awayTeamId":92}]'::jsonb,
+  'balanced';
+INSERT INTO public.ticket_outcomes (ticket_id, user_id, legs_total, legs_settled, ticket_status, total_odds)
+SELECT (SELECT v FROM ids WHERE k='tStale'), (SELECT v FROM ids WHERE k='userB'), 1, 0, 'PENDING', 1.9;
+INSERT INTO public.ticket_leg_outcomes
+  (id, ticket_id, user_id, fixture_id, market, side, line, odds, kickoff_at, result_status)
+SELECT (SELECT v FROM ids WHERE k='legStale'), (SELECT v FROM ids WHERE k='tStale'),
+  (SELECT v FROM ids WHERE k='userB'), 2003, 'goals', 'over', 1.5, 1.9,
+  timestamptz '2026-02-10 19:45+00', 'PENDING';
+
+DO $$
+DECLARE v_leg uuid; v_token uuid; v_fp text; v_res jsonb;
+BEGIN
+  SELECT c.leg_id, c.claim_token, c.result_fingerprint INTO v_leg, v_token, v_fp
+  FROM public.claim_scorable_ticket_legs(50) c
+  JOIN ids i ON i.v = c.leg_id AND i.k = 'legStale';
+  PERFORM public.assert(v_leg IS NOT NULL AND v_token IS NOT NULL, 'stale test: leg claimed');
+
+  -- the provider corrects the score after the claim
+  UPDATE public.fixture_results SET goals_home = 3, goals_away = 0 WHERE fixture_id = 2003;
+
+  v_res := public.finalize_scored_ticket_leg(v_leg, v_token, 'PUSH', 2::numeric, 'stale-test', v_fp);
+  PERFORM public.assert((v_res->>'settled')::boolean IS FALSE
+                          AND v_res->>'outcome' = 'stale_result_evidence',
+    'stale result evidence is rejected');
+  PERFORM public.assert((SELECT result_status = 'PENDING' AND score_claim_token IS NULL
+                         FROM public.ticket_leg_outcomes WHERE id = v_leg),
+    'stale rejection leaves the leg PENDING with the claim released');
+  PERFORM public.assert((SELECT ticket_status = 'PENDING' AND legs_settled = 0
+                         FROM public.ticket_outcomes WHERE ticket_id = (SELECT v FROM ids WHERE k='tStale')),
+    'stale rejection leaves the parent ticket untouched');
+END $$;
+
+-- A genuinely safe release works end to end ---------------------------------
+DO $$
+DECLARE v_prev jsonb; v_res jsonb; v_ids uuid[];
+BEGIN
+  -- fixture 2002 is moved back to the originally scheduled kickoff
+  UPDATE public.fixtures SET "timestamp" = extract(epoch FROM timestamptz '2026-02-10 19:45+00')::bigint
+  WHERE id = 2002;
+
+  v_prev := public.preview_settlement_releases_v3(2002, NULL, 50);
+  PERFORM public.assert((v_prev->>'total_candidates')::int = 1,
+    'a leg that became safe again is a release candidate');
+  PERFORM public.assert(v_prev ? 'has_more', 'release preview reports has_more');
+
+  SELECT array_agg((l->>'leg_id')::uuid) INTO v_ids FROM jsonb_array_elements(v_prev->'legs') l;
+
+  BEGIN
+    PERFORM public.release_settlement_holds_v3(2002, v_ids, v_prev->>'snapshot_hash', 'nope');
+    RAISE EXCEPTION 'FAIL: release ran without confirmation';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+
+  BEGIN
+    PERFORM public.release_settlement_holds_v3(2002, v_ids, 'stale-hash', 'RELEASE_SETTLEMENT_HOLDS_V3');
+    RAISE EXCEPTION 'FAIL: release accepted a stale snapshot';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+  PERFORM public.assert((SELECT settlement_hold_reason IS NOT NULL
+                         FROM public.ticket_leg_outcomes WHERE id = v_ids[1]),
+    'rejected release changed nothing');
+
+  v_res := public.release_settlement_holds_v3(2002, v_ids, v_prev->>'snapshot_hash',
+                                              'RELEASE_SETTLEMENT_HOLDS_V3');
+  PERFORM public.assert((v_res->>'released')::int = 1, 'release updates exactly the expected leg');
+  PERFORM public.assert((SELECT settlement_hold_reason IS NULL AND result_status = 'PENDING'
+                         FROM public.ticket_leg_outcomes WHERE id = v_ids[1]),
+    'released leg is PENDING and unheld again');
+  PERFORM public.assert((SELECT count(*) > 0 FROM public.settlement_hold_audit
+                         WHERE fixture_id = 2002 AND source = 'release_settlement_holds_v3'),
+    'release is audited');
+END $$;
+
+-- Paging behaviour at the 50-row boundary: 51 candidates run as 50 + 1 ------
+INSERT INTO public.fixtures (id, league_id, "timestamp", status, teams_home, teams_away) VALUES
+  (2004, 51, extract(epoch FROM timestamptz '2026-02-10 19:45+00')::bigint, 'NS',
+   '{"id":93,"name":"Bulk United"}', '{"id":94,"name":"Bulk Rovers"}');
+INSERT INTO public.generated_tickets (id, user_id, total_odds, legs, ticket_mode)
+SELECT gen_random_uuid(), (SELECT v FROM ids WHERE k='userB'), 1.5,
+  '[{"fixtureId":2004,"homeTeam":"Bulk United","awayTeam":"Bulk Rovers","homeTeamId":93,"awayTeamId":94}]'::jsonb,
+  'balanced';
+
+DO $$
+DECLARE v_ticket uuid; i integer;
+BEGIN
+  SELECT id INTO v_ticket FROM public.generated_tickets
+  WHERE legs::text LIKE '%Bulk United%' LIMIT 1;
+  INSERT INTO public.ticket_outcomes (ticket_id, user_id, legs_total, legs_settled, ticket_status, total_odds)
+  VALUES (v_ticket, (SELECT v FROM ids WHERE k='userB'), 51, 0, 'PENDING', 1.5);
+  FOR i IN 1..51 LOOP
+    INSERT INTO public.ticket_leg_outcomes
+      (id, ticket_id, user_id, fixture_id, market, side, line, odds, kickoff_at, result_status)
+    VALUES (gen_random_uuid(), v_ticket, (SELECT v FROM ids WHERE k='userB'), 2004,
+            'goals', 'over', 1.5, 1.5, timestamptz '2026-02-10 19:45+00', 'PENDING');
+  END LOOP;
+  -- now move the fixture so all 51 legs become unsafe
+  UPDATE public.fixtures SET "timestamp" = extract(epoch FROM timestamptz '2026-08-01 19:45+00')::bigint
+  WHERE id = 2004;
+END $$;
+
+DO $$
+DECLARE p1 jsonb; p2 jsonb; ids1 uuid[]; ids2 uuid[]; r1 jsonb; r2 jsonb; last_id uuid;
+BEGIN
+  p1 := public.preview_settlement_holds_v3(2004, NULL, 50);
+  PERFORM public.assert((p1->>'total_candidates')::int = 51, '51 candidates are reported in full');
+  PERFORM public.assert((p1->>'returned')::int = 50, 'first page returns exactly 50 rows');
+  PERFORM public.assert((p1->>'has_more')::boolean, 'first page reports has_more');
+
+  SELECT array_agg((l->>'leg_id')::uuid) INTO ids1 FROM jsonb_array_elements(p1->'legs') l;
+  r1 := public.apply_settlement_holds_v3(2004, ids1, p1->>'snapshot_hash', 'APPLY_SETTLEMENT_HOLDS_V3');
+  PERFORM public.assert((r1->>'applied')::int = 50, 'first page applies exactly 50 holds');
+
+  p2 := public.preview_settlement_holds_v3(2004, NULL, 50);
+  PERFORM public.assert((p2->>'total_candidates')::int = 1, 'exactly one candidate remains');
+  SELECT array_agg((l->>'leg_id')::uuid) INTO ids2 FROM jsonb_array_elements(p2->'legs') l;
+  r2 := public.apply_settlement_holds_v3(2004, ids2, p2->>'snapshot_hash', 'APPLY_SETTLEMENT_HOLDS_V3');
+  PERFORM public.assert((r2->>'applied')::int = 1, 'second page applies the final hold');
+
+  PERFORM public.assert((SELECT count(*) = 51 FROM public.ticket_leg_outcomes
+                         WHERE fixture_id = 2004 AND settlement_hold_reason IS NOT NULL
+                           AND result_status = 'PENDING'),
+    'all 51 legs are held and remain PENDING');
+  PERFORM public.assert((SELECT count(*) = 1 FROM public.pipeline_alerts
+                         WHERE alert_type = 'settlement_hold' AND fingerprint = 'settlement:hold:fixture:2004'),
+    'a 51-leg fixture raises exactly one deduplicated alert');
+END $$;
+
+-- Safe legs are never swept up by a bulk hold run ---------------------------
+INSERT INTO public.fixtures (id, league_id, "timestamp", status, teams_home, teams_away) VALUES
+  (2005, 51, extract(epoch FROM timestamptz '2026-02-10 19:45+00')::bigint, 'NS',
+   '{"id":95,"name":"Safe United"}', '{"id":96,"name":"Safe Rovers"}');
+DO $$
+DECLARE v_ticket uuid := gen_random_uuid(); i integer;
+BEGIN
+  INSERT INTO public.generated_tickets (id, user_id, total_odds, legs, ticket_mode)
+  VALUES (v_ticket, (SELECT v FROM ids WHERE k='userA'), 1.5,
+    '[{"fixtureId":2005,"homeTeam":"Safe United","awayTeam":"Safe Rovers","homeTeamId":95,"awayTeamId":96}]'::jsonb,
+    'balanced');
+  INSERT INTO public.ticket_outcomes (ticket_id, user_id, legs_total, legs_settled, ticket_status, total_odds)
+  VALUES (v_ticket, (SELECT v FROM ids WHERE k='userA'), 60, 0, 'PENDING', 1.5);
+  FOR i IN 1..60 LOOP
+    INSERT INTO public.ticket_leg_outcomes
+      (id, ticket_id, user_id, fixture_id, market, side, line, odds, kickoff_at, result_status)
+    VALUES (gen_random_uuid(), v_ticket, (SELECT v FROM ids WHERE k='userA'), 2005,
+            'goals', 'over', 1.5, 1.5, timestamptz '2026-02-10 19:45+00', 'PENDING');
+  END LOOP;
+END $$;
+SELECT public.assert(
+  (SELECT (public.preview_settlement_holds_v3(2005, NULL, 50)->>'total_candidates')::int = 0),
+  '60 safe legs produce zero hold candidates');
+SELECT public.assert((SELECT count(*) = 0 FROM public.ticket_leg_outcomes
+                      WHERE fixture_id = 2005 AND settlement_hold_reason IS NOT NULL),
+  'safe legs are never held');
+
+-- Malformed and duplicated identifiers fail closed --------------------------
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.apply_settlement_holds_v3(2004, ARRAY['not-a-uuid']::text[]::uuid[], 'h',
+                                             'APPLY_SETTLEMENT_HOLDS_V3');
+    RAISE EXCEPTION 'FAIL: malformed uuid accepted';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok  - malformed leg identifiers fail closed';
+END $$;
+
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.apply_settlement_holds_v3(NULL, ARRAY[gen_random_uuid()], 'h',
+                                             'APPLY_SETTLEMENT_HOLDS_V3');
+    RAISE EXCEPTION 'FAIL: null fixture accepted by apply';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL:%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok  - apply requires a fixture id';
+END $$;
+
+-- The V1 evaluator must no longer be callable -------------------------------
+SELECT public.assert((SELECT count(*) = 0 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'public' AND p.proname = 'evaluate_leg_hold'
+                        AND pg_get_functiondef(p.oid) NOT LIKE '%retired%'),
+  'the V1 evaluate_leg_hold path is retired');
+
 -- ===================== 5. RLS / privilege ==================================
 SELECT public.set_ctx('authenticated', (SELECT v FROM ids WHERE k='userA'));
 SET ROLE authenticated;
-SELECT public.assert((SELECT count(*) FROM public.generated_tickets) = 2, 'user A sees only own tickets');
-SELECT public.assert((SELECT count(*) FROM public.ticket_leg_outcomes) = 2, 'user A sees only own legs');
-SELECT public.assert((SELECT count(*) FROM public.ticket_outcomes) = 2, 'user A sees only own outcomes');
+-- Everything visible belongs to user A, and the visible count equals exactly
+-- the number of user A rows that exist (no under- or over-exposure).
+SELECT public.assert(
+  (SELECT count(*) FROM public.generated_tickets) > 0
+  AND (SELECT count(*) FROM public.generated_tickets
+       WHERE user_id <> (SELECT v FROM ids WHERE k='userA')) = 0,
+  'user A sees only own tickets');
+SELECT public.assert(
+  (SELECT count(*) FROM public.ticket_leg_outcomes) > 0
+  AND (SELECT count(*) FROM public.ticket_leg_outcomes
+       WHERE user_id <> (SELECT v FROM ids WHERE k='userA')) = 0,
+  'user A sees only own legs');
+SELECT public.assert(
+  (SELECT count(*) FROM public.ticket_outcomes) > 0
+  AND (SELECT count(*) FROM public.ticket_outcomes
+       WHERE user_id <> (SELECT v FROM ids WHERE k='userA')) = 0,
+  'user A sees only own outcomes');
 SELECT public.assert((SELECT count(*) FROM public.generated_tickets gt
                       WHERE gt.id = (SELECT v FROM ids WHERE k='tB1')) = 0,
   'guessed ticket id of user B returns nothing');
