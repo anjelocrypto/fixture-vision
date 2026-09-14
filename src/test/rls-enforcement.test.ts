@@ -191,3 +191,63 @@ describeIntegration("Anon cannot reach leaderboard snapshots or privileged RPCs"
   });
 });
 
+
+/**
+ * RC3: persisted ticket history must be immutable to clients.
+ * Isolated anon-role checks against the live project (no authenticated
+ * staging identities are provisioned here).
+ */
+describeIntegration("RC3: generated ticket history is client-immutable", () => {
+  const HISTORY_TABLES = [
+    "generated_tickets",
+    "ticket_outcomes",
+    "ticket_leg_outcomes",
+  ] as const;
+
+  for (const table of HISTORY_TABLES) {
+    it(`anon cannot read ${table}`, async () => {
+      const { data, error } = await (anonClient as any).from(table).select("id").limit(1);
+      if (error) expect(error.code).toBeTruthy();
+      else expect(data).toEqual([]);
+    });
+
+    it(`anon cannot insert into ${table}`, async () => {
+      const { error } = await (anonClient as any).from(table).insert({ id: crypto.randomUUID() });
+      expect(error).toBeTruthy();
+    });
+
+    it(`anon cannot update ${table}`, async () => {
+      const { data, error } = await (anonClient as any)
+        .from(table)
+        .update({ id: crypto.randomUUID() })
+        .eq("id", "00000000-0000-0000-0000-000000000000")
+        .select();
+      if (error) expect(error).toBeTruthy();
+      else expect(data).toEqual([]);
+    });
+
+    it(`anon cannot delete from ${table}`, async () => {
+      const { data, error } = await (anonClient as any)
+        .from(table)
+        .delete()
+        .eq("id", "00000000-0000-0000-0000-000000000000")
+        .select();
+      if (error) expect(error).toBeTruthy();
+      else expect(data).toEqual([]);
+    });
+  }
+
+  it("anon cannot call the service-role hold routines", async () => {
+    for (const fn of [
+      "preview_settlement_holds_v3",
+      "apply_settlement_holds_v3",
+      "release_settlement_holds_v3",
+      "claim_scorable_ticket_legs",
+      "finalize_scored_ticket_leg",
+      "ingest_fixture_result_tx",
+    ]) {
+      const { error } = await (anonClient as any).rpc(fn, {});
+      expect(error).toBeTruthy();
+    }
+  });
+});
