@@ -56,9 +56,8 @@ const BROKEN_TEST_CODES = new Set([
   "42883", // undefined function
 ]);
 
-// deno-lint-ignore-file
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyError = any;
+
 
 function assertNotBroken(error: AnyError, what: string) {
   if (!error) return;
