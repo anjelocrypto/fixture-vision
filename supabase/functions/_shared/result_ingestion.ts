@@ -359,11 +359,49 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
   if (!Array.isArray(statsData) || statsData.length < 2) {
     throw new ValidationError("invalid_statistics", "statistics payload is missing or too short");
   }
+  const TRACKED_TYPES = new Set([
+    "Corner Kicks", "Corners", "Yellow Cards", "Red Cards", "Fouls", "Offsides",
+  ]);
+
+  /**
+   * Indexes one side's entries, rejecting malformed entries, invalid values and
+   * conflicting duplicate statistic types. A duplicate type is tolerated only
+   * when every occurrence carries an identical value.
+   */
   // deno-lint-ignore no-explicit-any
-  const pick = (side: any, type: string) => {
+  const indexSide = (side: any): Map<string, number | null> => {
+    const index = new Map<string, number | null>();
     // deno-lint-ignore no-explicit-any
-    const raw = side?.statistics?.find((st: any) => st.type === type)?.value;
-    return parseStatValue(raw);
+    for (const entry of side.statistics as any[]) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new ValidationError("invalid_statistics", "statistics payload contains a malformed entry");
+      }
+      if (typeof entry.type !== "string" || entry.type.trim() === "") {
+        throw new ValidationError("invalid_statistics", "statistics entry has no usable type");
+      }
+      const type = entry.type.trim();
+      if (!TRACKED_TYPES.has(type)) continue;
+
+      const raw = entry.value;
+      const parsed = parseStatValue(raw);
+      // Present but unparseable (negative, fractional, "12a", object, boolean)
+      // is an invalid value, never a silent null.
+      if (parsed === null && raw !== null && raw !== undefined && String(raw).trim() !== "") {
+        throw new ValidationError(
+          "invalid_statistics",
+          `statistics entry "${type}" has an invalid value`,
+        );
+      }
+
+      if (index.has(type) && index.get(type) !== parsed) {
+        throw new ValidationError(
+          "invalid_statistics",
+          `statistics payload contains conflicting duplicate entries for "${type}"`,
+        );
+      }
+      index.set(type, parsed);
+    }
+    return index;
   };
 
   // deno-lint-ignore no-explicit-any
@@ -397,16 +435,32 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
     );
   }
 
-
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
-    out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
-    const yellow = pick(side, "Yellow Cards");
-    const red = pick(side, "Red Cards");
+    const index = indexSide(side);
+    const get = (type: string) => (index.has(type) ? index.get(type)! : null);
+
+    out[`corners_${suffix}`] = get("Corner Kicks") ?? get("Corners");
+    const yellow = get("Yellow Cards");
+    const red = get("Red Cards");
     // A missing card component is unknown, never zero.
     out[`cards_${suffix}`] = yellow === null || red === null ? null : yellow + red;
-    out[`fouls_${suffix}`] = pick(side, "Fouls");
-    out[`offsides_${suffix}`] = pick(side, "Offsides");
+    out[`fouls_${suffix}`] = get("Fouls");
+    out[`offsides_${suffix}`] = get("Offsides");
   }
+
+  // Requested statistics must be usable: a payload that yields nothing at all
+  // for a side is a rejection, never a "successful" all-null write.
+  for (const suffix of ["home", "away"] as const) {
+    const usable = ["corners", "cards", "fouls", "offsides"]
+      .some((metric) => out[`${metric}_${suffix}`] !== null);
+    if (!usable) {
+      throw new ValidationError(
+        "invalid_statistics",
+        `statistics payload carries no usable values for the ${suffix} team`,
+      );
+    }
+  }
+
   return out;
 }
 
