@@ -34,6 +34,7 @@ post_phase3_migrations=(
   supabase/migrations/20260915020517_3e408102-d8d7-4cc7-8e21-b77fad7a8316.sql
   supabase/migrations/20260915020620_53b9f743-4014-48d8-ba2d-f8e7608d25a5.sql
   supabase/migrations/20260915022632_b39cd8d3-d3c0-458a-8a27-9919d4f12799.sql
+  supabase/migrations/20260915031008_73b1b5fb-5a07-417e-8232-4d870d724731.sql
 )
 
 
