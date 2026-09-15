@@ -232,6 +232,8 @@ export function useHomeState() {
   }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone, showDailyInsights]);
 
   return {
+    // Catalogue
+    catalogueLoading, catalogueError, refetchCatalogue, catalogueMeta,
     // Access
     hasPaidAccess, isAdmin, hasAccess, isWhitelisted, trialCredits, refreshAccess,
     // Selection state
