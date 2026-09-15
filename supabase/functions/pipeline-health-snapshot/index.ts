@@ -11,10 +11,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders, handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { checkCronOrAdminAuth } from "../_shared/auth.ts";
 import {
+  type BackfillRunRow,
   derivePipelineHealth,
+  isBackfillStalled,
   shouldResolveBackfillAlert,
   shouldResolveScorerAlert,
 } from "../_shared/gate_d_health.ts";
+
 
 const LOG = "[health-snapshot]";
 
@@ -207,25 +210,21 @@ Deno.serve(async (req: Request) => {
     const backfillFingerprint = "pipeline:auto-backfill-results:stalled";
     let backfillStalled = false;
     if (metrics.pending_missing_actionable_30d > 50) {
-      // Only truthful successful runs count: a run with failures is logged as
-      // unsuccessful by auto-backfill-results and is excluded here.
+      // The three MOST RECENT runs are read in real chronological order, with
+      // no filtering: a failed or nonzero-insert run breaks the streak instead
+      // of being skipped over, so zero/nonzero/zero is not a stall.
       const { data: recentBackfills } = await supabase
         .from("pipeline_run_logs")
-        .select("details, failed")
+        .select("details, failed, success")
         .eq("job_name", "auto-backfill-results")
-        .eq("success", true)
-        .eq("failed", 0)
         .order("run_started", { ascending: false })
         .limit(3);
 
-      const allZeroInserts = recentBackfills && recentBackfills.length >= 3 &&
-        recentBackfills.every((r: any) => !r.details?.inserted || r.details.inserted === 0);
-
-      if (allZeroInserts) {
+      if (isBackfillStalled((recentBackfills ?? []) as BackfillRunRow[])) {
         backfillStalled = true;
         const msg =
           `Backfill stalled: ${metrics.pending_missing_actionable_30d} actionable missing fixtures ` +
-          `but 3 consecutive zero-insert successful runs`;
+          `but the 3 most recent runs were successful and inserted nothing`;
         console.error(`${LOG} ALERT: ${msg}`);
         alerts.push(msg);
         await supabase.rpc("record_pipeline_alert", {
@@ -237,6 +236,7 @@ Deno.serve(async (req: Request) => {
         });
       }
     }
+
 
     if (!backfillStalled && shouldResolveBackfillAlert(metrics)) {
       await supabase.rpc("resolve_pipeline_alert", { p_fingerprint: backfillFingerprint });
