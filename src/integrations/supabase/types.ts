@@ -573,6 +573,7 @@ export type Database = {
           offsides_away: number | null
           offsides_home: number | null
           source: string
+          stats_identity: string | null
           status: string
         }
         Insert: {
@@ -592,6 +593,7 @@ export type Database = {
           offsides_away?: number | null
           offsides_home?: number | null
           source?: string
+          stats_identity?: string | null
           status?: string
         }
         Update: {
@@ -611,6 +613,7 @@ export type Database = {
           offsides_away?: number | null
           offsides_home?: number | null
           source?: string
+          stats_identity?: string | null
           status?: string
         }
         Relationships: [
@@ -3773,6 +3776,19 @@ export type Database = {
       resolve_pipeline_alert: {
         Args: { p_fingerprint: string }
         Returns: number
+      }
+      result_identity_hash: {
+        Args: {
+          p_away_team_id: number
+          p_away_team_name: string
+          p_goals_away: number
+          p_goals_home: number
+          p_home_team_id: number
+          p_home_team_name: string
+          p_kickoff_at: string
+          p_league_id: number
+        }
+        Returns: string
       }
       safe_jsonb_id: { Args: { p_value: Json }; Returns: number }
       safe_stat_smallint: {
