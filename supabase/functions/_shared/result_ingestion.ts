@@ -384,9 +384,12 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
 
       const raw = entry.value;
       const parsed = parseStatValue(raw);
-      // Present but unparseable (negative, fractional, "12a", object, boolean)
-      // is an invalid value, never a silent null.
-      if (parsed === null && raw !== null && raw !== undefined && String(raw).trim() !== "") {
+      // Explicit provider "absent" markers mean unknown, never zero. Anything
+      // else that is present but unparseable (negative, fractional, "12a",
+      // object, boolean) is an invalid value and rejects the whole payload.
+      const absent = raw === null || raw === undefined ||
+        (typeof raw === "string" && /^(|-|—|n\/a|na|null)$/i.test(raw.trim()));
+      if (parsed === null && !absent) {
         throw new ValidationError(
           "invalid_statistics",
           `statistics entry "${type}" has an invalid value`,
