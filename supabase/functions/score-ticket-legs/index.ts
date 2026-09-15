@@ -44,7 +44,22 @@ interface ScorableLeg {
   cards_home: number | null;
   cards_away: number | null;
   result_fingerprint: string;
+  stats_provenance: string | null;
 }
+
+/** Markets that settle from secondary statistics, mirroring is_statistics_market(). */
+const STATISTICS_MARKETS = new Set([
+  "corners",
+  "total_corners",
+  "team_corners",
+  "cards",
+  "total_cards",
+  "team_cards",
+  "fouls",
+  "total_fouls",
+  "offsides",
+  "total_offsides",
+]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
