@@ -652,9 +652,25 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
     }
   }
 
-  const stats = statsData
-    ? extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id)
-    : {};
+  // A requested statistics payload that cannot be validated is a failure:
+  // the result is NOT written with all-null statistics.
+  let stats: Record<string, number | null> = {};
+  if (statsData) {
+    try {
+      stats = extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id);
+    } catch (error) {
+      return {
+        ...base,
+        success: false,
+        state: "invalid_data",
+        provider_status: parsed.status,
+        terminal: true,
+        provider_calls: session.callsUsed,
+        reason: error instanceof ValidationError ? error.code : "invalid_statistics",
+      };
+    }
+  }
+
 
   // 6. One atomic service-role transaction: identity + status + results.
   try {
