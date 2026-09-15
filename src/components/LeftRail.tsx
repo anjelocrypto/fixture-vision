@@ -8,6 +8,10 @@ interface Country {
   name: string;
   flag: string;
   code: string;
+  upcomingFixtures?: number;
+  currentSeasonLeagues?: number;
+  leagueCount?: number;
+  lastSyncedAt?: string | null;
 }
 
 const getFlagSrc = (code?: string) => {
@@ -22,6 +26,12 @@ interface League {
   name: string;
   logo?: string;
   country_name?: string;
+  season?: number | null;
+  is_current_season?: boolean;
+  upcoming_fixtures?: number;
+  total_fixtures?: number;
+  availability?: 'current' | 'stale' | 'empty';
+  last_synced_at?: string | null;
 }
 
 interface LeftRailProps {
@@ -33,6 +43,7 @@ interface LeftRailProps {
   onSelectLeague: (league: League) => void;
   leaguesLoading?: boolean;
   leaguesError?: boolean;
+  onRetry?: () => void;
   onCountryHover?: (countryId: number) => void;
 }
 
@@ -45,6 +56,7 @@ export function LeftRail({
   onSelectLeague,
   leaguesLoading = false,
   leaguesError = false,
+  onRetry,
   onCountryHover
 }: LeftRailProps) {
   const { t } = useTranslation(['filters']);
