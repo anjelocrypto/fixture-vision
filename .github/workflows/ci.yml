@@ -91,6 +91,10 @@ jobs:
     env:
       TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
       TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+      TEST_USER_A_EMAIL: ${{ secrets.TEST_USER_A_EMAIL }}
+      TEST_USER_A_PASSWORD: ${{ secrets.TEST_USER_A_PASSWORD }}
+      TEST_USER_B_EMAIL: ${{ secrets.TEST_USER_B_EMAIL }}
+      TEST_USER_B_PASSWORD: ${{ secrets.TEST_USER_B_PASSWORD }}
       VITE_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SUPABASE_PROJECT_ID: staging-integration
@@ -107,8 +111,12 @@ jobs:
 
       - name: Require integration credentials
         run: |
-          test -n "$TEST_SUPABASE_URL" || { echo "TEST_SUPABASE_URL missing"; exit 1; }
-          test -n "$TEST_SUPABASE_PUBLISHABLE_KEY" || { echo "TEST_SUPABASE_PUBLISHABLE_KEY missing"; exit 1; }
+          for v in TEST_SUPABASE_URL TEST_SUPABASE_PUBLISHABLE_KEY \
+                   TEST_USER_A_EMAIL TEST_USER_A_PASSWORD \
+                   TEST_USER_B_EMAIL TEST_USER_B_PASSWORD; do
+            test -n "${!v}" || { echo "$v missing — see docs/staging-integration-setup.md"; exit 1; }
+          done
 
       - name: Integration tests (no skips allowed)
         run: node scripts/run-integration-tests.mjs
+
