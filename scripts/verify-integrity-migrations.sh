@@ -81,6 +81,7 @@ run_suite supabase/tests/reschedule_integrity_test.sql reschedule
 run_suite supabase/tests/hold_safety_v3_test.sql hold
 run_suite supabase/tests/ingestion_identity_v32_test.sql ingestion
 run_suite supabase/tests/ingestion_provenance_test.sql provenance
+run_suite supabase/tests/scoring_provenance_test.sql scoring
 
-echo "Post-Phase 3 migration, reschedule-integrity, hold-safety, ingestion-identity and provenance suites passed."
+echo "Post-Phase 3 migration, reschedule-integrity, hold-safety, ingestion-identity, ingestion-provenance and scoring-provenance suites passed."
 
