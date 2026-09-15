@@ -33,7 +33,9 @@ post_phase3_migrations=(
   supabase/migrations/20260915015950_c85c54d8-ed77-4f41-bbce-07d4dfc0f1f0.sql
   supabase/migrations/20260915020517_3e408102-d8d7-4cc7-8e21-b77fad7a8316.sql
   supabase/migrations/20260915020620_53b9f743-4014-48d8-ba2d-f8e7608d25a5.sql
+  supabase/migrations/20260915022632_b39cd8d3-d3c0-458a-8a27-9919d4f12799.sql
 )
+
 
 # Guard: EXACT sorted-set equality between the declared list and every
 # migration after the Phase 3 cutoff. A backdated or intermediate migration
