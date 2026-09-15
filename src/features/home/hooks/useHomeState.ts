@@ -133,9 +133,42 @@ export function useHomeState() {
   const actualCountries = useMemo(() => {
     if (!allLeaguesData?.countries) return [];
     return allLeaguesData.countries.map((c: any) => ({
-      id: c.id, name: c.name, code: c.code, flag: c.flag,
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      flag: c.flag,
+      upcomingFixtures: c.upcoming_fixtures ?? 0,
+      currentSeasonLeagues: c.current_season_leagues ?? 0,
+      leagueCount: c.leagues?.length ?? 0,
+      lastSyncedAt: c.last_synced_at ?? null,
     }));
   }, [allLeaguesData]);
+
+  // Resolve the initial selection against the ids the catalogue actually
+  // returned. Prefer a country that has upcoming fixtures; otherwise fall back
+  // to the first returned country so the catalogue is never empty on screen.
+  useEffect(() => {
+    if (selectedCountry !== null || actualCountries.length === 0) return;
+    const withFixtures = actualCountries.find((c: any) => c.upcomingFixtures > 0);
+    setSelectedCountry((withFixtures ?? actualCountries[0]).id);
+  }, [actualCountries, selectedCountry]);
+
+  // A stored/stale selection that no longer exists must not strand the user.
+  useEffect(() => {
+    if (selectedCountry === null || actualCountries.length === 0) return;
+    if (!actualCountries.some((c: any) => c.id === selectedCountry)) {
+      setSelectedCountry(actualCountries[0].id);
+    }
+  }, [actualCountries, selectedCountry]);
+
+  const catalogueMeta = useMemo(() => ({
+    catalogueSeason: allLeaguesData?.catalogue_season ?? null,
+    currentSeason: allLeaguesData?.current_season ?? SEASON,
+    currentSeasonAvailable: allLeaguesData?.current_season_available ?? false,
+    totalLeagues: allLeaguesData?.total_leagues ?? 0,
+    totalUpcomingFixtures: allLeaguesData?.total_upcoming_fixtures ?? 0,
+    generatedAt: allLeaguesData?.generated_at ?? null,
+  }), [allLeaguesData]);
 
   const leaguesData = (() => {
     if (!selectedCountry || !allLeaguesData?.countries) return { leagues: [] };
@@ -148,7 +181,7 @@ export function useHomeState() {
   // Background refresh
   useEffect(() => {
     const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['leagues-grouped', SEASON] });
+      queryClient.invalidateQueries({ queryKey: [CATALOGUE_CACHE_KEY] });
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [queryClient]);
