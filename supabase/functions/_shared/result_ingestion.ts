@@ -431,7 +431,9 @@ export const SYSTEMIC_SCHEMA_CODES = new Set([
   "invalid_league",
   "invalid_teams",
   "invalid_kickoff",
+  "invalid_statistics",
 ]);
+
 
 function cleanTeamName(value: unknown): string | null {
   if (typeof value !== "string") return null;
