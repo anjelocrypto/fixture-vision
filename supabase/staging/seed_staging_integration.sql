@@ -119,11 +119,11 @@ BEGIN
   ON CONFLICT (user_id) DO NOTHING;
 
   INSERT INTO public.prediction_markets
-    (id, title, description, category, market_type, status, fixture_id, closes_at)
+    (id, title, description, category, market_type, status, fixture_id, closes_at, odds_yes, odds_no)
   VALUES ('55555555-5555-4555-8555-555555555555',
           'Staging market: Over 1.5 goals',
           'Synthetic staging market. Never resolved by the suite.',
-          'football', 'binary', 'open', 990001, now() + interval '7 days')
+          'football', 'binary', 'open', 990001, now() + interval '7 days', 1.80, 2.00)
   ON CONFLICT (id) DO UPDATE
     SET status = EXCLUDED.status, closes_at = EXCLUDED.closes_at;
 END $$;
