@@ -353,6 +353,9 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
     fouls_home: null, fouls_away: null,
     offsides_home: null, offsides_away: null,
   };
+  if (statsData === null || statsData === undefined) {
+    throw new ValidationError("invalid_statistics", "statistics payload is null");
+  }
   if (!Array.isArray(statsData) || statsData.length < 2) {
     throw new ValidationError("invalid_statistics", "statistics payload is missing or too short");
   }
@@ -364,18 +367,36 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
   };
 
   // deno-lint-ignore no-explicit-any
-  const home = statsData.find((s: any) => parseProviderId(s?.team?.id) === homeId);
+  const homeMatches = statsData.filter((s: any) => parseProviderId(s?.team?.id) === homeId);
   // deno-lint-ignore no-explicit-any
-  const away = statsData.find((s: any) => parseProviderId(s?.team?.id) === awayId);
+  const awayMatches = statsData.filter((s: any) => parseProviderId(s?.team?.id) === awayId);
 
-  // Team association must be unambiguous for BOTH sides, otherwise the whole
-  // statistics payload is rejected rather than attributed to a guess.
-  if (!Array.isArray(home?.statistics) || !Array.isArray(away?.statistics) || home === away) {
+  // Conflicting duplicate team records make attribution ambiguous: reject the
+  // whole payload instead of silently taking the first record.
+  if (homeMatches.length > 1 || awayMatches.length > 1) {
+    throw new ValidationError(
+      "invalid_statistics",
+      "statistics payload contains duplicate records for a requested team",
+    );
+  }
+
+  const home = homeMatches[0];
+  const away = awayMatches[0];
+
+  // Team association must be unambiguous for BOTH sides, and each side must
+  // carry a NON-EMPTY statistics array; otherwise the whole payload is
+  // rejected rather than attributed to a guess or written as all-null.
+  if (
+    !Array.isArray(home?.statistics) || home.statistics.length === 0 ||
+    !Array.isArray(away?.statistics) || away.statistics.length === 0 ||
+    home === away
+  ) {
     throw new ValidationError(
       "invalid_statistics",
       "statistics payload cannot be attributed to both requested teams",
     );
   }
+
 
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
     out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
@@ -410,7 +431,9 @@ export const SYSTEMIC_SCHEMA_CODES = new Set([
   "invalid_league",
   "invalid_teams",
   "invalid_kickoff",
+  "invalid_statistics",
 ]);
+
 
 function cleanTeamName(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -653,23 +676,30 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
   }
 
   // A requested statistics payload that cannot be validated is a failure:
-  // the result is NOT written with all-null statistics.
+  // the result is NOT written with all-null statistics. A null response, an
+  // empty team statistics array and conflicting duplicate team records are all
+  // validation failures, and they latch the circuit so no further provider
+  // call is made in this run.
   let stats: Record<string, number | null> = {};
-  if (statsData) {
+  if (opts.includeStatistics) {
     try {
       stats = extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id);
     } catch (error) {
+      const code = error instanceof ValidationError ? error.code : "invalid_statistics";
+      session.latchSchemaFailure();
       return {
         ...base,
         success: false,
         state: "invalid_data",
         provider_status: parsed.status,
         terminal: true,
+        stop_reason: session.stopped,
         provider_calls: session.callsUsed,
-        reason: error instanceof ValidationError ? error.code : "invalid_statistics",
+        reason: code,
       };
     }
   }
+
 
 
   // 6. One atomic service-role transaction: identity + status + results.

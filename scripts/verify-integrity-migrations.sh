@@ -33,7 +33,9 @@ post_phase3_migrations=(
   supabase/migrations/20260915015950_c85c54d8-ed77-4f41-bbce-07d4dfc0f1f0.sql
   supabase/migrations/20260915020517_3e408102-d8d7-4cc7-8e21-b77fad7a8316.sql
   supabase/migrations/20260915020620_53b9f743-4014-48d8-ba2d-f8e7608d25a5.sql
+  supabase/migrations/20260915022632_b39cd8d3-d3c0-458a-8a27-9919d4f12799.sql
 )
+
 
 # Guard: EXACT sorted-set equality between the declared list and every
 # migration after the Phase 3 cutoff. A backdated or intermediate migration
@@ -76,5 +78,7 @@ run_suite() {
 run_suite supabase/tests/reschedule_integrity_test.sql reschedule
 run_suite supabase/tests/hold_safety_v3_test.sql hold
 run_suite supabase/tests/ingestion_identity_v32_test.sql ingestion
+run_suite supabase/tests/ingestion_provenance_test.sql provenance
 
-echo "Post-Phase 3 migration, reschedule-integrity, hold-safety and ingestion-identity suites passed."
+echo "Post-Phase 3 migration, reschedule-integrity, hold-safety, ingestion-identity and provenance suites passed."
+

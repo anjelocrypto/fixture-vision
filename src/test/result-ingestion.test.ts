@@ -3,7 +3,9 @@ import {
   authorizeIngestionRequest,
   buildTargetedBudget,
   constantTimeEquals,
+  extractTeamStats,
   parseProviderFixture,
+
   parseProviderId,
   ProviderSession,
   ProviderStopError,
@@ -433,6 +435,85 @@ describe("RC3.2 — identifier parsing and statistics rejection", () => {
     expect(writes[0].stats.corners_away).toBe(3);
   });
 });
+
+/**
+ * RC3.3 — a requested statistics payload must be unambiguous or rejected, and
+ * a systemic validation failure must stop every subsequent provider call.
+ */
+describe("RC3.3 — statistics request validation and circuit latching", () => {
+  const withStats = (statsBody: unknown) => async (url: string) =>
+    url.includes("statistics") ? jsonResponse(statsBody) : jsonResponse(fixturePayload(1001));
+
+  it("rejects a null statistics response instead of writing goals with no statistics", async () => {
+    const { outcome, writes } = await runWith(withStats({ response: null }), { stats: true });
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects empty team statistics arrays", async () => {
+    const { outcome, writes } = await runWith(
+      withStats({ response: [{ team: { id: 1 }, statistics: [] }, { team: { id: 2 }, statistics: [] }] }),
+      { stats: true },
+    );
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects an empty statistics array on a single side", async () => {
+    const { outcome, writes } = await runWith(
+      withStats({
+        response: [
+          { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: 7 }] },
+          { team: { id: 2 }, statistics: [] },
+        ],
+      }),
+      { stats: true },
+    );
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects conflicting duplicate team records rather than taking the first", async () => {
+    const { outcome, writes } = await runWith(
+      withStats({
+        response: [
+          { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: 7 }] },
+          { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: 2 }] },
+          { team: { id: 2 }, statistics: [{ type: "Corner Kicks", value: 3 }] },
+        ],
+      }),
+      { stats: true },
+    );
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("requires unambiguous attribution: a duplicated away record is also rejected", () => {
+    expect(() =>
+      extractTeamStats(
+        [
+          { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: 7 }] },
+          { team: { id: 2 }, statistics: [{ type: "Corner Kicks", value: 3 }] },
+          { team: { id: "2" }, statistics: [{ type: "Corner Kicks", value: 9 }] },
+        ],
+        1,
+        2,
+      )
+    ).toThrow(ValidationError);
+  });
+
+  it("latches the circuit so no further provider call is made in the run", async () => {
+    const fetchImpl = vi.fn(withStats({ response: null }));
+    const { outcome, writes, session: s } = await runWith(fetchImpl, { stats: true });
+    expect(outcome.success).toBe(false);
+    expect(writes).toHaveLength(0);
+    expect(s.stopped).toBe("provider_invalid_schema");
+    await expect(s.get(`${API_BASE}/fixtures?id=1002`)).rejects.toBeInstanceOf(ProviderStopError);
+    // Exactly the two calls of this fixture: nothing after the latch.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
 
 
 describe("source-level guarantees", () => {

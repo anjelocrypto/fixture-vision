@@ -73,6 +73,31 @@ export function shouldResolveBackfillAlert(metrics: PipelineBacklogMetrics): boo
   return metrics.pending_missing_actionable_30d <= ACTIONABLE_BACKLOG_THRESHOLD;
 }
 
+export interface BackfillRunRow {
+  success: boolean | null;
+  failed: number | null;
+  details: { inserted?: number | null } | null;
+}
+
+/**
+ * The backfill is stalled only when the THREE MOST RECENT runs — in real
+ * chronological order, with nothing filtered out — were each successful,
+ * failure-free and inserted nothing.
+ *
+ * A zero / nonzero / zero sequence is progress, not a stall, and a failed or
+ * partially failed run breaks the streak instead of being skipped over.
+ * `runs` must be the latest runs first.
+ */
+export function isBackfillStalled(runs: readonly BackfillRunRow[]): boolean {
+  if (runs.length < 3) return false;
+  return runs.slice(0, 3).every((run) =>
+    run.success === true &&
+    Number(run.failed ?? 0) === 0 &&
+    Number(run.details?.inserted ?? 0) === 0
+  );
+}
+
+
 /**
  * Strict, fail-closed batch size. There is no default: callers must state the
  * batch size explicitly, and anything outside 1..500 is rejected.
