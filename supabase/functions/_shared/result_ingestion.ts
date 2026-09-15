@@ -353,6 +353,9 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
     fouls_home: null, fouls_away: null,
     offsides_home: null, offsides_away: null,
   };
+  if (statsData === null || statsData === undefined) {
+    throw new ValidationError("invalid_statistics", "statistics payload is null");
+  }
   if (!Array.isArray(statsData) || statsData.length < 2) {
     throw new ValidationError("invalid_statistics", "statistics payload is missing or too short");
   }
@@ -364,18 +367,36 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
   };
 
   // deno-lint-ignore no-explicit-any
-  const home = statsData.find((s: any) => parseProviderId(s?.team?.id) === homeId);
+  const homeMatches = statsData.filter((s: any) => parseProviderId(s?.team?.id) === homeId);
   // deno-lint-ignore no-explicit-any
-  const away = statsData.find((s: any) => parseProviderId(s?.team?.id) === awayId);
+  const awayMatches = statsData.filter((s: any) => parseProviderId(s?.team?.id) === awayId);
 
-  // Team association must be unambiguous for BOTH sides, otherwise the whole
-  // statistics payload is rejected rather than attributed to a guess.
-  if (!Array.isArray(home?.statistics) || !Array.isArray(away?.statistics) || home === away) {
+  // Conflicting duplicate team records make attribution ambiguous: reject the
+  // whole payload instead of silently taking the first record.
+  if (homeMatches.length > 1 || awayMatches.length > 1) {
+    throw new ValidationError(
+      "invalid_statistics",
+      "statistics payload contains duplicate records for a requested team",
+    );
+  }
+
+  const home = homeMatches[0];
+  const away = awayMatches[0];
+
+  // Team association must be unambiguous for BOTH sides, and each side must
+  // carry a NON-EMPTY statistics array; otherwise the whole payload is
+  // rejected rather than attributed to a guess or written as all-null.
+  if (
+    !Array.isArray(home?.statistics) || home.statistics.length === 0 ||
+    !Array.isArray(away?.statistics) || away.statistics.length === 0 ||
+    home === away
+  ) {
     throw new ValidationError(
       "invalid_statistics",
       "statistics payload cannot be attributed to both requested teams",
     );
   }
+
 
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
     out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
