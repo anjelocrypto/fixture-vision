@@ -431,7 +431,7 @@ export function parseProviderFixture(
     throw new ValidationError("invalid_provider_schema", "provider payload is not a fixture object");
   }
 
-  const providerId = finiteNonNegativeInt(raw.fixture.id);
+  const providerId = parseProviderId(raw.fixture.id);
   if (providerId === null) {
     throw new ValidationError("invalid_provider_schema", "provider fixture id is missing or malformed");
   }
@@ -447,19 +447,17 @@ export function parseProviderFixture(
     throw new ValidationError("invalid_provider_schema", "provider status is missing");
   }
 
-  const leagueId = finiteNonNegativeInt(raw.league?.id);
+  const leagueId = parseProviderId(raw.league?.id);
   if (leagueId === null) {
     throw new ValidationError("invalid_league", "provider league id is missing or malformed");
   }
 
-  const homeId = finiteNonNegativeInt(raw.teams?.home?.id);
-  const awayId = finiteNonNegativeInt(raw.teams?.away?.id);
-  if (homeId === null || awayId === null || homeId === 0 || awayId === 0 || homeId === awayId) {
-    throw new ValidationError("invalid_teams", "provider team ids are missing, zero or identical");
+  const homeId = parseProviderId(raw.teams?.home?.id);
+  const awayId = parseProviderId(raw.teams?.away?.id);
+  if (homeId === null || awayId === null || homeId === awayId) {
+    throw new ValidationError("invalid_teams", "provider team ids are missing, malformed or identical");
   }
-  if (leagueId === 0) {
-    throw new ValidationError("invalid_league", "provider league id must be positive");
-  }
+
 
   const timestamp = raw.fixture?.timestamp;
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) {
