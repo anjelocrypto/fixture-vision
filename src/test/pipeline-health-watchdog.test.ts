@@ -11,6 +11,7 @@ import {
   type BackfillRunRow,
 } from "../../supabase/functions/_shared/gate_d_health.ts";
 import healthSnapshotSrc from "../../supabase/functions/pipeline-health-snapshot/index.ts?raw";
+import autoBackfillSrc from "../../supabase/functions/auto-backfill-results/index.ts?raw";
 
 const run = (inserted: number | null, over: Partial<BackfillRunRow> = {}): BackfillRunRow => ({
   success: true,
@@ -52,5 +53,11 @@ describe("backfill stall watchdog", () => {
     // No success/failed pre-filtering may hide an intervening run.
     expect(healthSnapshotSrc).not.toContain('.eq("success", true)');
     expect(healthSnapshotSrc).not.toContain('.eq("failed", 0)');
+  });
+
+  it("auto-backfill-results uses the same shared logic, not its own filter", () => {
+    expect(autoBackfillSrc).toContain("isBackfillStalled");
+    expect(autoBackfillSrc).not.toContain('.eq("success", true)');
+    expect(autoBackfillSrc).not.toContain("consecutiveZeros");
   });
 });
