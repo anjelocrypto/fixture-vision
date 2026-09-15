@@ -53,6 +53,7 @@ const Index = () => {
     filterCriteria, filteredFixtures,
     filterizerHasMore, loadingMoreFilterizer, filterizerTotalQualified,
     prefetchLeagues, lastTicketParams, toast,
+    catalogueLoading, catalogueError, refetchCatalogue,
   } = state;
 
   // Register overlays for Android back-button

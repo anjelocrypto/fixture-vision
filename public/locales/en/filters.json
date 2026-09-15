@@ -189,5 +189,17 @@
     "Carabao Cup": "Carabao Cup",
     "Community Shield": "Community Shield",
     "Supercopa": "Supercopa"
+  },
+  "loading": "Loading...",
+  "load_failed": "Could not load competitions",
+  "retry": "Try again",
+  "no_countries": "No countries found",
+  "no_leagues": "No competitions found",
+  "last_sync": "Last data sync: {{date}}",
+  "availability": {
+    "current": "{{count}} upcoming",
+    "stale": "Stale · {{season}}",
+    "empty": "No fixtures",
+    "none": "—"
   }
 }
