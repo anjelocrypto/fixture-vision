@@ -81,8 +81,9 @@ const Index = () => {
             leagues={leagues}
             selectedLeague={selectedLeague}
             onSelectLeague={(league) => { setSelectedLeague(league); setLeftSheetOpen(false); }}
-            leaguesLoading={false}
-            leaguesError={false}
+            leaguesLoading={catalogueLoading}
+            leaguesError={catalogueError}
+            onRetry={() => refetchCatalogue()}
             onCountryHover={prefetchLeagues}
           />
         </div>
@@ -98,8 +99,9 @@ const Index = () => {
                 leagues={leagues}
                 selectedLeague={selectedLeague}
                 onSelectLeague={(league) => { setSelectedLeague(league); setLeftSheetOpen(false); }}
-                leaguesLoading={false}
-                leaguesError={false}
+                leaguesLoading={catalogueLoading}
+                leaguesError={catalogueError}
+                onRetry={() => refetchCatalogue()}
                 onCountryHover={prefetchLeagues}
               />
             </div>
