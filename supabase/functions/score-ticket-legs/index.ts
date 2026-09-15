@@ -183,6 +183,21 @@ serve(async (req) => {
         if (error) throw new Error(`release_claim_failed: ${error.message}`);
       };
 
+      // Defence in depth: the database is authoritative and re-checks this
+      // under lock, but never even attempt a statistics settlement without
+      // verified provenance.
+      if (
+        STATISTICS_MARKETS.has((leg.market ?? "").toLowerCase()) &&
+        leg.stats_provenance !== "verified"
+      ) {
+        logs.push(
+          `[score] Unverified statistics provenance (${leg.stats_provenance ?? "unverified"}) for leg ${leg.leg_id}`,
+        );
+        await release();
+        heldOrRejected++;
+        continue;
+      }
+
       const actual = actualValueFor(leg);
       if (actual === null) {
         await release();
