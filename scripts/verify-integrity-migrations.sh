@@ -29,6 +29,8 @@ post_phase3_migrations=(
   supabase/migrations/20260914232046_8bd40672-bec9-4d7d-8c7e-2270a341d42d.sql
   supabase/migrations/20260914233222_c1b73be0-2b3e-416e-bf9b-c82dd90e9feb.sql
   supabase/migrations/20260914233528_052de65e-a583-43ad-9226-6499bb604769.sql
+  supabase/migrations/20260915015814_96202d49-d292-4387-9310-26be3cdceb96.sql
+  supabase/migrations/20260915015950_c85c54d8-ed77-4f41-bbce-07d4dfc0f1f0.sql
 )
 
 # Guard: EXACT sorted-set equality between the declared list and every
@@ -71,5 +73,6 @@ run_suite() {
 
 run_suite supabase/tests/reschedule_integrity_test.sql reschedule
 run_suite supabase/tests/hold_safety_v3_test.sql hold
+run_suite supabase/tests/ingestion_identity_v32_test.sql ingestion
 
-echo "Post-Phase 3 migration, reschedule-integrity and hold-safety suites passed."
+echo "Post-Phase 3 migration, reschedule-integrity, hold-safety and ingestion-identity suites passed."
