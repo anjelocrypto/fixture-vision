@@ -3774,6 +3774,11 @@ export type Database = {
         Args: { p_fingerprint: string }
         Returns: number
       }
+      safe_jsonb_id: { Args: { p_value: Json }; Returns: number }
+      safe_stat_smallint: {
+        Args: { p_key: string; p_stats: Json }
+        Returns: number
+      }
       try_use_feature: {
         Args: { feature_key: string }
         Returns: {

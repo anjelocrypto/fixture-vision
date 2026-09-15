@@ -306,6 +306,45 @@ function finiteNonNegativeInt(value: unknown): number | null {
   return value;
 }
 
+/**
+ * Identifiers may legitimately arrive as numeric strings ("1401863").
+ * Anything else — floats, empty strings, "12a", booleans, objects — is
+ * malformed and must never be coerced.
+ */
+export function parseProviderId(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && Number.isInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^[0-9]{1,15}$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+/** Statistic values may be numbers or numeric strings; nothing else counts. */
+function parseStatValue(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    if (!/^[0-9]{1,4}$/.test(trimmed)) return null;
+    return Number(trimmed);
+  }
+  return null;
+}
+
+/**
+ * Extracts both teams' secondary statistics.
+ * A statistics payload that is malformed, empty, or not attributable to BOTH
+ * requested teams is rejected outright — reporting ingestion success with
+ * all-null statistics is not allowed.
+ */
 // deno-lint-ignore no-explicit-any
 export function extractTeamStats(statsData: any, homeId: number, awayId: number) {
   const out: Record<string, number | null> = {
@@ -314,22 +353,29 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
     fouls_home: null, fouls_away: null,
     offsides_home: null, offsides_away: null,
   };
-  if (!Array.isArray(statsData) || statsData.length < 2) return out;
+  if (!Array.isArray(statsData) || statsData.length < 2) {
+    throw new ValidationError("invalid_statistics", "statistics payload is missing or too short");
+  }
   // deno-lint-ignore no-explicit-any
   const pick = (side: any, type: string) => {
     // deno-lint-ignore no-explicit-any
     const raw = side?.statistics?.find((st: any) => st.type === type)?.value;
-    return finiteNonNegativeInt(raw);
+    return parseStatValue(raw);
   };
 
   // deno-lint-ignore no-explicit-any
-  const home = statsData.find((s: any) => s.team?.id === homeId);
+  const home = statsData.find((s: any) => parseProviderId(s?.team?.id) === homeId);
   // deno-lint-ignore no-explicit-any
-  const away = statsData.find((s: any) => s.team?.id === awayId);
+  const away = statsData.find((s: any) => parseProviderId(s?.team?.id) === awayId);
 
   // Team association must be unambiguous for BOTH sides, otherwise the whole
-  // statistics payload is discarded rather than attributed to a guess.
-  if (!home?.statistics || !away?.statistics || home === away) return out;
+  // statistics payload is rejected rather than attributed to a guess.
+  if (!Array.isArray(home?.statistics) || !Array.isArray(away?.statistics) || home === away) {
+    throw new ValidationError(
+      "invalid_statistics",
+      "statistics payload cannot be attributed to both requested teams",
+    );
+  }
 
   for (const [side, suffix] of [[home, "home"], [away, "away"]] as const) {
     out[`corners_${suffix}`] = pick(side, "Corner Kicks") ?? pick(side, "Corners");
@@ -342,6 +388,7 @@ export function extractTeamStats(statsData: any, homeId: number, awayId: number)
   }
   return out;
 }
+
 
 export interface ValidatedFixture {
   fixture_id: number;
@@ -384,7 +431,7 @@ export function parseProviderFixture(
     throw new ValidationError("invalid_provider_schema", "provider payload is not a fixture object");
   }
 
-  const providerId = finiteNonNegativeInt(raw.fixture.id);
+  const providerId = parseProviderId(raw.fixture.id);
   if (providerId === null) {
     throw new ValidationError("invalid_provider_schema", "provider fixture id is missing or malformed");
   }
@@ -400,19 +447,17 @@ export function parseProviderFixture(
     throw new ValidationError("invalid_provider_schema", "provider status is missing");
   }
 
-  const leagueId = finiteNonNegativeInt(raw.league?.id);
+  const leagueId = parseProviderId(raw.league?.id);
   if (leagueId === null) {
     throw new ValidationError("invalid_league", "provider league id is missing or malformed");
   }
 
-  const homeId = finiteNonNegativeInt(raw.teams?.home?.id);
-  const awayId = finiteNonNegativeInt(raw.teams?.away?.id);
-  if (homeId === null || awayId === null || homeId === 0 || awayId === 0 || homeId === awayId) {
-    throw new ValidationError("invalid_teams", "provider team ids are missing, zero or identical");
+  const homeId = parseProviderId(raw.teams?.home?.id);
+  const awayId = parseProviderId(raw.teams?.away?.id);
+  if (homeId === null || awayId === null || homeId === awayId) {
+    throw new ValidationError("invalid_teams", "provider team ids are missing, malformed or identical");
   }
-  if (leagueId === 0) {
-    throw new ValidationError("invalid_league", "provider league id must be positive");
-  }
+
 
   const timestamp = raw.fixture?.timestamp;
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) {
@@ -607,9 +652,25 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
     }
   }
 
-  const stats = statsData
-    ? extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id)
-    : {};
+  // A requested statistics payload that cannot be validated is a failure:
+  // the result is NOT written with all-null statistics.
+  let stats: Record<string, number | null> = {};
+  if (statsData) {
+    try {
+      stats = extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id);
+    } catch (error) {
+      return {
+        ...base,
+        success: false,
+        state: "invalid_data",
+        provider_status: parsed.status,
+        terminal: true,
+        provider_calls: session.callsUsed,
+        reason: error instanceof ValidationError ? error.code : "invalid_statistics",
+      };
+    }
+  }
+
 
   // 6. One atomic service-role transaction: identity + status + results.
   try {
