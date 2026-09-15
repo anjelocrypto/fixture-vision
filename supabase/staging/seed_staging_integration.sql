@@ -44,7 +44,8 @@ BEGIN
 
   -- Reference data -----------------------------------------------------------
   -- countries.id is generated; resolve it instead of assuming a value.
-  SELECT id INTO v_country_id FROM public.countries WHERE name = 'Testland';
+  -- countries.code is UNIQUE: resolve by code, never by name.
+  SELECT id INTO v_country_id FROM public.countries WHERE code = 'TL';
   IF v_country_id IS NULL THEN
     INSERT INTO public.countries (name, code, flag)
     VALUES ('Testland', 'TL', 'https://example.invalid/tl.svg')
