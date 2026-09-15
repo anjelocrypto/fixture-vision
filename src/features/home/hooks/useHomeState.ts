@@ -26,6 +26,9 @@ const SEASON = currentUtc.getUTCMonth() >= 6
   ? currentUtc.getUTCFullYear()
   : currentUtc.getUTCFullYear() - 1;
 
+const CATALOGUE_CACHE_KEY = 'league-catalogue-v3';
+const CATALOGUE_TTL_MS = 30 * 60 * 1000;
+
 export function useHomeState() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -34,7 +37,9 @@ export function useHomeState() {
   const { hasAccess, isWhitelisted, isAdmin, trialCredits, refreshAccess } = useAccess();
   const hasPaidAccess = hasAccess || isWhitelisted;
 
-  const [selectedCountry, setSelectedCountry] = useState<number | null>(140);
+  // No hardcoded country id — the selection is resolved against the country ids
+  // the catalogue actually returns (see the auto-select effect below).
+  const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
   const today = useMemo(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -72,29 +77,40 @@ export function useHomeState() {
   const [ticketDrawerOpen, setTicketDrawerOpen] = useState(false);
   const [ticketCreatorOpen, setTicketCreatorOpen] = useState(false);
 
-  // Preload ALL leagues once on mount
-  const { data: allLeaguesData } = useQuery({
-    queryKey: ['leagues-grouped', SEASON, 'v2'],
+  // Supported competition catalogue. This is metadata about which competitions
+  // and countries exist — it is NOT filtered by the current season, and the
+  // per-league season/availability fields are reported as-is by the backend.
+  const { data: allLeaguesData, isLoading: catalogueLoading, isError: catalogueError, refetch: refetchCatalogue } = useQuery({
+    queryKey: [CATALOGUE_CACHE_KEY],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("list-leagues-grouped", {
-        body: { season: SEASON },
-      });
+      const { data, error } = await supabase.functions.invoke("list-leagues-grouped", { body: {} });
       if (error) throw error;
       try {
-        localStorage.setItem(`leagues-grouped-${SEASON}-v2`, JSON.stringify(data));
-        localStorage.removeItem(`leagues-grouped-${SEASON}`);
-      } catch (e) { /* ignore */ }
+        localStorage.setItem(CATALOGUE_CACHE_KEY, JSON.stringify({ at: Date.now(), data }));
+        // Drop every superseded cache shape, including the season-keyed ones.
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('leagues-grouped-')) localStorage.removeItem(key);
+        }
+      } catch { /* storage unavailable — non-fatal */ }
       return data;
     },
-    staleTime: 60 * 60 * 1000,
+    staleTime: CATALOGUE_TTL_MS,
     gcTime: 24 * 60 * 60 * 1000,
     retry: 2,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
     initialData: () => {
+      // Expiring cache: stale entries are ignored so availability counts can
+      // never be served indefinitely from a previous day.
       try {
-        const cached = localStorage.getItem(`leagues-grouped-${SEASON}-v2`);
-        return cached ? JSON.parse(cached) : undefined;
+        const raw = localStorage.getItem(CATALOGUE_CACHE_KEY);
+        if (!raw) return undefined;
+        const parsed = JSON.parse(raw);
+        if (!parsed?.at || Date.now() - parsed.at > CATALOGUE_TTL_MS) {
+          localStorage.removeItem(CATALOGUE_CACHE_KEY);
+          return undefined;
+        }
+        return parsed.data;
       } catch { return undefined; }
     },
   });
@@ -117,9 +133,42 @@ export function useHomeState() {
   const actualCountries = useMemo(() => {
     if (!allLeaguesData?.countries) return [];
     return allLeaguesData.countries.map((c: any) => ({
-      id: c.id, name: c.name, code: c.code, flag: c.flag,
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      flag: c.flag,
+      upcomingFixtures: c.upcoming_fixtures ?? 0,
+      currentSeasonLeagues: c.current_season_leagues ?? 0,
+      leagueCount: c.leagues?.length ?? 0,
+      lastSyncedAt: c.last_synced_at ?? null,
     }));
   }, [allLeaguesData]);
+
+  // Resolve the initial selection against the ids the catalogue actually
+  // returned. Prefer a country that has upcoming fixtures; otherwise fall back
+  // to the first returned country so the catalogue is never empty on screen.
+  useEffect(() => {
+    if (selectedCountry !== null || actualCountries.length === 0) return;
+    const withFixtures = actualCountries.find((c: any) => c.upcomingFixtures > 0);
+    setSelectedCountry((withFixtures ?? actualCountries[0]).id);
+  }, [actualCountries, selectedCountry]);
+
+  // A stored/stale selection that no longer exists must not strand the user.
+  useEffect(() => {
+    if (selectedCountry === null || actualCountries.length === 0) return;
+    if (!actualCountries.some((c: any) => c.id === selectedCountry)) {
+      setSelectedCountry(actualCountries[0].id);
+    }
+  }, [actualCountries, selectedCountry]);
+
+  const catalogueMeta = useMemo(() => ({
+    catalogueSeason: allLeaguesData?.catalogue_season ?? null,
+    currentSeason: allLeaguesData?.current_season ?? SEASON,
+    currentSeasonAvailable: allLeaguesData?.current_season_available ?? false,
+    totalLeagues: allLeaguesData?.total_leagues ?? 0,
+    totalUpcomingFixtures: allLeaguesData?.total_upcoming_fixtures ?? 0,
+    generatedAt: allLeaguesData?.generated_at ?? null,
+  }), [allLeaguesData]);
 
   const leaguesData = (() => {
     if (!selectedCountry || !allLeaguesData?.countries) return { leagues: [] };
@@ -132,7 +181,7 @@ export function useHomeState() {
   // Background refresh
   useEffect(() => {
     const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['leagues-grouped', SEASON] });
+      queryClient.invalidateQueries({ queryKey: [CATALOGUE_CACHE_KEY] });
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [queryClient]);
@@ -183,6 +232,8 @@ export function useHomeState() {
   }, [showFilterizer, showWinner, showTeamTotals, showWhoConcedes, showCardWar, showBTTSIndex, showSafeZone, showDailyInsights]);
 
   return {
+    // Catalogue
+    catalogueLoading, catalogueError, refetchCatalogue, catalogueMeta,
     // Access
     hasPaidAccess, isAdmin, hasAccess, isWhitelisted, trialCredits, refreshAccess,
     // Selection state

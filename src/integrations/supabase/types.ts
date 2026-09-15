@@ -3558,6 +3558,23 @@ export type Database = {
           fixture_timestamp: number
         }[]
       }
+      get_league_catalogue: {
+        Args: never
+        Returns: {
+          country_code: string
+          country_flag: string
+          country_id: number
+          country_name: string
+          last_kickoff_at: string
+          last_synced_at: string
+          league_id: number
+          league_name: string
+          logo: string
+          season: number
+          total_fixtures: number
+          upcoming_fixtures: number
+        }[]
+      }
       get_market_aggregates: { Args: { _market_id: string }; Returns: Json }
       get_market_leaderboard: {
         Args: { p_limit?: number }

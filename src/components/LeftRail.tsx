@@ -8,6 +8,10 @@ interface Country {
   name: string;
   flag: string;
   code: string;
+  upcomingFixtures?: number;
+  currentSeasonLeagues?: number;
+  leagueCount?: number;
+  lastSyncedAt?: string | null;
 }
 
 const getFlagSrc = (code?: string) => {
@@ -22,6 +26,12 @@ interface League {
   name: string;
   logo?: string;
   country_name?: string;
+  season?: number | null;
+  is_current_season?: boolean;
+  upcoming_fixtures?: number;
+  total_fixtures?: number;
+  availability?: 'current' | 'stale' | 'empty';
+  last_synced_at?: string | null;
 }
 
 interface LeftRailProps {
@@ -33,6 +43,7 @@ interface LeftRailProps {
   onSelectLeague: (league: League) => void;
   leaguesLoading?: boolean;
   leaguesError?: boolean;
+  onRetry?: () => void;
   onCountryHover?: (countryId: number) => void;
 }
 
@@ -45,6 +56,7 @@ export function LeftRail({
   onSelectLeague,
   leaguesLoading = false,
   leaguesError = false,
+  onRetry,
   onCountryHover
 }: LeftRailProps) {
   const { t } = useTranslation(['filters']);
@@ -116,10 +128,27 @@ export function LeftRail({
       {/* Countries */}
       <div className="shrink-0 max-h-[260px] sm:max-h-[280px] overflow-y-auto">
         <div className="p-2 space-y-0.5">
-          {filteredCountries.length === 0 ? (
+          {leaguesLoading && countries.length === 0 ? (
+            <div className="px-3 py-6 flex flex-col items-center gap-2">
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
+              <p className="text-xs text-muted-foreground">{t('filters:loading')}</p>
+            </div>
+          ) : leaguesError && countries.length === 0 ? (
+            <div className="px-3 py-6 text-center space-y-2">
+              <p className="text-xs text-destructive">{t('filters:load_failed')}</p>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="text-xs font-medium text-primary underline underline-offset-2"
+                >
+                  {t('filters:retry')}
+                </button>
+              )}
+            </div>
+          ) : filteredCountries.length === 0 ? (
             <div className="px-3 py-6 text-center">
               <Globe className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-              <p className="text-xs text-muted-foreground">No countries found</p>
+              <p className="text-xs text-muted-foreground">{t('filters:no_countries')}</p>
             </div>
           ) : (
             filteredCountries.map((country) => (
@@ -144,7 +173,18 @@ export function LeftRail({
                     return <Globe className="w-4 h-4 text-muted-foreground" aria-label="World" />;
                   })()}
                 </div>
-                <span className="text-sm font-medium flex-1 text-left">{getCountryName(country.name)}</span>
+                <span className="text-sm font-medium flex-1 text-left truncate">{getCountryName(country.name)}</span>
+                {typeof country.upcomingFixtures === 'number' && (
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${
+                      country.upcomingFixtures > 0
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted/50 text-muted-foreground"
+                    }`}
+                  >
+                    {country.upcomingFixtures > 0 ? country.upcomingFixtures : t('filters:availability.none')}
+                  </span>
+                )}
                 {selectedCountry === country.id && (
                   <ChevronRight className="w-3.5 h-3.5 text-primary shrink-0" />
                 )}
@@ -162,47 +202,81 @@ export function LeftRail({
               <Trophy className="w-3 h-3" />
               {selectedCountryData ? getCountryName(selectedCountryData.name) : ''} {t('filters:leagues')}
             </h3>
+            {selectedCountryData?.lastSyncedAt && (
+              <p className="text-[10px] text-muted-foreground/80 mt-1">
+                {t('filters:last_sync', {
+                  date: new Date(selectedCountryData.lastSyncedAt).toLocaleDateString(),
+                })}
+              </p>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             <div className="p-2 space-y-0.5 pb-4">
-              {leaguesError ? (
-                <div className="px-3 py-6 text-center">
-                  <p className="text-xs text-destructive">Failed to load leagues</p>
-                </div>
-              ) : leaguesLoading ? (
+              {leaguesLoading ? (
                 <div className="px-3 py-6 flex flex-col items-center gap-2">
                   <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                  <p className="text-xs text-muted-foreground">Loading...</p>
+                  <p className="text-xs text-muted-foreground">{t('filters:loading')}</p>
+                </div>
+              ) : leaguesError ? (
+                <div className="px-3 py-6 text-center space-y-2">
+                  <p className="text-xs text-destructive">{t('filters:load_failed')}</p>
+                  {onRetry && (
+                    <button
+                      onClick={onRetry}
+                      className="text-xs font-medium text-primary underline underline-offset-2"
+                    >
+                      {t('filters:retry')}
+                    </button>
+                  )}
                 </div>
               ) : filteredLeagues.length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <Trophy className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-                  <p className="text-xs text-muted-foreground">No leagues found</p>
+                  <p className="text-xs text-muted-foreground">{t('filters:no_leagues')}</p>
                 </div>
               ) : (
-                filteredLeagues.map((league) => (
-                  <button
-                    key={league.id}
-                    onClick={() => onSelectLeague(league)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all text-left touch-manipulation active:scale-[0.98] ${
-                      selectedLeague?.id === league.id
-                        ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
-                        : "hover:bg-muted/40 text-foreground active:bg-muted/60"
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-muted/20 flex items-center justify-center shrink-0 overflow-hidden">
-                      {league.logo ? (
-                        <img src={league.logo} alt="" className="w-5 h-5 object-contain" />
-                      ) : (
-                        <Trophy className="w-3.5 h-3.5 text-muted-foreground" />
+                filteredLeagues.map((league) => {
+                  const availability = league.availability
+                    ?? ((league.upcoming_fixtures ?? 0) > 0
+                      ? 'current'
+                      : (league.total_fixtures ?? 0) > 0 ? 'stale' : 'empty');
+                  const badgeClass = availability === 'current'
+                    ? "bg-primary/15 text-primary"
+                    : availability === 'stale'
+                      ? "bg-amber-500/15 text-amber-500"
+                      : "bg-muted/50 text-muted-foreground";
+                  const badgeLabel = availability === 'current'
+                    ? t('filters:availability.current', { count: league.upcoming_fixtures ?? 0 })
+                    : availability === 'stale'
+                      ? t('filters:availability.stale', { season: league.season ?? '—' })
+                      : t('filters:availability.empty');
+                  return (
+                    <button
+                      key={league.id}
+                      onClick={() => onSelectLeague(league)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all text-left touch-manipulation active:scale-[0.98] ${
+                        selectedLeague?.id === league.id
+                          ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
+                          : "hover:bg-muted/40 text-foreground active:bg-muted/60"
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-muted/20 flex items-center justify-center shrink-0 overflow-hidden">
+                        {league.logo ? (
+                          <img src={league.logo} alt="" className="w-5 h-5 object-contain" />
+                        ) : (
+                          <Trophy className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <span className="text-xs font-medium truncate flex-1 min-w-0">{getLeagueName(league.name)}</span>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${badgeClass}`}>
+                        {badgeLabel}
+                      </span>
+                      {selectedLeague?.id === league.id && (
+                        <ChevronRight className="w-3.5 h-3.5 text-primary shrink-0" />
                       )}
-                    </div>
-                    <span className="text-xs font-medium truncate flex-1">{getLeagueName(league.name)}</span>
-                    {selectedLeague?.id === league.id && (
-                      <ChevronRight className="w-3.5 h-3.5 text-primary shrink-0" />
-                    )}
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>

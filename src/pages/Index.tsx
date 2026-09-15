@@ -53,6 +53,7 @@ const Index = () => {
     filterCriteria, filteredFixtures,
     filterizerHasMore, loadingMoreFilterizer, filterizerTotalQualified,
     prefetchLeagues, lastTicketParams, toast,
+    catalogueLoading, catalogueError, refetchCatalogue,
   } = state;
 
   // Register overlays for Android back-button
@@ -80,8 +81,9 @@ const Index = () => {
             leagues={leagues}
             selectedLeague={selectedLeague}
             onSelectLeague={(league) => { setSelectedLeague(league); setLeftSheetOpen(false); }}
-            leaguesLoading={false}
-            leaguesError={false}
+            leaguesLoading={catalogueLoading}
+            leaguesError={catalogueError}
+            onRetry={() => refetchCatalogue()}
             onCountryHover={prefetchLeagues}
           />
         </div>
@@ -97,8 +99,9 @@ const Index = () => {
                 leagues={leagues}
                 selectedLeague={selectedLeague}
                 onSelectLeague={(league) => { setSelectedLeague(league); setLeftSheetOpen(false); }}
-                leaguesLoading={false}
-                leaguesError={false}
+                leaguesLoading={catalogueLoading}
+                leaguesError={catalogueError}
+                onRetry={() => refetchCatalogue()}
                 onCountryHover={prefetchLeagues}
               />
             </div>

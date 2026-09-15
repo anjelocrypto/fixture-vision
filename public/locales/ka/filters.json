@@ -189,5 +189,17 @@
     "Carabao Cup": "კარაბაო თასი",
     "Community Shield": "კომიუნითი შილდი",
     "Supercopa": "სუპერკოპა"
+  },
+  "loading": "იტვირთება...",
+  "load_failed": "ტურნირების ჩატვირთვა ვერ მოხერხდა",
+  "retry": "ხელახლა ცდა",
+  "no_countries": "ქვეყანა ვერ მოიძებნა",
+  "no_leagues": "ტურნირი ვერ მოიძებნა",
+  "last_sync": "ბოლო განახლება: {{date}}",
+  "availability": {
+    "current": "{{count}} მომავალი",
+    "stale": "არააქტუალური · {{season}}",
+    "empty": "მატჩები არ არის",
+    "none": "—"
   }
 }
