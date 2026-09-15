@@ -346,6 +346,94 @@ describe("targeted ingestion — zero writes on every unsafe path", () => {
   });
 });
 
+describe("RC3.2 — identifier parsing and statistics rejection", () => {
+  it("accepts legitimate numeric-string identifiers", () => {
+    expect(parseProviderId("1401863")).toBe(1401863);
+    expect(parseProviderId(" 42 ")).toBe(42);
+    expect(parseProviderId(42)).toBe(42);
+  });
+
+  it("rejects malformed identifiers instead of coercing them", () => {
+    for (const bad of ["", " ", "12a", "1.5", "-7", "0", 0, -1, 1.5, true, null, undefined, {}, []]) {
+      expect(parseProviderId(bad as unknown)).toBeNull();
+    }
+  });
+
+  it("parses a fixture whose ids arrive as numeric strings", () => {
+    const payload = fixturePayload(1001, {
+      fixture: { id: "1001", timestamp: 1_700_000_000, status: { short: "FT" } },
+      league: { id: "39" },
+      teams: { home: { id: "1" }, away: { id: "2" } },
+    });
+    const parsed = parseProviderFixture(payload.response[0], 1001);
+    expect(parsed).toMatchObject({ fixture_id: 1001, league_id: 39, home_team_id: 1, away_team_id: 2 });
+  });
+
+  it("rejects a malformed team id rather than falling back to names", () => {
+    const payload = fixturePayload(1001, { teams: { home: { id: "1a", name: "A" }, away: { id: 2, name: "B" } } });
+    expect(() => parseProviderFixture(payload.response[0], 1001)).toThrow(ValidationError);
+  });
+
+  it("rejects an empty statistics payload instead of writing all-null statistics", async () => {
+    const fetchImpl = async (url: string) =>
+      url.includes("statistics") ? jsonResponse({ response: [] }) : jsonResponse(fixturePayload(1001));
+    const { outcome, writes } = await runWith(fetchImpl, { stats: true });
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects a statistics payload belonging to the wrong teams", async () => {
+    const wrongTeams = {
+      response: [
+        { team: { id: 77 }, statistics: [{ type: "Corner Kicks", value: 5 }] },
+        { team: { id: 88 }, statistics: [{ type: "Corner Kicks", value: 6 }] },
+      ],
+    };
+    const fetchImpl = async (url: string) =>
+      url.includes("statistics") ? jsonResponse(wrongTeams) : jsonResponse(fixturePayload(1001));
+    const { outcome, writes } = await runWith(fetchImpl, { stats: true });
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects a malformed statistics envelope", async () => {
+    const fetchImpl = async (url: string) =>
+      url.includes("statistics") ? jsonResponse({ response: [{ nope: true }, { nope: true }] }) : jsonResponse(fixturePayload(1001));
+    const { outcome, writes } = await runWith(fetchImpl, { stats: true });
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("accepts numeric-string statistic values and numeric-string team ids", async () => {
+    const stringStats = {
+      response: [
+        { team: { id: "1" }, statistics: [{ type: "Corner Kicks", value: "7" }, { type: "Yellow Cards", value: "2" }, { type: "Red Cards", value: "0" }] },
+        { team: { id: "2" }, statistics: [{ type: "Corner Kicks", value: "3" }, { type: "Yellow Cards", value: "1" }, { type: "Red Cards", value: "1" }] },
+      ],
+    };
+    const fetchImpl = async (url: string) =>
+      url.includes("statistics") ? jsonResponse(stringStats) : jsonResponse(fixturePayload(1001));
+    const { outcome, writes } = await runWith(fetchImpl, { stats: true });
+    expect(outcome).toMatchObject({ success: true, state: "written" });
+    expect(writes[0].stats).toMatchObject({ corners_home: 7, cards_home: 2, corners_away: 3, cards_away: 2 });
+  });
+
+  it("treats a non-numeric statistic value as unknown, never as zero", async () => {
+    const dirty = {
+      response: [
+        { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: "n/a" }, { type: "Yellow Cards", value: 1 }, { type: "Red Cards", value: 0 }] },
+        { team: { id: 2 }, statistics: [{ type: "Corner Kicks", value: 3 }, { type: "Yellow Cards", value: 1 }, { type: "Red Cards", value: 0 }] },
+      ],
+    };
+    const fetchImpl = async (url: string) =>
+      url.includes("statistics") ? jsonResponse(dirty) : jsonResponse(fixturePayload(1001));
+    const { writes } = await runWith(fetchImpl, { stats: true });
+    expect(writes[0].stats.corners_home).toBeNull();
+    expect(writes[0].stats.corners_away).toBe(3);
+  });
+});
+
+
 describe("source-level guarantees", () => {
   it("auto-backfill-results routes every write through the atomic transaction RPC", () => {
     expect(autoBackfillSrc).toContain("ingest_fixture_result_tx");
