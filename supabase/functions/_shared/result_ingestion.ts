@@ -674,23 +674,30 @@ export async function runTargetedFixtureIngestion(opts: TargetedOptions): Promis
   }
 
   // A requested statistics payload that cannot be validated is a failure:
-  // the result is NOT written with all-null statistics.
+  // the result is NOT written with all-null statistics. A null response, an
+  // empty team statistics array and conflicting duplicate team records are all
+  // validation failures, and they latch the circuit so no further provider
+  // call is made in this run.
   let stats: Record<string, number | null> = {};
-  if (statsData) {
+  if (opts.includeStatistics) {
     try {
       stats = extractTeamStats(statsData, parsed.home_team_id, parsed.away_team_id);
     } catch (error) {
+      const code = error instanceof ValidationError ? error.code : "invalid_statistics";
+      session.latchSchemaFailure();
       return {
         ...base,
         success: false,
         state: "invalid_data",
         provider_status: parsed.status,
         terminal: true,
+        stop_reason: session.stopped,
         provider_calls: session.callsUsed,
-        reason: error instanceof ValidationError ? error.code : "invalid_statistics",
+        reason: code,
       };
     }
   }
+
 
 
   // 6. One atomic service-role transaction: identity + status + results.
