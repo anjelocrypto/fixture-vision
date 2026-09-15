@@ -36,6 +36,25 @@ CREATE TABLE public.fixtures (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.countries (
+  id integer PRIMARY KEY,
+  name text,
+  code text,
+  flag text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.leagues (
+  id integer PRIMARY KEY,
+  name text,
+  country text,
+  season integer,
+  logo text,
+  country_id integer
+);
+
+
+
 CREATE TABLE public.fixture_results (
   fixture_id bigint PRIMARY KEY,
   league_id integer,

@@ -35,6 +35,7 @@ post_phase3_migrations=(
   supabase/migrations/20260915020620_53b9f743-4014-48d8-ba2d-f8e7608d25a5.sql
   supabase/migrations/20260915022632_b39cd8d3-d3c0-458a-8a27-9919d4f12799.sql
   supabase/migrations/20260915031008_73b1b5fb-5a07-417e-8232-4d870d724731.sql
+  supabase/migrations/20260915033034_39cd4acb-3e58-478b-9d24-5b093f993568.sql
 )
 
 
@@ -80,6 +81,34 @@ run_suite supabase/tests/reschedule_integrity_test.sql reschedule
 run_suite supabase/tests/hold_safety_v3_test.sql hold
 run_suite supabase/tests/ingestion_identity_v32_test.sql ingestion
 run_suite supabase/tests/ingestion_provenance_test.sql provenance
+run_suite supabase/tests/scoring_provenance_test.sql scoring
 
-echo "Post-Phase 3 migration, reschedule-integrity, hold-safety, ingestion-identity and provenance suites passed."
+# Staging seed: must be valid against the real column definitions and fully
+# idempotent. Executed TWICE; the resulting row set must be identical.
+seed_db="${base_database}_stagingseed"
+dropdb --if-exists "${seed_db}"
+createdb --encoding=UTF8 --locale=C --template=template0 "${seed_db}"
+seed_args=(-X -q -v ON_ERROR_STOP=1 -d "${seed_db}")
+psql "${seed_args[@]}" -f supabase/staging/seed_schema_fixture.sql
+fingerprint_sql="select md5(string_agg(t,'|' order by t)) from (
+  select id::text||user_id::text t from public.generated_tickets
+  union all select id::text from public.ticket_leg_outcomes
+  union all select ticket_id::text from public.ticket_outcomes
+  union all select id::text from public.fixtures
+  union all select id::text from public.leagues
+  union all select id::text||coalesce(code,'') from public.countries
+  union all select user_id::text from public.market_coins
+  union all select id::text from public.prediction_markets) x"
+psql "${seed_args[@]}" -f supabase/staging/seed_staging_integration.sql
+first="$(psql "${seed_args[@]}" -At -c "${fingerprint_sql}")"
+psql "${seed_args[@]}" -f supabase/staging/seed_staging_integration.sql
+second="$(psql "${seed_args[@]}" -At -c "${fingerprint_sql}")"
+dropdb --if-exists "${seed_db}"
+if [ "${first}" != "${second}" ] || [ -z "${first}" ]; then
+  echo "Staging seed is not idempotent." >&2
+  exit 4
+fi
+
+echo "Post-Phase 3 migration, reschedule-integrity, hold-safety, ingestion-identity, ingestion-provenance and scoring-provenance suites plus the idempotent staging seed passed."
+
 

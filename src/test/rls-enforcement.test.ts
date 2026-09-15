@@ -152,7 +152,7 @@ describeIntegration("anon cannot execute privileged routines (valid arguments)",
     ["preview_settlement_holds_v3", { p_limit: 1 }],
     ["apply_settlement_holds_v3", { p_limit: 1, p_expected_leg_ids: [], p_snapshot_hash: "x" }],
     ["release_settlement_holds_v3", { p_limit: 1, p_expected_leg_ids: [], p_snapshot_hash: "x" }],
-    ["claim_scorable_ticket_legs", { p_limit: 1 }],
+    ["claim_scorable_ticket_legs", { batch_limit: 1 }],
     ["has_role", { _user_id: "00000000-0000-0000-0000-000000000000", _role: "admin" }],
   ];
 
@@ -186,9 +186,9 @@ describeIntegration("anon cannot execute privileged routines (valid arguments)",
 
 describeIntegration("anon cannot write persisted ticket history", () => {
   const WRITES: Array<[string, Record<string, unknown>, string]> = [
-    ["generated_tickets", { id: SEED.ticketA, user_id: null, legs: [], total_odds: 1.5 }, "id"],
-    ["ticket_outcomes", { ticket_id: SEED.ticketA, status: "WON" }, "ticket_id"],
-    ["ticket_leg_outcomes", { id: SEED.legA, ticket_id: SEED.ticketA, fixture_id: SEED.fixtureId, market: "goals", result_status: "WIN" }, "id"],
+    ["generated_tickets", { id: SEED.ticketA, user_id: null, legs: [], total_odds: 1.5, min_target: 1.4, max_target: 2.0 }, "id"],
+    ["ticket_outcomes", { ticket_id: SEED.ticketA, user_id: null, legs_total: 2, total_odds: 2.1, ticket_status: "WON" }, "ticket_id"],
+    ["ticket_leg_outcomes", { id: SEED.legA, ticket_id: SEED.ticketA, user_id: null, fixture_id: SEED.fixtureId, market: "goals", side: "over", line: 1.5, odds: 1.4, selection_key: "over_1_5", selection: "Over 1.5", result_status: "WIN" }, "id"],
   ];
 
   for (const [table, row, key] of WRITES) {
@@ -335,8 +335,8 @@ describeUsers("authenticated ownership and child-row preservation", () => {
 
   it("an authenticated user cannot execute service-role settlement routines", async () => {
     for (const [fn, args] of [
-      ["claim_scorable_ticket_legs", { p_limit: 1 }],
-      ["finalize_scored_ticket_leg", { p_leg_id: SEED.legA, p_claim_token: SEED.ticketA }],
+      ["claim_scorable_ticket_legs", { batch_limit: 1 }],
+      ["finalize_scored_ticket_leg", { p_leg_id: SEED.legA, p_claim_token: SEED.ticketA, p_result_status: "WIN", p_actual_value: 3, p_scored_version: "test", p_result_fingerprint: "x" }],
       ["apply_settlement_holds_v3", { p_limit: 1, p_expected_leg_ids: [], p_snapshot_hash: "x" }],
     ] as Array<[string, Record<string, unknown>]>) {
       const { error } = await (clientA as AnyError).rpc(fn, args);

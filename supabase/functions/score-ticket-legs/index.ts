@@ -44,7 +44,22 @@ interface ScorableLeg {
   cards_home: number | null;
   cards_away: number | null;
   result_fingerprint: string;
+  stats_provenance: string | null;
 }
+
+/** Markets that settle from secondary statistics, mirroring is_statistics_market(). */
+const STATISTICS_MARKETS = new Set([
+  "corners",
+  "total_corners",
+  "team_corners",
+  "cards",
+  "total_cards",
+  "team_cards",
+  "fouls",
+  "total_fouls",
+  "offsides",
+  "total_offsides",
+]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -167,6 +182,21 @@ serve(async (req) => {
         });
         if (error) throw new Error(`release_claim_failed: ${error.message}`);
       };
+
+      // Defence in depth: the database is authoritative and re-checks this
+      // under lock, but never even attempt a statistics settlement without
+      // verified provenance.
+      if (
+        STATISTICS_MARKETS.has((leg.market ?? "").toLowerCase()) &&
+        leg.stats_provenance !== "verified"
+      ) {
+        logs.push(
+          `[score] Unverified statistics provenance (${leg.stats_provenance ?? "unverified"}) for leg ${leg.leg_id}`,
+        );
+        await release();
+        heldOrRejected++;
+        continue;
+      }
 
       const actual = actualValueFor(leg);
       if (actual === null) {

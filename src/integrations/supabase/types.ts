@@ -3159,6 +3159,7 @@ export type Database = {
           goals_away: number | null
           goals_home: number | null
           hold_reason: string | null
+          is_statistics_market: boolean | null
           leg_away_id: number | null
           leg_home_id: number | null
           leg_id: string | null
@@ -3173,6 +3174,8 @@ export type Database = {
           score_claimed_at: string | null
           settlement_hold_reason: string | null
           side: string | null
+          stats_identity: string | null
+          stats_provenance: string | null
           ticket_id: string | null
           user_id: string | null
         }
@@ -3424,6 +3427,7 @@ export type Database = {
           market: string
           result_fingerprint: string
           side: string
+          stats_provenance: string
           ticket_id: string
           user_id: string
         }[]
@@ -3675,9 +3679,23 @@ export type Database = {
             }
             Returns: Json
           }
+      is_statistics_market: { Args: { p_market: string }; Returns: boolean }
       is_user_subscriber: { Args: { check_user_id?: string }; Returns: boolean }
       is_user_whitelisted: { Args: never; Returns: boolean }
       leg_hold_reason: { Args: { p_leg_id: string }; Returns: string }
+      legacy_stats_provenance_inventory: {
+        Args: never
+        Returns: {
+          earliest_kickoff: string
+          fixture_rows: number
+          has_statistics: boolean
+          latest_kickoff: string
+          pending_legs: number
+          provenance: string
+          settled_legs: number
+          source: string
+        }[]
+      }
       normalize_team_name: { Args: { p_name: string }; Returns: string }
       persist_generated_ticket: {
         Args: {
@@ -3807,10 +3825,18 @@ export type Database = {
         }
         Returns: string
       }
+      result_stats_provenance: {
+        Args: { p_fixture_id: number }
+        Returns: string
+      }
       safe_jsonb_id: { Args: { p_value: Json }; Returns: number }
       safe_stat_smallint: {
         Args: { p_key: string; p_stats: Json }
         Returns: number
+      }
+      stats_provenance_state: {
+        Args: { p_expected_identity: string; p_stats_identity: string }
+        Returns: string
       }
       try_use_feature: {
         Args: { feature_key: string }

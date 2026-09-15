@@ -336,7 +336,7 @@ describe("targeted ingestion — zero writes on every unsafe path", () => {
   it("never defaults a missing statistic to zero", async () => {
     const partialStats = {
       response: [
-        { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: null }] },
+        { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: null }, { type: "Fouls", value: 9 }] },
         { team: { id: 2 }, statistics: [{ type: "Corner Kicks", value: 4 }] },
       ],
     };
@@ -513,6 +513,87 @@ describe("RC3.3 — statistics request validation and circuit latching", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("RC3.4 — statistic entry validation", () => {
+  const withStats = (statsBody: unknown) => async (url: string) =>
+    url.includes("statistics") ? jsonResponse(statsBody) : jsonResponse(fixturePayload(1001));
+
+  const sides = (homeEntries: unknown[], awayEntries: unknown[] = [{ type: "Corner Kicks", value: 3 }]) => [
+    { team: { id: 1 }, statistics: homeEntries },
+    { team: { id: 2 }, statistics: awayEntries },
+  ];
+
+  it("rejects a malformed statistic entry", () => {
+    expect(() => extractTeamStats(sides(["Corner Kicks: 7"]), 1, 2)).toThrow(ValidationError);
+    expect(() => extractTeamStats(sides([null]), 1, 2)).toThrow(ValidationError);
+    expect(() => extractTeamStats(sides([{ value: 7 }]), 1, 2)).toThrow(ValidationError);
+    expect(() => extractTeamStats(sides([{ type: "   ", value: 7 }]), 1, 2)).toThrow(ValidationError);
+  });
+
+  it("rejects invalid statistic values instead of storing null", () => {
+    for (const bad of [-3, 4.5, "12a", true, {}, Number.NaN]) {
+      expect(() => extractTeamStats(sides([{ type: "Corner Kicks", value: bad }]), 1, 2))
+        .toThrow(ValidationError);
+    }
+  });
+
+  it("rejects conflicting duplicate statistic types within one side", () => {
+    expect(() =>
+      extractTeamStats(
+        sides([
+          { type: "Corner Kicks", value: 7 },
+          { type: "Corner Kicks", value: 2 },
+        ]),
+        1,
+        2,
+      )
+    ).toThrow(ValidationError);
+  });
+
+  it("tolerates an identical duplicate statistic type", () => {
+    const out = extractTeamStats(
+      sides([
+        { type: "Corner Kicks", value: 7 },
+        { type: "Corner Kicks", value: 7 },
+      ]),
+      1,
+      2,
+    );
+    expect(out.corners_home).toBe(7);
+    expect(out.corners_away).toBe(3);
+  });
+
+  it("requires usable attributed statistics on both sides", () => {
+    expect(() =>
+      extractTeamStats(sides([{ type: "Ball Possession", value: "55%" }]), 1, 2)
+    ).toThrow(ValidationError);
+    expect(() =>
+      extractTeamStats(
+        sides([{ type: "Corner Kicks", value: 7 }], [{ type: "Corner Kicks", value: null }]),
+        1,
+        2,
+      )
+    ).toThrow(ValidationError);
+  });
+
+  it("writes nothing and latches the circuit when an entry is invalid", async () => {
+    const fetchImpl = vi.fn(
+      withStats({
+        response: sides([
+          { type: "Corner Kicks", value: 7 },
+          { type: "Corner Kicks", value: 2 },
+        ]),
+      }),
+    );
+    const { outcome, writes, session: s } = await runWith(fetchImpl, { stats: true });
+    expect(outcome).toMatchObject({ success: false, state: "invalid_data", reason: "invalid_statistics" });
+    expect(writes).toHaveLength(0);
+    expect(s.stopped).toBe("provider_invalid_schema");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+
 
 
 
