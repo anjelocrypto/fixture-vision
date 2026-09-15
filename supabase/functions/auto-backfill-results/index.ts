@@ -22,6 +22,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { API_BASE, apiHeaders } from "../_shared/api.ts";
 import { ProviderCallBudget } from "../_shared/provider_budget.ts";
+import { isBackfillStalled, type BackfillRunRow } from "../_shared/gate_d_health.ts";
 import {
   authorizeIngestionRequest,
   buildTargetedBudget,
@@ -334,22 +335,19 @@ Deno.serve(async (req: Request) => {
       scorer_chained: false,
     }, stopReason ?? (failed > 0 ? `failed_fixtures:${failed}` : undefined));
 
-    // Watchdog (unchanged semantics, no scorer chaining)
+    // Watchdog — RC3.4: the SAME shared consecutive-run logic the health
+    // snapshot uses. Runs are read unfiltered in real chronological order, so
+    // zero / nonzero / zero is progress and a failed run breaks the streak.
     const backfillAlertFingerprint = "pipeline:auto-backfill-results:stalled";
     let backfillStalled = false;
     if (inserted === 0 && allMissing.length > 0) {
       const { data: recentRuns } = await supabase
         .from("pipeline_run_logs")
-        .select("id, details")
+        .select("success, failed, details")
         .eq("job_name", "auto-backfill-results")
-        .eq("success", true)
         .order("run_started", { ascending: false })
         .limit(WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD);
-      const consecutiveZeros = (recentRuns || []).filter(
-        // deno-lint-ignore no-explicit-any
-        (r: any) => r.details && (r.details.inserted === 0 || r.details.inserted === null),
-      ).length;
-      if (consecutiveZeros >= WATCHDOG_CONSECUTIVE_ZERO_THRESHOLD - 1) {
+      if (isBackfillStalled((recentRuns ?? []) as BackfillRunRow[])) {
         backfillStalled = true;
         const { error } = await supabase.rpc("record_pipeline_alert", {
           p_fingerprint: backfillAlertFingerprint,
