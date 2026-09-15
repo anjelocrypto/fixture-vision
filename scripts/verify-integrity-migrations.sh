@@ -31,6 +31,7 @@ post_phase3_migrations=(
   supabase/migrations/20260914233528_052de65e-a583-43ad-9226-6499bb604769.sql
   supabase/migrations/20260915015814_96202d49-d292-4387-9310-26be3cdceb96.sql
   supabase/migrations/20260915015950_c85c54d8-ed77-4f41-bbce-07d4dfc0f1f0.sql
+  supabase/migrations/20260915020517_3e408102-d8d7-4cc7-8e21-b77fad7a8316.sql
 )
 
 # Guard: EXACT sorted-set equality between the declared list and every
