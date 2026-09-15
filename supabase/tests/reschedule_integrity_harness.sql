@@ -30,6 +30,7 @@ CREATE TABLE public.fixtures (
   league_id integer,
   "timestamp" bigint,
   status text,
+  date timestamptz,
   teams_home jsonb,
   teams_away jsonb,
   updated_at timestamptz NOT NULL DEFAULT now()
