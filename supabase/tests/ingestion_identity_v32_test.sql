@@ -137,22 +137,28 @@ SELECT public.assert(
     WHERE fixture_id = 9001 AND new_away_team_id = 21),
   'ingest: identity correction is audited');
 
--- 4f. A canonical team-name change alone is an identity change.
+-- 4f. Cosmetic naming differences are NOT an identity change, but a genuinely
+--     different canonical name is.
 SELECT public.ingest_fixture_result_tx(
   9001, 45, 'FT', timestamptz '2026-03-01 15:00+00', 10, 21, 'Alpha FC', 'Gamma FC', 3, 1,
   '{"corners_home":4,"corners_away":4}'::jsonb);
 SELECT public.ingest_fixture_result_tx(
   9001, 45, 'FT', timestamptz '2026-03-01 15:00+00', 10, 21, 'Alpha Football Club', 'Gamma FC', 3, 1, '{}'::jsonb);
 SELECT public.assert(
+  (SELECT corners_home = 4 FROM public.fixture_results WHERE fixture_id = 9001),
+  'ingest: cosmetic naming difference keeps statistics');
+SELECT public.ingest_fixture_result_tx(
+  9001, 45, 'FT', timestamptz '2026-03-01 15:00+00', 10, 21, 'Alpha United', 'Gamma FC', 3, 1, '{}'::jsonb);
+SELECT public.assert(
   (SELECT corners_home IS NULL FROM public.fixture_results WHERE fixture_id = 9001),
   'ingest: canonical team-name change clears statistics');
 
 -- 4g. A kickoff change clears statistics and is audited.
 SELECT public.ingest_fixture_result_tx(
-  9001, 45, 'FT', timestamptz '2026-03-01 15:00+00', 10, 21, 'Alpha Football Club', 'Gamma FC', 3, 1,
+  9001, 45, 'FT', timestamptz '2026-03-01 15:00+00', 10, 21, 'Alpha United', 'Gamma FC', 3, 1,
   '{"corners_home":6,"corners_away":6}'::jsonb);
 SELECT public.ingest_fixture_result_tx(
-  9001, 45, 'FT', timestamptz '2026-03-08 15:00+00', 10, 21, 'Alpha Football Club', 'Gamma FC', 3, 1, '{}'::jsonb);
+  9001, 45, 'FT', timestamptz '2026-03-08 15:00+00', 10, 21, 'Alpha United', 'Gamma FC', 3, 1, '{}'::jsonb);
 SELECT public.assert(
   (SELECT corners_home IS NULL FROM public.fixture_results WHERE fixture_id = 9001),
   'ingest: kickoff change clears statistics');
@@ -167,7 +173,7 @@ BEGIN
   SELECT goals_home INTO v_before FROM public.fixture_results WHERE fixture_id = 9001;
   BEGIN
     PERFORM public.ingest_fixture_result_tx(
-      9001, 45, 'FT', timestamptz '2026-03-08 15:00+00', 10, 21, 'Alpha Football Club', 'Gamma FC', 9, 9,
+      9001, 45, 'FT', timestamptz '2026-03-08 15:00+00', 10, 21, 'Alpha United', 'Gamma FC', 9, 9,
       '{"corners_home":"n/a"}'::jsonb);
     RAISE EXCEPTION 'FAIL: malformed statistics were accepted';
   EXCEPTION WHEN others THEN
