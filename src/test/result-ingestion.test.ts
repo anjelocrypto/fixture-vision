@@ -336,7 +336,7 @@ describe("targeted ingestion — zero writes on every unsafe path", () => {
   it("never defaults a missing statistic to zero", async () => {
     const partialStats = {
       response: [
-        { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: null }] },
+        { team: { id: 1 }, statistics: [{ type: "Corner Kicks", value: null }, { type: "Fouls", value: 9 }] },
         { team: { id: 2 }, statistics: [{ type: "Corner Kicks", value: 4 }] },
       ],
     };
